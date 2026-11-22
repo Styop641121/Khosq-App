@@ -1,11 +1,13 @@
 package am.khosq.app.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -49,11 +51,13 @@ private val KhosqTypography = Typography(
 
 @Composable
 fun KhosqTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (dark) DarkColors else LightColors,
-        typography = KhosqTypography,
-        content = content,
-    )
+    val scheme = if (dark) DarkColors else LightColors
+    MaterialTheme(colorScheme = scheme, typography = KhosqTypography) {
+        // Text outside a Material surface would otherwise default to black.
+        CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {
+            content()
+        }
+    }
 }
 
 @Composable

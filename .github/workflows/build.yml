@@ -24,11 +24,30 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Show project files
+        run: |
+          pwd
+          ls -la
+          find . -maxdepth 3 \( -name "settings.gradle*" -o -name "build.gradle*" -o -name "gradlew" \) -not -path "./.git/*"
+
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          SETTINGS=$(find . -maxdepth 3 -name "settings.gradle*" -not -path "./.git/*" | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "settings.gradle(.kts) not found: project structure is incomplete"
+            exit 1
+          fi
+          DIR=$(dirname "$SETTINGS")
+          cd "$DIR"
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Khosq-Debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: "**/build/outputs/apk/debug/*.apk"

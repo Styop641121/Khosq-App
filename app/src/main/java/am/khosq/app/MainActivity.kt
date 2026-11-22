@@ -1,5 +1,6 @@
 package am.khosq.app
 
+import am.khosq.app.data.Profile
 import am.khosq.app.ui.AppViewModel
 import am.khosq.app.ui.Boot
 import am.khosq.app.ui.ChatScreen
@@ -8,11 +9,19 @@ import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.backgroundBrush
-import am.khosq.app.data.Profile
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -27,16 +36,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -46,21 +63,69 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 
 class MainActivity : ComponentActivity() {
+    private val askNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        readIntent(intent)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         setContent {
             KhosqTheme {
                 Root()
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        readIntent(intent)
+    }
+
+    private fun readIntent(i: Intent?) {
+        val id = i?.getStringExtra("chat")
+        if (id != null) AppState.pendingChat.value = id
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AppState.inForeground = true
+    }
+
+    override fun onStop() {
+        AppState.inForeground = false
+        super.onStop()
+    }
+}
+
+private fun markBatteryAsked(ctx: Context) {
+    ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE).edit().putBoolean("battery_asked", true).apply()
 }
 
 @Composable
 private fun Root(vm: AppViewModel = viewModel()) {
+    val ctx = LocalContext.current
     val boot by vm.boot.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
+    var askBattery by remember { mutableStateOf(false) }
+
+    LaunchedEffect(boot) {
+        if (boot is Boot.Ready) {
+            KeepAliveService.start(ctx)
+            val prefs = ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE)
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+            if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
+                askBattery = true
+            }
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(backgroundBrush())) {
         when (val b = boot) {
@@ -95,11 +160,55 @@ private fun Root(vm: AppViewModel = viewModel()) {
             )
         }
     }
+
+    if (askBattery) {
+        AlertDialog(
+            onDismissRequest = {
+                markBatteryAsked(ctx)
+                askBattery = false
+            },
+            title = { Text("Նամակներ փակ հավելվածի ժամանակ") },
+            text = {
+                Text(
+                    "Որ նամակները հասնեն նաև երբ հավելվածը փակ է, թույլ տուր KHOSQ-ին աշխատել ֆոնում (մարտկոցի խնայողությունից բացառել)։",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    markBatteryAsked(ctx)
+                    askBattery = false
+                    try {
+                        ctx.startActivity(
+                            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + ctx.packageName)),
+                        )
+                    } catch (e: Exception) {
+                        // the phone has no such screen
+                    }
+                }) { Text("Թույլատրել") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    markBatteryAsked(ctx)
+                    askBattery = false
+                }) { Text("Ոչ հիմա") }
+            },
+        )
+    }
 }
 
 @Composable
 private fun MainNav(vm: AppViewModel, me: Profile) {
     val nav = rememberNavController()
+    val pending by AppState.pendingChat.collectAsStateWithLifecycle()
+
+    LaunchedEffect(pending) {
+        val id = pending
+        if (id != null) {
+            nav.navigate("chat/$id")
+            AppState.pendingChat.value = null
+        }
+    }
+
     NavHost(
         navController = nav,
         startDestination = "home",

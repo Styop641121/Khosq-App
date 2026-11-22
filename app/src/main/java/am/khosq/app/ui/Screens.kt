@@ -55,12 +55,14 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private fun cleanHandle(s: String): String =
@@ -350,9 +352,11 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
     var text by remember { mutableStateOf("") }
+    val ctx = LocalContext.current
 
     DisposableEffect(chatId) {
         vm.openChat(chatId)
+        NotificationManagerCompat.from(ctx).cancel(chatId.hashCode())
         onDispose { vm.closeChat() }
     }
 

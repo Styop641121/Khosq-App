@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "904288969107",
+    "project_id": "khosq-313bb",
+    "storage_bucket": "khosq-313bb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904288969107:android:3747fd3f972c5c8d954866",
+        "android_client_info": {
+          "package_name": "am.khosq.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "904288969107-99go2e4e72ooqppldg3i6m8tm8ju62fq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcRi78A1zqNt6ZXGTNuAXXYFyLuG5GQKk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "904288969107-99go2e4e72ooqppldg3i6m8tm8ju62fq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

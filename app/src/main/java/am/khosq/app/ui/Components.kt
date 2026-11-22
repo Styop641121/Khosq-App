@@ -26,6 +26,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+fun formatDur(s: Int): String = (s / 60).toString() + ":" + (s % 60).toString().padStart(2, '0')
+
 fun formatTime(ts: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ts))
 
 private fun avatarShape(k: Int): Shape = when (k) {

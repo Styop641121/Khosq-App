@@ -20,4 +20,7 @@ data class Message(
     val text: String,
     val ts: Long,
     val pending: Boolean,
+    val kind: String = "text",
+    val data: ByteArray? = null,
+    val dur: Int = 0,
 )

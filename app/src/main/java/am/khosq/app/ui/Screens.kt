@@ -1,6 +1,21 @@
 package am.khosq.app.ui
 
 import am.khosq.app.data.Chat
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import androidx.compose.foundation.background
@@ -346,6 +361,20 @@ private fun AddContactSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (Stri
 /* ---------------- conversation ---------------- */
 
 @Composable
+private fun CircleAction(onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(46.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(BrandColors))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
 fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit) {
     val chats by vm.chats.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
@@ -353,11 +382,53 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
     var text by remember { mutableStateOf("") }
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val recorder = remember { VoiceRecorder(ctx) }
+    var recording by remember { mutableStateOf(false) }
+    var recSec by remember { mutableStateOf(0) }
+
+    fun finishRecording(send: Boolean) {
+        val result = recorder.stop(send)
+        recording = false
+        recSec = 0
+        if (send && result != null) vm.sendVoice(chatId, peerUid, result.first, result.second)
+    }
+
+    fun beginRecording() {
+        if (recorder.start()) {
+            recording = true
+            recSec = 0
+        }
+    }
+
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) beginRecording()
+    }
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.Default) {
+                val bytes = MediaUtil.compressImage(ctx, uri)
+                if (bytes != null) vm.sendImage(chatId, peerUid, bytes)
+            }
+        }
+    }
 
     DisposableEffect(chatId) {
         vm.openChat(chatId)
         NotificationManagerCompat.from(ctx).cancel(chatId.hashCode())
-        onDispose { vm.closeChat() }
+        onDispose {
+            recorder.stop(false)
+            VoicePlayer.stop()
+            vm.closeChat()
+        }
+    }
+
+    LaunchedEffect(recording) {
+        while (recording) {
+            delay(300)
+            recSec = recorder.elapsedSec()
+            if (recSec >= 120) finishRecording(true)
+        }
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()) {
@@ -408,34 +479,110 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 .padding(6.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            TextField(
-                value = text,
-                onValueChange = { text = it.take(4000) },
-                placeholder = { Text("Գրիր նամակ…") },
-                maxLines = 5,
-                modifier = Modifier.weight(1f),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                ),
-            )
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(BrandColors))
-                    .clickable(enabled = text.isNotBlank()) {
+            if (recording) {
+                Text(
+                    text = "●  " + formatDur(recSec),
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f).padding(start = 14.dp, bottom = 14.dp),
+                )
+                TextButton(onClick = { finishRecording(false) }) { Text("Չեղարկել") }
+                CircleAction(onClick = { finishRecording(true) }) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .clickable {
+                            pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "📎", fontSize = 22.sp)
+                }
+                TextField(
+                    value = text,
+                    onValueChange = { text = it.take(4000) },
+                    placeholder = { Text("Գրիր նամակ…") },
+                    maxLines = 5,
+                    modifier = Modifier.weight(1f),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                    ),
+                )
+                if (text.isBlank()) {
+                    CircleAction(onClick = {
+                        val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) ==
+                            PackageManager.PERMISSION_GRANTED
+                        if (granted) beginRecording() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }) {
+                        Text(text = "🎤", fontSize = 20.sp)
+                    }
+                } else {
+                    CircleAction(onClick = {
                         vm.send(chatId, peerUid, text.trim())
                         text = ""
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ImageBody(m: Message) {
+    val bmp = remember(m.id) {
+        val d = m.data
+        if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
+    }
+    if (bmp != null) {
+        Image(
+            bitmap = bmp,
+            contentDescription = "Նկար",
+            contentScale = ContentScale.FillWidth,
+            modifier = Modifier.width(240.dp).clip(RoundedCornerShape(14.dp)),
+        )
+    } else {
+        Text(text = "📷 Նկար", fontSize = 16.sp)
+    }
+}
+
+@Composable
+private fun VoiceBody(m: Message, mine: Boolean) {
+    val ctx = LocalContext.current
+    val playing = VoicePlayer.playingId == m.id
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(if (mine) Color(0xFF1B1000) else MaterialTheme.colorScheme.primary)
+                .clickable {
+                    val d = m.data
+                    if (d != null) VoicePlayer.toggle(ctx, m.id, d)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = if (playing) "⏸" else "▶",
+                color = if (mine) Color(0xFFFFCB52) else MaterialTheme.colorScheme.onPrimary,
+                fontSize = 16.sp,
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = "🎤 " + formatDur(m.dur),
+            color = if (mine) InkOnBrand else MaterialTheme.colorScheme.onSurface,
+            fontSize = 15.sp,
+        )
     }
 }
 
@@ -461,7 +608,11 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long) {
                 .then(fill)
                 .padding(horizontal = 13.dp, vertical = 8.dp),
         ) {
-            Text(text = m.text, color = ink, fontSize = 16.sp)
+            when (m.kind) {
+                "img" -> ImageBody(m)
+                "voice" -> VoiceBody(m, mine)
+                else -> Text(text = m.text, color = ink, fontSize = 16.sp)
+            }
             Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = formatTime(m.ts), fontSize = 11.sp, color = soft)
                 if (mine) {

@@ -1,6 +1,7 @@
 package am.khosq.app.data
 
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -118,6 +119,9 @@ class Repository {
                         text = d.getString("text") ?: "",
                         ts = ts?.toDate()?.time ?: System.currentTimeMillis(),
                         pending = d.metadata.hasPendingWrites(),
+                        kind = d.getString("kind") ?: "text",
+                        data = d.getBlob("data")?.toBytes(),
+                        dur = (d.getLong("dur") ?: 0L).toInt(),
                     )
                 }
                 trySend(list)
@@ -138,6 +142,35 @@ class Repository {
             chat,
             hashMapOf<String, Any>(
                 "lastText" to text,
+                "lastTs" to System.currentTimeMillis(),
+                "lastFrom" to me.uid,
+                "unread." + peerUid to FieldValue.increment(1L),
+            ),
+        )
+        batch.commit()
+    }
+
+    /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
+    fun sendMedia(chatId: String, me: Profile, peerUid: String, kind: String, bytes: ByteArray, dur: Int) {
+        val preview = if (kind == "img") "📷 Նկար" else "🎤 Ձայնային նամակ"
+        val chat = db.collection("chats").document(chatId)
+        val msg = chat.collection("messages").document()
+        val batch = db.batch()
+        batch.set(
+            msg,
+            hashMapOf<String, Any>(
+                "from" to me.uid,
+                "text" to "",
+                "kind" to kind,
+                "dur" to dur.toLong(),
+                "data" to Blob.fromBytes(bytes),
+                "ts" to FieldValue.serverTimestamp(),
+            ),
+        )
+        batch.update(
+            chat,
+            hashMapOf<String, Any>(
+                "lastText" to preview,
                 "lastTs" to System.currentTimeMillis(),
                 "lastFrom" to me.uid,
                 "unread." + peerUid to FieldValue.increment(1L),

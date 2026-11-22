@@ -127,6 +127,16 @@ class AppViewModel : ViewModel() {
         repo.send(chatId, me, peerUid, text)
     }
 
+    fun sendImage(chatId: String, peerUid: String, bytes: ByteArray) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.sendMedia(chatId, me, peerUid, "img", bytes, 0)
+    }
+
+    fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.sendMedia(chatId, me, peerUid, "voice", bytes, seconds)
+    }
+
     fun clearNotice() {
         _notice.value = null
     }

@@ -41,7 +41,7 @@ private fun avatarShape(k: Int): Shape = when (k) {
 
 /** The first letter on one of six shapes, picked from the ID, so the same person always looks the same. */
 @Composable
-fun Avatar(name: String, seed: String, size: Dp = 52.dp, modifier: Modifier = Modifier) {
+fun Avatar(name: String, seed: String, size: Dp = 52.dp, modifier: Modifier = Modifier, circle: Boolean = false) {
     var h = 0
     for (c in seed) h = (h * 31 + c.code) and 0x7fffffff
     val k = h % 6
@@ -56,7 +56,7 @@ fun Avatar(name: String, seed: String, size: Dp = 52.dp, modifier: Modifier = Mo
         else -> { brush = Brush.linearGradient(listOf(Color(0xFF9DB0FF), Color(0xFF6A7CFF))); ink = Color(0xFF0B1230) }
     }
     Box(
-        modifier = modifier.size(size).clip(avatarShape(k)).background(brush),
+        modifier = modifier.size(size).clip(if (circle) CircleShape else avatarShape(k)).background(brush),
         contentAlignment = Alignment.Center,
     ) {
         Text(

@@ -6,6 +6,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Transaction
 import kotlinx.coroutines.channels.awaitClose
@@ -177,6 +178,68 @@ class Repository {
             ),
         )
         batch.commit()
+    }
+
+    /* ---------- stories: 24-hour posts for the people in my chats ---------- */
+
+    fun storiesForMe(uid: String): Flow<List<Story>> =
+        storyQuery(db.collection("stories").whereArrayContains("audience", uid))
+
+    fun myStories(uid: String): Flow<List<Story>> =
+        storyQuery(db.collection("stories").whereEqualTo("owner", uid))
+
+    private fun storyQuery(q: Query): Flow<List<Story>> = callbackFlow {
+        val reg = q.addSnapshotListener { snap, err ->
+            if (err != null) {
+                close(err)
+                return@addSnapshotListener
+            }
+            if (snap == null) return@addSnapshotListener
+            trySend(snap.documents.mapNotNull { toStory(it) })
+        }
+        awaitClose { reg.remove() }
+    }
+
+    private fun toStory(d: DocumentSnapshot): Story? {
+        val owner = d.getString("owner") ?: return null
+        val views = (d.get("viewers") as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+        return Story(
+            id = d.id,
+            owner = owner,
+            ownerName = d.getString("ownerName") ?: "",
+            kind = d.getString("kind") ?: "txt",
+            text = d.getString("text") ?: "",
+            bg = (d.getLong("bg") ?: 0L).toInt(),
+            data = d.getBlob("data")?.toBytes(),
+            ts = d.getLong("ts") ?: 0L,
+            exp = d.getLong("exp") ?: 0L,
+            views = views,
+        )
+    }
+
+    fun postStory(me: Profile, audience: List<String>, kind: String, text: String, bg: Int, bytes: ByteArray?) {
+        val now = System.currentTimeMillis()
+        val data = hashMapOf<String, Any>(
+            "owner" to me.uid,
+            "ownerName" to me.name,
+            "kind" to kind,
+            "text" to text,
+            "bg" to bg.toLong(),
+            "ts" to now,
+            "exp" to now + 24L * 3600L * 1000L,
+            "audience" to audience,
+            "viewers" to emptyList<String>(),
+        )
+        if (bytes != null) data["data"] = Blob.fromBytes(bytes)
+        db.collection("stories").add(data)
+    }
+
+    fun markStoryViewed(id: String, uid: String) {
+        db.collection("stories").document(id).update("viewers", FieldValue.arrayUnion(uid))
+    }
+
+    fun deleteStory(id: String) {
+        db.collection("stories").document(id).delete()
     }
 
     fun markRead(chatId: String, uid: String) {

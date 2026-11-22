@@ -4,6 +4,7 @@ import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Repository
+import am.khosq.app.data.Story
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 
 sealed class Boot {
@@ -36,7 +39,11 @@ class AppViewModel : ViewModel() {
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
+    private val _stories = MutableStateFlow<List<Story>>(emptyList())
+    val stories: StateFlow<List<Story>> = _stories.asStateFlow()
+
     private var chatsJob: Job? = null
+    private var storiesJob: Job? = null
     private var messagesJob: Job? = null
 
     init {
@@ -63,6 +70,21 @@ class AppViewModel : ViewModel() {
             repo.chats(p.uid)
                 .catch { _notice.value = describe(it) }
                 .collect { _chats.value = it }
+        }
+        storiesJob?.cancel()
+        storiesJob = viewModelScope.launch {
+            combine(
+                repo.storiesForMe(p.uid).onStart { emit(emptyList<Story>()) },
+                repo.myStories(p.uid).onStart { emit(emptyList<Story>()) },
+            ) { a, b -> (a + b).distinctBy { st -> st.id } }
+                .catch { _notice.value = describe(it) }
+                .collect { list ->
+                    _stories.value = list
+                    val now = System.currentTimeMillis()
+                    for (st in list) {
+                        if (st.owner == p.uid && st.exp < now) repo.deleteStory(st.id)
+                    }
+                }
         }
     }
 
@@ -135,6 +157,28 @@ class AppViewModel : ViewModel() {
     fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         repo.sendMedia(chatId, me, peerUid, "voice", bytes, seconds)
+    }
+
+    fun postStory(kind: String, text: String, bg: Int, bytes: ByteArray?) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        val audience = _chats.value.map { c -> c.peerUid }
+        repo.postStory(me, audience, kind, text, bg, bytes)
+    }
+
+    fun viewStory(id: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.markStoryViewed(id, me.uid)
+    }
+
+    fun deleteStory(id: String) {
+        repo.deleteStory(id)
+    }
+
+    fun replyToStory(story: Story, text: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        val chat = _chats.value.firstOrNull { c -> c.peerUid == story.owner } ?: return
+        if (text.isBlank()) return
+        repo.send(chat.id, me, story.owner, "📖 Սթորի՝ " + text.trim())
     }
 
     fun clearNotice() {

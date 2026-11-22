@@ -158,6 +158,9 @@ fun SetupScreen(vm: AppViewModel) {
 @Composable
 fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     val chats by vm.chats.collectAsStateWithLifecycle()
+    val stories by vm.stories.collectAsStateWithLifecycle()
+    var viewing by remember { mutableStateOf<String?>(null) }
+    var composing by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
     var showMe by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
@@ -182,6 +185,12 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                     Text(text = "@" + me.handle, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
+            StoriesRail(
+                stories = stories,
+                me = me,
+                onOpen = { owner -> viewing = owner },
+                onAdd = { composing = true },
+            )
             if (chats.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(36.dp),
@@ -225,6 +234,13 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
 
     if (showAdd) {
         AddContactSheet(vm = vm, onClose = { showAdd = false }, onOpen = onOpen)
+    }
+    if (composing) {
+        StoryComposer(vm = vm, onClose = { composing = false })
+    }
+    val owner = viewing
+    if (owner != null) {
+        StoryViewer(ownerId = owner, me = me, vm = vm, onClose = { viewing = null })
     }
     if (showMe) {
         AlertDialog(

@@ -24,3 +24,16 @@ data class Message(
     val data: ByteArray? = null,
     val dur: Int = 0,
 )
+
+data class Story(
+    val id: String,
+    val owner: String,
+    val ownerName: String,
+    val kind: String,
+    val text: String,
+    val bg: Int,
+    val data: ByteArray?,
+    val ts: Long,
+    val exp: Long,
+    val views: List<String>,
+)

@@ -72,6 +72,8 @@ object KIcons {
         "M9,2L7.17,4H4c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V6c0,-1.1 -0.9,-2 -2,-2h-3.17L15,2H9zM12,17c-2.76,0 -5,-2.24 -5,-5s2.24,-5 5,-5 5,2.24 5,5 -2.24,5 -5,5zM12,9.2c-1.54,0 -2.8,1.26 -2.8,2.8s1.26,2.8 2.8,2.8 2.8,-1.26 2.8,-2.8 -1.26,-2.8 -2.8,-2.8z"
     private const val BOOKMARK = "M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z"
     private const val DOWN = "M7.41,8.59L12,13.17l4.59,-4.58L18,10l-6,6 -6,-6 1.41,-1.41z"
+    private const val REPLY = "M10,9V5l-7,7 7,7v-4.1c5,0 8.5,1.6 11,5.1 -1,-5 -4,-10 -11,-11z"
+    private const val STAR = "M12,17.27L18.18,21l-1.64,-7.03L22,9.24l-7.19,-0.61L12,2 9.19,8.63 2,9.24l5.46,4.73L5.82,21z"
     private const val CHAT = "M20,2H4c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2z"
 
     val Call: ImageVector by lazy { vec("call", CALL) }
@@ -97,6 +99,8 @@ object KIcons {
     val Person: ImageVector by lazy { vec("person", PERSON) }
     val Edit: ImageVector by lazy { vec("edit", EDIT) }
     val Camera: ImageVector by lazy { vec("camera", CAMERA) }
+    val Reply: ImageVector by lazy { vec("reply", REPLY) }
+    val Star: ImageVector by lazy { vec("star", STAR) }
 }
 
 /** A round button with a vector icon inside. */

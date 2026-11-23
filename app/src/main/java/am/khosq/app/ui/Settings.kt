@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -138,7 +139,8 @@ fun LanguageChips(modifier: Modifier = Modifier) {
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
+    val stars by vm.stars.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -242,6 +244,58 @@ fun SettingsTab(vm: AppViewModel, me: Profile) {
                 Chip(tr("Ինչպես հեռախոսում"), AppTheme.mode == "system", Modifier.weight(1.4f)) { AppTheme.set("system") }
                 Chip(tr("Լուսավոր"), AppTheme.mode == "light", Modifier.weight(1f)) { AppTheme.set("light") }
                 Chip(tr("Մութ"), AppTheme.mode == "dark", Modifier.weight(1f)) { AppTheme.set("dark") }
+            }
+        }
+
+        Section(tr("Զրույցներ")) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onStarred)
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(text = tr("⭐ Աստղանշված նամակներ"), fontWeight = FontWeight.SemiBold)
+                    if (stars.isNotEmpty()) {
+                        Text(
+                            text = stars.size.toString(),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(text = "›", fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(text = tr("Զրույցի ֆոն"), fontWeight = FontWeight.SemiBold)
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                for (i in 0 until WALLPAPER_COUNT) {
+                    val on = Wallpaper.index == i
+                    val swatch = Modifier
+                        .size(width = 62.dp, height = 88.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .then(if (i == 0) Modifier.background(backgroundBrush()) else Modifier.wallpaper(i))
+                        .border(
+                            width = if (on) 2.5.dp else 1.dp,
+                            color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            shape = RoundedCornerShape(14.dp),
+                        )
+                        .clickable { Wallpaper.set(i) }
+                    Box(swatch, contentAlignment = Alignment.Center) {
+                        if (on) {
+                            Icon(
+                                imageVector = KIcons.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
 

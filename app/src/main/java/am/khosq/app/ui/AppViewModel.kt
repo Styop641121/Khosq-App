@@ -7,6 +7,7 @@ import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
+import am.khosq.app.data.Star
 import am.khosq.app.data.ProfileStore
 import am.khosq.app.data.Delivery
 import am.khosq.app.data.UserInfo
@@ -70,6 +71,11 @@ class AppViewModel : ViewModel() {
 
     private var prefsJob: Job? = null
 
+    private val _stars = MutableStateFlow<List<Star>>(emptyList())
+    val stars: StateFlow<List<Star>> = _stars.asStateFlow()
+
+    private var starsJob: Job? = null
+
     private val healed = HashSet<String>()
 
     private var seenJob: Job? = null
@@ -131,6 +137,15 @@ class AppViewModel : ViewModel() {
                     Prefs.putSet("muted", pr.muted)
                 }
         }
+        starsJob?.cancel()
+        starsJob = viewModelScope.launch {
+            repo.stars(p.uid)
+                .retryWhen { _, _ ->
+                    delay(5_000L)
+                    true
+                }
+                .collect { list -> _stars.value = list }
+        }
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)
@@ -181,6 +196,9 @@ class AppViewModel : ViewModel() {
             if (stale && healed.add(c.id + "|" + me.name + "|" + me.pv)) {
                 repo.syncSelf(c.id, me.uid, me.name, me.pv)
             }
+        }
+        for (c in list) {
+            if (c.isGroup && !c.saved) best[c.id] = c.gpv
         }
         for ((u, v) in best) ProfileStore.want(viewModelScope, repo, u, v)
     }
@@ -346,9 +364,65 @@ class AppViewModel : ViewModel() {
         repo.sendMedia(chatId, me, recipients(chatId, peerUid), "img", bytes, 0, groupTitle(chatId))
     }
 
-    fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int) {
+    fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int, wave: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "voice", bytes, seconds, groupTitle(chatId))
+        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "voice", bytes, seconds, groupTitle(chatId), wave)
+    }
+
+    /** Puts a message on my starred list, or takes it off again. */
+    fun toggleStar(chatId: String, m: Message) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        val key = chatId + "~" + m.id
+        if (_stars.value.any { s -> s.key == key }) {
+            repo.removeStar(me.uid, key)
+            return
+        }
+        val chat = _chats.value.firstOrNull { c -> c.id == chatId }
+        val from = if (m.from == me.uid) me.name else (chat?.memberNames?.get(m.from) ?: chat?.peerName ?: "")
+        repo.setStar(
+            me.uid,
+            Star(
+                key = key,
+                chatId = chatId,
+                // "Saved messages" has no name of its own; the list writes it in the reader's language
+                chatName = if (chat == null || chat.saved) "" else chat.peerName,
+                fromName = from,
+                mine = m.from == me.uid,
+                kind = m.kind,
+                text = if (m.kind == "text") m.text.take(600) else "",
+                ts = m.ts,
+                at = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    fun removeStar(key: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.removeStar(me.uid, key)
+    }
+
+    /** bytes = null removes the group's picture. Only admins may do this (the rules check it too). */
+    fun setGroupPhoto(chatId: String, bytes: ByteArray?) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        viewModelScope.launch {
+            try {
+                if (bytes == null) {
+                    repo.removeGroupPhoto(chatId)
+                    ProfileStore.clearLocal(chatId)
+                } else {
+                    val ver = System.currentTimeMillis()
+                    ProfileStore.setLocal(chatId, bytes, ver)
+                    repo.setGroupPhoto(chatId, me, bytes, ver)
+                }
+            } catch (e: Exception) {
+                _notice.value = describe(e)
+            }
+        }
+    }
+
+    fun setGroupDesc(chatId: String, text: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.setGroupDesc(chatId, me, text.trim().take(200))
     }
 
     fun postStory(kind: String, text: String, bg: Int, bytes: ByteArray?) {

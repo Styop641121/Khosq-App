@@ -17,7 +17,18 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.LaunchedEffect
@@ -176,7 +187,7 @@ fun SetupScreen(vm: AppViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
+fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarred: () -> Unit) {
     val chats by vm.chats.collectAsStateWithLifecycle()
     val stories by vm.stories.collectAsStateWithLifecycle()
     var viewing by remember { mutableStateOf<String?>(null) }
@@ -336,7 +347,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
             } else if (tab == 1) {
                 CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
             } else {
-                SettingsTab(vm = vm, me = me)
+                SettingsTab(vm = vm, me = me, onStarred = onStarred)
             }
         }
 
@@ -613,6 +624,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val replyTo by vm.replyTo.collectAsStateWithLifecycle()
     val peerInfo by vm.peerInfo.collectAsStateWithLifecycle()
     val prefs by vm.prefs.collectAsStateWithLifecycle()
+    val stars by vm.stars.collectAsStateWithLifecycle()
+    val starSet = remember(stars) { stars.mapTo(HashSet<String>()) { s -> s.key } }
     val peerSeen = peerInfo.seen
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
@@ -682,7 +695,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         val result = recorder.stop(send)
         recording = false
         recSec = 0
-        if (send && result != null) vm.sendVoice(chatId, peerUid, result.first, result.second)
+        if (send && result != null) vm.sendVoice(chatId, peerUid, result.bytes, result.sec, result.wave)
     }
 
     fun beginRecording() {
@@ -729,7 +742,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
 
     LaunchedEffect(recording) {
         while (recording) {
-            delay(300)
+            delay(100)
+            recorder.sample()
             recSec = recorder.elapsedSec()
             if (recSec >= 120) finishRecording(true)
         }
@@ -767,6 +781,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         forwardMsg = mm
                         menuFor = null
                     }) { Text(tr("↪ Փոխանցել")) }
+                    TextButton(onClick = {
+                        vm.toggleStar(chatId, mm)
+                        menuFor = null
+                    }) { Text(if ((chatId + "~" + mm.id) in starSet) tr("☆ Հանել աստղը") else tr("⭐ Աստղանշել")) }
                     if (mm.kind == "text") {
                         TextButton(onClick = {
                             clip.setText(AnnotatedString(mm.text))
@@ -950,7 +968,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
             set
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().chatWallpaper()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 state = listState,
@@ -972,6 +990,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             myUid = me.uid,
                             names = chat?.memberNames ?: emptyMap(),
                             peerName = chat?.peerName ?: "",
+                            starred = (chatId + "~" + m.id) in starSet,
+                            onSwipe = { vm.setReply(m) },
                             onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                         )
                     }
@@ -1224,37 +1244,6 @@ private fun ImageBody(m: Message) {
     }
 }
 
-@Composable
-private fun VoiceBody(m: Message, mine: Boolean) {
-    val ctx = LocalContext.current
-    val playing = VoicePlayer.playingId == m.id
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .clip(CircleShape)
-                .background(if (mine) Color(0xFF1B1000) else MaterialTheme.colorScheme.primary)
-                .clickable {
-                    val d = m.data
-                    if (d != null) VoicePlayer.toggle(ctx, m.id, d)
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = if (playing) "⏸" else "▶",
-                color = if (mine) Color(0xFFFFCB52) else MaterialTheme.colorScheme.onPrimary,
-                fontSize = 16.sp,
-            )
-        }
-        Spacer(Modifier.width(10.dp))
-        Text(
-            text = "🎤 " + formatDur(m.dur),
-            color = if (mine) InkOnBrand else MaterialTheme.colorScheme.onSurface,
-            fontSize = 15.sp,
-        )
-    }
-}
-
 /** A steady colour per person, so the same sender always looks the same in a group. */
 @Composable
 private fun senderColor(key: String): Color {
@@ -1285,6 +1274,8 @@ private fun systemLine(m: Message, actor: String): String {
         "grp_removed" -> trf("{0} հեռացրեց՝ {1}", actor, m.arg)
         "grp_renamed" -> trf("{0} փոխեց խմբի անունը՝ «{1}»", actor, m.arg)
         "grp_left" -> trf("{0} լքեց խումբը", actor)
+        "grp_photo" -> trf("{0} փոխեց խմբի նկարը", actor)
+        "grp_desc" -> trf("{0} փոխեց խմբի նկարագրությունը", actor)
         else -> m.text
     }
 }
@@ -1302,6 +1293,8 @@ private fun Bubble(
     myUid: String,
     names: Map<String, String>,
     peerName: String,
+    starred: Boolean,
+    onSwipe: () -> Unit,
     onLong: () -> Unit,
 ) {
     if (m.kind == "call" || m.kind == "sys") {
@@ -1328,8 +1321,59 @@ private fun Bubble(
     val soft = if (mine) Color(0xB31B1000) else MaterialTheme.colorScheme.onSurfaceVariant
     val read = mine && !m.pending && peerRead >= m.ts
     val delivered = read || (mine && !m.pending && peerDelivered >= m.ts)
+    val swipe by rememberUpdatedState(onSwipe)
+    val canSwipe = !m.deleted && !m.pending
+    val slide = remember { Animatable(0f) }
+    val slideScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    val trigger = with(LocalDensity.current) { 64.dp.toPx() }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (!canSwipe) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(m.id) {
+                        var crossed = false
+                        detectHorizontalDragGestures(
+                            onDragStart = { crossed = false },
+                            onDragEnd = {
+                                val fire = slide.value >= trigger
+                                slideScope.launch { slide.animateTo(0f) }
+                                if (fire) swipe()
+                            },
+                            onDragCancel = { slideScope.launch { slide.animateTo(0f) } },
+                            onHorizontalDrag = { change, dx ->
+                                change.consume()
+                                val nx = (slide.value + dx * 0.6f).coerceIn(0f, trigger * 1.5f)
+                                if (!crossed && nx >= trigger) {
+                                    crossed = true
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                slideScope.launch { slide.snapTo(nx) }
+                            },
+                        )
+                    }
+                },
+            ),
+    ) {
+        if (slide.value > 8f) {
+            Icon(
+                imageVector = KIcons.Reply,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 10.dp)
+                    .size(26.dp)
+                    .graphicsLayer { alpha = (slide.value / trigger).coerceIn(0f, 1f) },
+            )
+        }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(slide.value.roundToInt(), 0) },
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
     ) {
         Column(
@@ -1390,8 +1434,12 @@ private fun Bubble(
                 }
                 when (m.kind) {
                     "img" -> ImageBody(m)
-                    "voice" -> VoiceBody(m, mine)
-                    else -> Text(text = m.text, color = ink, fontSize = 16.sp)
+                    "voice" -> VoiceBody(m, mine, onLong)
+                    else -> {
+                        val linkColor = if (mine) Color(0xFF0B2A9A) else MaterialTheme.colorScheme.primary
+                        val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }
+                        Text(text = rich, color = ink, fontSize = 16.sp)
+                    }
                 }
                 if (m.reactions.isNotEmpty()) {
                     Row(Modifier.padding(top = 4.dp)) {
@@ -1414,6 +1462,10 @@ private fun Bubble(
                     Text(text = tr("փոխված"), fontSize = 11.sp, color = soft, fontStyle = FontStyle.Italic)
                     Spacer(Modifier.width(5.dp))
                 }
+                if (starred) {
+                    Text(text = "★", fontSize = 11.sp, color = soft)
+                    Spacer(Modifier.width(4.dp))
+                }
                 Text(text = formatTime(m.ts), fontSize = 11.sp, color = soft)
                 if (mine && showTicks) {
                     Spacer(Modifier.width(5.dp))
@@ -1426,5 +1478,6 @@ private fun Bubble(
                 }
             }
         }
+    }
     }
 }

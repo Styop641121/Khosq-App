@@ -37,6 +37,8 @@ data class Chat(
     val dlv: Map<String, Long> = emptyMap(),
     val peerDelivered: Long = 0L,
     val saved: Boolean = false,
+    val desc: String = "",
+    val gpv: Long = 0L,
 )
 
 /** My private choices: chats pinned to the top and chats whose notifications are off. */
@@ -61,6 +63,20 @@ data class Message(
     val vid: Boolean = false,
     val edited: Boolean = false,
     val replyFrom: String = "",
+    val wave: String = "",
+)
+
+/** A starred message: a small private copy kept in my own space, so the list never has to open the chats. */
+data class Star(
+    val key: String,
+    val chatId: String,
+    val chatName: String,
+    val fromName: String,
+    val mine: Boolean,
+    val kind: String,
+    val text: String,
+    val ts: Long,
+    val at: Long,
 )
 
 /** One line of the call history, seen from my side. dur = -1 means the call never connected. */

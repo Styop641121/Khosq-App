@@ -10,6 +10,7 @@ import am.khosq.app.ui.GradientButton
 import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
+import am.khosq.app.ui.StarredScreen
 import am.khosq.app.ui.UpdateDialog
 import am.khosq.app.update.Updater
 import am.khosq.app.ui.backgroundBrush
@@ -280,7 +281,10 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
         popExitTransition = { slideOutHorizontally(targetOffsetX = { w -> w / 5 }) + fadeOut() },
     ) {
         composable("home") {
-            HomeScreen(vm = vm, me = me, onOpen = { id -> nav.navigate("chat/$id") })
+            HomeScreen(vm = vm, me = me, onOpen = { id -> nav.navigate("chat/$id") }, onStarred = { nav.navigate("starred") })
+        }
+        composable("starred") {
+            StarredScreen(vm = vm, onBack = { nav.popBackStack() }, onOpen = { id -> nav.navigate("chat/$id") })
         }
         composable(
             route = "chat/{id}",

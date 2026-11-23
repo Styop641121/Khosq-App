@@ -214,6 +214,15 @@ object Strings {
         map["Թաքցնել"] = arrayOf("Hide", "Скрыть")
         map["Թարմացումը պատրաստ է"] = arrayOf("The update is ready", "Обновление готово")
         map["Սեղմիր «Տեղադրել»։ Եթե Android-ը հարցնի, թույլ տուր տեղադրումը այս հավելվածից։"] = arrayOf("Tap “Install”. If Android asks, allow installing from this app.", "Нажмите «Установить». Если Android спросит, разрешите установку из этого приложения.")
+        map["⭐ Աստղանշել"] = arrayOf("⭐ Star", "⭐ В избранное")
+        map["☆ Հանել աստղը"] = arrayOf("☆ Remove star", "☆ Убрать звезду")
+        map["Հանել աստղը"] = arrayOf("Remove star", "Убрать звезду")
+        map["⭐ Աստղանշված նամակներ"] = arrayOf("⭐ Starred messages", "⭐ Избранные сообщения")
+        map["Դեռ աստղանշված նամակ չկա։ Նամակի վրա երկար սեղմիր և ընտրիր «Աստղանշել»։"] = arrayOf("No starred messages yet. Long-press a message and choose “Star”.", "Пока нет избранных сообщений. Нажмите и удерживайте сообщение и выберите «В избранное».")
+        map["{0} փոխեց խմբի նկարը"] = arrayOf("{0} changed the group photo", "{0} изменил(а) фото группы")
+        map["{0} փոխեց խմբի նկարագրությունը"] = arrayOf("{0} changed the group description", "{0} изменил(а) описание группы")
+        map["✎  Փոխել նկարագրությունը"] = arrayOf("✎  Edit description", "✎  Изменить описание")
+        map["Զրույցի ֆոն"] = arrayOf("Chat wallpaper", "Фон чата")
     }
 
     init {

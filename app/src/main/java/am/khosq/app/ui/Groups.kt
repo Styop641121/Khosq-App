@@ -7,6 +7,14 @@ import am.khosq.app.membersText
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
+import am.khosq.app.data.ProfileStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -172,7 +180,20 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
     var adding by remember { mutableStateOf(false) }
     val picked = remember { mutableStateListOf<String>() }
     var confirmLeave by remember { mutableStateOf(false) }
+    var editingDesc by remember { mutableStateOf(false) }
+    var newDesc by remember(chat.desc) { mutableStateOf(chat.desc) }
     val candidates = remember(chat.members) { vm.contacts().filter { c -> c.peerUid !in chat.members } }
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch(Dispatchers.Default) {
+                val bytes = MediaUtil.avatar(ctx, uri)
+                if (bytes != null) vm.setGroupPhoto(chat.id, bytes)
+            }
+        }
+    }
+    val hasPhoto = ProfileStore.photos[chat.id] != null
 
     ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
         Column(
@@ -203,7 +224,45 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                 }
             }
 
+            if (chat.desc.isNotEmpty() && !editingDesc) {
+                Text(text = tr("Նկարագրություն"), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(text = chat.desc, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
             if (iAmAdmin) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+                        Text(tr("Փոխել նկարը"))
+                    }
+                    if (hasPhoto) {
+                        TextButton(onClick = { vm.setGroupPhoto(chat.id, null) }) {
+                            Text(tr("Ջնջել նկարը"), color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+                if (editingDesc) {
+                    OutlinedTextField(
+                        value = newDesc,
+                        onValueChange = { v -> if (v.length <= 200) newDesc = v },
+                        label = { Text(tr("Նկարագրություն")) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = {
+                            editingDesc = false
+                            newDesc = chat.desc
+                        }) { Text(tr("Չեղարկել")) }
+                        TextButton(
+                            enabled = newDesc.trim() != chat.desc,
+                            onClick = {
+                                vm.setGroupDesc(chat.id, newDesc)
+                                editingDesc = false
+                            },
+                        ) { Text(tr("Պահպանել")) }
+                    }
+                } else {
+                    TextButton(onClick = { editingDesc = true }) { Text(tr("✎  Փոխել նկարագրությունը")) }
+                }
                 if (renaming) {
                     OutlinedTextField(
                         value = newTitle,

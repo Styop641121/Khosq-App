@@ -188,6 +188,8 @@ class Repository {
             dlv = longMap(d.get("dlv")),
             peerDelivered = if (others.isEmpty()) 0L else others.minOf { o -> (dlvMap[o] ?: 0L) },
             saved = d.getBoolean("saved") == true,
+            desc = d.getString("desc") ?: "",
+            gpv = d.getLong("gpv") ?: 0L,
         )
     }
 
@@ -241,6 +243,56 @@ class Repository {
     fun setPref(uid: String, field: String, chatId: String, on: Boolean) {
         val change: Any = if (on) FieldValue.arrayUnion(chatId) else FieldValue.arrayRemove(chatId)
         db.collection("prefs").document(uid).set(hashMapOf<String, Any>(field to change), SetOptions.merge())
+    }
+
+    /* ---------- starred messages (private copies under prefs/{me}/stars) ---------- */
+
+    fun stars(uid: String): Flow<List<Star>> = callbackFlow {
+        val reg = db.collection("prefs").document(uid).collection("stars")
+            .orderBy("at", Query.Direction.DESCENDING)
+            .limit(300)
+            .addSnapshotListener { snap, err ->
+                if (err != null) {
+                    close(err)
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
+                trySend(
+                    snap.documents.map { d ->
+                        Star(
+                            key = d.id,
+                            chatId = d.getString("chatId") ?: "",
+                            chatName = d.getString("chatName") ?: "",
+                            fromName = d.getString("fromName") ?: "",
+                            mine = d.getBoolean("mine") ?: false,
+                            kind = d.getString("kind") ?: "text",
+                            text = d.getString("text") ?: "",
+                            ts = d.getLong("ts") ?: 0L,
+                            at = d.getLong("at") ?: 0L,
+                        )
+                    },
+                )
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun setStar(uid: String, s: Star) {
+        db.collection("prefs").document(uid).collection("stars").document(s.key).set(
+            hashMapOf<String, Any>(
+                "chatId" to s.chatId,
+                "chatName" to s.chatName,
+                "fromName" to s.fromName,
+                "mine" to s.mine,
+                "kind" to s.kind,
+                "text" to s.text,
+                "ts" to s.ts,
+                "at" to s.at,
+            ),
+        )
+    }
+
+    fun removeStar(uid: String, key: String) {
+        db.collection("prefs").document(uid).collection("stars").document(key).delete()
     }
 
     /** "Saved messages": a chat with myself. It is a one-member group, so the existing rules already allow it. */
@@ -343,6 +395,7 @@ class Repository {
                         vid = d.getBoolean("vid") ?: false,
                         edited = d.getBoolean("edited") ?: false,
                         replyFrom = d.getString("replyFrom") ?: "",
+                        wave = d.getString("wave") ?: "",
                     )
                 }
                 trySend(list)
@@ -466,22 +519,21 @@ class Repository {
     }
 
     /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
-    fun sendMedia(chatId: String, me: Profile, others: List<String>, kind: String, bytes: ByteArray, dur: Int, groupTitle: String = "") {
+    fun sendMedia(chatId: String, me: Profile, others: List<String>, kind: String, bytes: ByteArray, dur: Int, groupTitle: String = "", wave: String = "") {
         val preview = lastOf(kind, "")
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
-        batch.set(
-            msg,
-            hashMapOf<String, Any>(
-                "from" to me.uid,
-                "text" to "",
-                "kind" to kind,
-                "dur" to dur.toLong(),
-                "data" to Blob.fromBytes(bytes),
-                "ts" to FieldValue.serverTimestamp(),
-            ),
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to "",
+            "kind" to kind,
+            "dur" to dur.toLong(),
+            "data" to Blob.fromBytes(bytes),
+            "ts" to FieldValue.serverTimestamp(),
         )
+        if (wave.isNotEmpty()) body["wave"] = wave
+        batch.set(msg, body)
         batch.update(
             chat,
             bump(
@@ -513,6 +565,7 @@ class Repository {
         )
         val bytes = m.data
         if (bytes != null) body["data"] = Blob.fromBytes(bytes)
+        if (m.wave.isNotEmpty()) body["wave"] = m.wave
         val prev = lastOf(m.kind, m.text)
         val b = db.batch()
         b.set(msg, body)
@@ -605,6 +658,29 @@ class Repository {
         val b = db.batch()
         b.update(ref, "title", title)
         b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_renamed", title))
+        b.commit()
+    }
+
+    /** The group's picture lives in photos/{chatId}; gpv in the chat says which version is the newest. */
+    suspend fun setGroupPhoto(chatId: String, me: Profile, bytes: ByteArray, ver: Long) {
+        db.collection("photos").document(chatId).set(hashMapOf<String, Any>("data" to Blob.fromBytes(bytes), "ts" to ver)).await()
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "gpv", ver)
+        b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_photo"))
+        b.commit().await()
+    }
+
+    suspend fun removeGroupPhoto(chatId: String) {
+        db.collection("photos").document(chatId).delete().await()
+        db.collection("chats").document(chatId).update("gpv", 0L).await()
+    }
+
+    fun setGroupDesc(chatId: String, me: Profile, text: String) {
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "desc", text)
+        b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_desc"))
         b.commit()
     }
 

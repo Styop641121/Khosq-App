@@ -284,6 +284,7 @@ object CallManager {
                                 "caller" to myUid,
                                 "callerName" to myName,
                                 "callee" to peerUid,
+                                "calleeName" to peerName,
                                 "kind" to (if (video) "video" else "audio"),
                                 "state" to "ringing",
                                 "ts" to System.currentTimeMillis(),
@@ -595,7 +596,13 @@ object CallManager {
 
         _ui.value = cur.copy(phase = Phase.ENDED, note = note ?: "", remoteVideo = null, localVideo = null)
         val endedId = cur.callId
-        if (isCaller) logCall(cur, note)
+        if (isCaller) {
+            logCall(cur, note)
+            if (cur.startedAt > 0L && cur.callId.isNotEmpty()) {
+                val sec = ((System.currentTimeMillis() - cur.startedAt) / 1000).toInt().coerceAtLeast(0)
+                db.collection("calls").document(cur.callId).update("dur", sec)
+            }
+        }
 
         main.postDelayed({
             try { conn?.dispose() } catch (e: Exception) { }

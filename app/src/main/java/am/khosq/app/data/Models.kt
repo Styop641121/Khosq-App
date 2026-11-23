@@ -33,6 +33,21 @@ data class Message(
     val reactions: Map<String, String> = emptyMap(),
 )
 
+/** One line of the call history, seen from my side. dur = -1 means the call never connected. */
+data class CallRecord(
+    val id: String,
+    val peerUid: String,
+    val peerName: String,
+    val outgoing: Boolean,
+    val video: Boolean,
+    val ts: Long,
+    val dur: Int,
+    val state: String,
+) {
+    val answered: Boolean get() = dur >= 0 || state == "accepted"
+    val missed: Boolean get() = !outgoing && !answered && state != "declined"
+}
+
 data class Story(
     val id: String,
     val owner: String,

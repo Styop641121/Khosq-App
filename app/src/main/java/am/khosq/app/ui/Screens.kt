@@ -6,7 +6,9 @@ import am.khosq.app.data.Chat
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -171,72 +173,86 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var showMe by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val calls by vm.calls.collectAsStateWithLifecycle()
+    var tab by rememberSaveable { mutableStateOf(0) }
+    BackHandler(enabled = tab != 0) { tab = 0 }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BrandMark(40.dp)
-                Spacer(Modifier.width(12.dp))
-                BrandTitle()
-                Spacer(Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { showMe = true }
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
-                ) {
-                    Text(text = "@" + me.handle, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
-            }
-            StoriesRail(
-                stories = stories,
-                me = me,
-                onOpen = { owner -> viewing = owner },
-                onAdd = { composing = true },
-            )
-            if (chats.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(36.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(text = "Դեռ զրույցներ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = "Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 120.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(chats, key = { c -> c.id }) { chat ->
-                        ChatRow(chat = chat, myUid = me.uid, onClick = { onOpen(chat.id) })
-                    }
-                }
-            }
-        }
-
+    Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(20.dp)
-                .shadow(10.dp, RoundedCornerShape(29.dp))
-                .height(58.dp)
-                .clip(RoundedCornerShape(29.dp))
-                .background(Brush.linearGradient(BrandColors))
-                .clickable { showAdd = true }
-                .padding(horizontal = 24.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = "+  Նոր կոնտակտ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
+            BrandMark(40.dp)
+            Spacer(Modifier.width(12.dp))
+            BrandTitle()
+            Spacer(Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable { showMe = true }
+                    .padding(horizontal = 14.dp, vertical = 9.dp),
+            ) {
+                Text(text = "@" + me.handle, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
         }
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (tab == 0) {
+                Column(Modifier.fillMaxSize()) {
+                    StoriesRail(
+                        stories = stories,
+                        me = me,
+                        onOpen = { owner -> viewing = owner },
+                        onAdd = { composing = true },
+                    )
+                    if (chats.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(36.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(text = "Դեռ զրույցներ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = "Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 100.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(chats, key = { c -> c.id }) { chat ->
+                                ChatRow(chat = chat, myUid = me.uid, onClick = { onOpen(chat.id) })
+                            }
+                        }
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(20.dp)
+                        .shadow(10.dp, RoundedCornerShape(29.dp))
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(29.dp))
+                        .background(Brush.linearGradient(BrandColors))
+                        .clickable { showAdd = true }
+                        .padding(horizontal = 24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = "+  Նոր կոնտակտ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
+                }
+            } else {
+                CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
+            }
+        }
+
+        HomeTabs(
+            tab = tab,
+            missed = calls.count { r -> r.missed && r.ts > System.currentTimeMillis() - 24L * 3600L * 1000L },
+            onTab = { t -> tab = t },
+        )
     }
 
     if (showAdd) {
@@ -271,6 +287,52 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
             },
             dismissButton = { TextButton(onClick = { showMe = false }) { Text("Փակել") } },
         )
+    }
+}
+
+@Composable
+private fun HomeTabs(tab: Int, missed: Int, onTab: (Int) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        TabItem(Modifier.weight(1f), KIcons.Chat, "Զրույցներ", tab == 0, 0) { onTab(0) }
+        TabItem(Modifier.weight(1f), KIcons.Call, "Զանգեր", tab == 1, missed) { onTab(1) }
+    }
+}
+
+@Composable
+private fun TabItem(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    selected: Boolean,
+    badge: Int,
+    onClick: () -> Unit,
+) {
+    val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(22.dp))
+            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(text = label, color = tint, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+        if (!selected && badge > 0) {
+            Spacer(Modifier.width(6.dp))
+            Box(
+                modifier = Modifier.clip(CircleShape).background(MaterialTheme.colorScheme.error).size(8.dp),
+            )
+        }
     }
 }
 
@@ -587,11 +649,28 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 )
             }
             if (canCall) {
-                IconButton(onClick = { startCall(false) }) { Text(text = "📞", fontSize = 22.sp) }
-                IconButton(onClick = { startCall(true) }) { Text(text = "📹", fontSize = 22.sp) }
+                IconCircle(
+                    icon = KIcons.Call,
+                    onClick = { startCall(false) },
+                    size = 40.dp,
+                    bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                    tint = MaterialTheme.colorScheme.primary,
+                    description = "Զանգ",
+                )
+                Spacer(Modifier.width(8.dp))
+                IconCircle(
+                    icon = KIcons.Video,
+                    onClick = { startCall(true) },
+                    size = 40.dp,
+                    bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                    tint = MaterialTheme.colorScheme.primary,
+                    description = "Տեսազանգ",
+                )
             }
             Box {
-                IconButton(onClick = { moreOpen = true }) { Text(text = "⋮", fontSize = 24.sp) }
+                IconButton(onClick = { moreOpen = true }) {
+                    Icon(imageVector = KIcons.More, contentDescription = "Ավելին")
+                }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                     DropdownMenuItem(
                         text = { Text(if (iBlocked) "Ապաարգելափակել" else "Արգելափակել") },

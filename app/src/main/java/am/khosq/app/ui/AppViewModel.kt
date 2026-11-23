@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
@@ -35,6 +36,9 @@ class AppViewModel : ViewModel() {
     private val _chats = MutableStateFlow<List<Chat>>(emptyList())
     val chats: StateFlow<List<Chat>> = _chats.asStateFlow()
 
+    private val _calls = MutableStateFlow<List<CallRecord>>(emptyList())
+    val calls: StateFlow<List<CallRecord>> = _calls.asStateFlow()
+
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
 
@@ -55,6 +59,7 @@ class AppViewModel : ViewModel() {
     private var lastTypingSent = 0L
 
     private var chatsJob: Job? = null
+    private var callsJob: Job? = null
     private var storiesJob: Job? = null
     private var messagesJob: Job? = null
 
@@ -92,6 +97,12 @@ class AppViewModel : ViewModel() {
             repo.chats(p.uid)
                 .catch { _notice.value = describe(it) }
                 .collect { _chats.value = it }
+        }
+        callsJob?.cancel()
+        callsJob = viewModelScope.launch {
+            repo.callHistory(p.uid)
+                .catch { }
+                .collect { _calls.value = it }
         }
         storiesJob?.cancel()
         storiesJob = viewModelScope.launch {

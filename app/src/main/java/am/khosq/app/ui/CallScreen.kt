@@ -5,7 +5,13 @@ import am.khosq.app.call.CallPermissions
 import am.khosq.app.call.Phase
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,8 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -45,6 +54,10 @@ import kotlinx.coroutines.delay
 import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
+
+private val Glass = Color(0x33FFFFFF)
+private val Danger = Color(0xFFE5484D)
+private val Good = Color(0xFF2FB36B)
 
 @Composable
 private fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, modifier: Modifier) {
@@ -81,16 +94,51 @@ private fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, mod
 }
 
 @Composable
-private fun RoundBtn(label: String, color: Color, active: Boolean = true, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(66.dp)
-            .clip(CircleShape)
-            .background(if (active) color else color.copy(alpha = 0.35f))
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = label, fontSize = 26.sp)
+private fun CallBtn(
+    icon: ImageVector,
+    label: String,
+    bg: Color,
+    tint: Color,
+    size: Dp = 60.dp,
+    onClick: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier.size(size).clip(CircleShape).background(bg).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(size * 0.44f))
+        }
+        if (label.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Text(text = label, color = Color(0xCCFFFFFF), fontSize = 12.sp)
+        }
+    }
+}
+
+/** Two soft rings that grow around the avatar while the phone is ringing. */
+@Composable
+private fun Pulse(active: Boolean, content: @Composable () -> Unit) {
+    val t = rememberInfiniteTransition(label = "pulse")
+    val p by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing)),
+        label = "p",
+    )
+    Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
+        if (active) {
+            for (k in 0..1) {
+                val q = (p + k * 0.5f) % 1f
+                Box(
+                    Modifier
+                        .size(130.dp + 106.dp * q)
+                        .graphicsLayer { alpha = (1f - q) * 0.6f }
+                        .border(2.dp, Color(0xFFFFB23F), CircleShape),
+                )
+            }
+        }
+        content()
     }
 }
 
@@ -123,35 +171,51 @@ fun CallOverlay() {
         Phase.ENDED -> if (s.note.isEmpty()) "Զանգն ավարտվեց" else s.note
         Phase.IDLE -> ""
     }
+    val remoteShown = s.video && s.remoteVideo != null && s.phase == Phase.CONNECTED
+    val ringing = s.phase == Phase.OUTGOING || s.phase == Phase.INCOMING || s.phase == Phase.CONNECTING
 
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF16205F), Color(0xFF090C22), Color(0xFF1E1040))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF1B2570), Color(0xFF090C22), Color(0xFF26124A))))
             .clickable(enabled = false) { },
     ) {
-        if (s.video && s.remoteVideo != null && s.phase == Phase.CONNECTED) {
+        if (remoteShown) {
             VideoView(s.remoteVideo, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .background(Brush.verticalGradient(listOf(Color(0xAA000000), Color.Transparent))),
+            )
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(24.dp),
+            modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(28.dp))
-            val showFace = !(s.video && s.remoteVideo != null && s.phase == Phase.CONNECTED)
-            if (showFace) {
-                Avatar(name = s.peerName.ifEmpty { "?" }, seed = s.peerUid, size = 120.dp)
-                Spacer(Modifier.height(18.dp))
-            }
             Text(
-                text = s.peerName,
-                color = Color.White,
-                fontSize = 28.sp,
+                text = if (s.video) "ՏԵՍԱԶԱՆԳ" else "ԶԱՆԳ",
+                color = Color(0xFFFFCB52),
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x22FFFFFF))
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
             )
+            if (!remoteShown) {
+                Spacer(Modifier.height(18.dp))
+                Pulse(active = ringing) {
+                    Avatar(name = s.peerName.ifEmpty { "?" }, seed = s.peerUid, size = 128.dp, circle = true)
+                }
+            } else {
+                Spacer(Modifier.height(12.dp))
+            }
+            Text(text = s.peerName, color = Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(6.dp))
-            Text(text = status, color = Color(0xFFE0E4FF), fontSize = 16.sp)
+            Text(text = status, color = Color(0xFFD8DCFF), fontSize = 16.sp)
 
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 if (s.video && s.localVideo != null && s.phase != Phase.INCOMING) {
@@ -163,18 +227,19 @@ fun CallOverlay() {
                             .align(Alignment.TopEnd)
                             .padding(top = 12.dp)
                             .size(width = 104.dp, height = 148.dp)
-                            .clip(RoundedCornerShape(16.dp)),
+                            .clip(RoundedCornerShape(18.dp))
+                            .border(1.5.dp, Color(0x66FFFFFF), RoundedCornerShape(18.dp)),
                     )
                 }
             }
 
             when (s.phase) {
                 Phase.INCOMING -> Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    RoundBtn("✖", Color(0xFFE5484D)) { CallManager.decline() }
-                    RoundBtn("✆", Color(0xFF2FB36B)) {
+                    CallBtn(KIcons.End, "Մերժել", Danger, Color.White, 76.dp) { CallManager.decline() }
+                    CallBtn(if (s.video) KIcons.Video else KIcons.Call, "Պատասխանել", Good, Color.White, 76.dp) {
                         if (CallPermissions.has(ctx, s.video)) CallManager.accept()
                         else perms.launch(CallPermissions.needed(s.video))
                     }
@@ -182,18 +247,32 @@ fun CallOverlay() {
                 Phase.ENDED -> Unit
                 else -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 22.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(34.dp))
+                            .background(Color(0x22FFFFFF))
+                            .padding(vertical = 14.dp, horizontal = 6.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        RoundBtn(if (s.muted) "🔇" else "🎙", Color(0xFF3A4180), active = true) { CallManager.toggleMute() }
-                        RoundBtn(if (s.speaker) "🔊" else "🔈", Color(0xFF3A4180)) { CallManager.toggleSpeaker() }
+                        CallBtn(
+                            if (s.muted) KIcons.MicOff else KIcons.Mic, "Ձայն",
+                            if (s.muted) Color.White else Glass, if (s.muted) InkOnBrand else Color.White, 56.dp,
+                        ) { CallManager.toggleMute() }
+                        CallBtn(
+                            if (s.speaker) KIcons.Vol else KIcons.Vol0, "Բարձրախոս",
+                            if (s.speaker) Color.White else Glass, if (s.speaker) InkOnBrand else Color.White, 56.dp,
+                        ) { CallManager.toggleSpeaker() }
                         if (s.video) {
-                            RoundBtn(if (s.cameraOn) "📹" else "🚫", Color(0xFF3A4180)) { CallManager.toggleCamera() }
-                            RoundBtn("🔄", Color(0xFF3A4180)) { CallManager.switchCamera() }
+                            CallBtn(
+                                if (s.cameraOn) KIcons.Video else KIcons.VideoOff, "Տեսախցիկ",
+                                if (s.cameraOn) Glass else Color.White, if (s.cameraOn) Color.White else InkOnBrand, 56.dp,
+                            ) { CallManager.toggleCamera() }
+                            CallBtn(KIcons.Flip, "Շրջել", Glass, Color.White, 56.dp) { CallManager.switchCamera() }
                         }
                     }
-                    RoundBtn("✖", Color(0xFFE5484D)) { CallManager.hangup() }
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(22.dp))
+                    CallBtn(KIcons.End, "", Danger, Color.White, 72.dp) { CallManager.hangup() }
+                    Spacer(Modifier.height(10.dp))
                 }
             }
         }

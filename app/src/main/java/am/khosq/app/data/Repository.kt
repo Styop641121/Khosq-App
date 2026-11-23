@@ -126,6 +126,47 @@ class Repository {
         )
     }
 
+    /** Calls I made plus calls made to me, newest first. Two listeners, merged here (no index needed). */
+    fun callHistory(uid: String): Flow<List<CallRecord>> = callbackFlow {
+        var made = emptyList<CallRecord>()
+        var got = emptyList<CallRecord>()
+        fun push() {
+            trySend((made + got).sortedByDescending { it.ts }.take(200))
+        }
+        val r1 = db.collection("calls").whereEqualTo("caller", uid)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) return@addSnapshotListener
+                made = snap.documents.mapNotNull { toCall(it, uid) }
+                push()
+            }
+        val r2 = db.collection("calls").whereEqualTo("callee", uid)
+            .addSnapshotListener { snap, err ->
+                if (err != null || snap == null) return@addSnapshotListener
+                got = snap.documents.mapNotNull { toCall(it, uid) }
+                push()
+            }
+        awaitClose {
+            r1.remove()
+            r2.remove()
+        }
+    }
+
+    private fun toCall(d: DocumentSnapshot, me: String): CallRecord? {
+        val caller = d.getString("caller") ?: return null
+        val callee = d.getString("callee") ?: return null
+        val outgoing = caller == me
+        return CallRecord(
+            id = d.id,
+            peerUid = if (outgoing) callee else caller,
+            peerName = (if (outgoing) d.getString("calleeName") else d.getString("callerName")) ?: "",
+            outgoing = outgoing,
+            video = d.getString("kind") == "video",
+            ts = d.getLong("ts") ?: 0L,
+            dur = (d.getLong("dur") ?: -1L).toInt(),
+            state = d.getString("state") ?: "",
+        )
+    }
+
     fun messages(chatId: String): Flow<List<Message>> = callbackFlow {
         val reg = db.collection("chats").document(chatId).collection("messages")
             .orderBy("ts")

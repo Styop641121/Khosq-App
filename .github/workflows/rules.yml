@@ -1,0 +1,39 @@
+name: Rules and Worker tests
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "firestore.rules"
+      - "firebase.json"
+      - "rules-test/**"
+      - "worker/**"
+      - ".github/workflows/rules.yml"
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (the Firestore emulator needs Java)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Worker tests
+        run: cd worker && node --test
+
+      - name: Install rules test packages
+        run: cd rules-test && npm install
+
+      - name: Firestore rules tests (emulator)
+        run: npx -y firebase-tools@13 emulators:exec --only firestore --project demo-khosq "cd rules-test && npm test"

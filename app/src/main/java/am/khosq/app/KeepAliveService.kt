@@ -69,7 +69,24 @@ class KeepAliveService : Service() {
         }
     }
 
+    @Suppress("DEPRECATION")
+    private fun wakeScreen() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val wl = pm.newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                    android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    android.os.PowerManager.ON_AFTER_RELEASE,
+                "khosq:call",
+            )
+            wl.acquire(10_000L)
+        } catch (e: Exception) {
+            // the full-screen notification still tries to wake the phone
+        }
+    }
+
     private fun showCall(name: String, video: Boolean) {
+        wakeScreen()
         val tap = PendingIntent.getActivity(
             this,
             77,

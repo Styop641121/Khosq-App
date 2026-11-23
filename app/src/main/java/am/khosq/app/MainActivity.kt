@@ -94,6 +94,10 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun readIntent(i: Intent?) {
+        if (i?.getBooleanExtra("call", false) == true && Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        }
         val id = i?.getStringExtra("chat")
         if (id != null) AppState.pendingChat.value = id
     }
@@ -120,6 +124,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val notice by vm.notice.collectAsStateWithLifecycle()
     val call by CallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
+    var askFullScreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(boot) {
         if (boot is Boot.Ready) {
@@ -129,6 +134,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
             if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
                 askBattery = true
             }
+            if (Build.VERSION.SDK_INT >= 34) {
+                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                if (!nm.canUseFullScreenIntent() && !prefs.getBoolean("fsi_asked", false)) askFullScreen = true
+            }
         }
     }
 
@@ -136,6 +145,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
         val act = ctx as? Activity
         if (act != null) {
             val on = call.phase != am.khosq.app.call.Phase.IDLE
+            if (!on) kotlinx.coroutines.delay(2500)
             if (Build.VERSION.SDK_INT >= 27) {
                 act.setShowWhenLocked(on)
                 act.setTurnScreenOn(on)
@@ -177,6 +187,31 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
 
         CallOverlay()
+    }
+
+    if (askFullScreen) {
+        val done = {
+            ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE).edit().putBoolean("fsi_asked", true).apply()
+            askFullScreen = false
+        }
+        AlertDialog(
+            onDismissRequest = { done() },
+            title = { Text("Զանգի էկրան") },
+            text = { Text("Որ զանգի ժամանակ էկրանը ինքնուրույն վառվի, թույլ տուր KHOSQ-ին ցույց տալ ամբողջ էկրանով ծանուցումներ։") },
+            confirmButton = {
+                TextButton(onClick = {
+                    done()
+                    try {
+                        ctx.startActivity(
+                            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + ctx.packageName)),
+                        )
+                    } catch (e: Exception) {
+                        // the phone has no such screen
+                    }
+                }) { Text("Թույլատրել") }
+            },
+            dismissButton = { TextButton(onClick = { done() }) { Text("Ոչ հիմա") } },
+        )
     }
 
     if (askBattery) {

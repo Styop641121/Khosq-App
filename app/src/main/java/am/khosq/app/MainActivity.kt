@@ -1,6 +1,8 @@
 package am.khosq.app
 
+import am.khosq.app.call.CallManager
 import am.khosq.app.data.Profile
+import am.khosq.app.ui.CallOverlay
 import am.khosq.app.ui.AppViewModel
 import am.khosq.app.ui.Boot
 import am.khosq.app.ui.ChatScreen
@@ -10,6 +12,7 @@ import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.backgroundBrush
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -69,6 +72,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        CallManager.init(applicationContext)
         readIntent(intent)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -114,6 +118,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val ctx = LocalContext.current
     val boot by vm.boot.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
+    val call by CallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
 
     LaunchedEffect(boot) {
@@ -123,6 +128,17 @@ private fun Root(vm: AppViewModel = viewModel()) {
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
                 askBattery = true
+            }
+        }
+    }
+
+    LaunchedEffect(call.phase) {
+        val act = ctx as? Activity
+        if (act != null) {
+            val on = call.phase != am.khosq.app.call.Phase.IDLE
+            if (Build.VERSION.SDK_INT >= 27) {
+                act.setShowWhenLocked(on)
+                act.setTurnScreenOn(on)
             }
         }
     }
@@ -159,6 +175,8 @@ private fun Root(vm: AppViewModel = viewModel()) {
                     .padding(horizontal = 18.dp, vertical = 12.dp),
             )
         }
+
+        CallOverlay()
     }
 
     if (askBattery) {

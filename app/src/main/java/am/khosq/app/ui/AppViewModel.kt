@@ -65,6 +65,7 @@ class AppViewModel : ViewModel() {
 
     private fun ready(p: Profile) {
         _boot.value = Boot.Ready(p)
+        am.khosq.app.call.CallManager.listen(p.uid)
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)

@@ -1,5 +1,7 @@
 package am.khosq.app.ui
 
+import am.khosq.app.call.CallManager
+import am.khosq.app.call.CallPermissions
 import am.khosq.app.data.Chat
 import android.Manifest
 import android.content.pm.PackageManager
@@ -429,6 +431,19 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
     }
 
+    var wantVideo by remember { mutableStateOf(false) }
+    fun placeCall() {
+        CallManager.startOutgoing(me.uid, me.name, peerUid, chat?.peerName ?: "", wantVideo)
+    }
+    val callPerms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (CallPermissions.has(ctx, wantVideo)) placeCall()
+    }
+    fun startCall(video: Boolean) {
+        if (peerUid.isEmpty()) return
+        wantVideo = video
+        if (CallPermissions.has(ctx, video)) placeCall() else callPerms.launch(CallPermissions.needed(video))
+    }
+
     DisposableEffect(chatId) {
         vm.openChat(chatId)
         NotificationManagerCompat.from(ctx).cancel(chatId.hashCode())
@@ -457,7 +472,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
             Avatar(name = chat?.peerName ?: "?", seed = peerUid, size = 42.dp)
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = chat?.peerName ?: "…",
                     fontWeight = FontWeight.Bold,
@@ -471,6 +486,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     fontSize = 12.sp,
                 )
             }
+            IconButton(onClick = { startCall(false) }) { Text(text = "📞", fontSize = 22.sp) }
+            IconButton(onClick = { startCall(true) }) { Text(text = "📹", fontSize = 22.sp) }
         }
 
         LazyColumn(

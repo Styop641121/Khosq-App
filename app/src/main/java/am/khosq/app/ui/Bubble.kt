@@ -91,12 +91,23 @@ internal fun DateChip(text: String) {
     }
 }
 
-/** The line at the top of a chat that says whether its messages are protected end-to-end. Tap it for the safety number. */
+/**
+ * The line at the top of a chat that says whether its messages are protected end-to-end. In a one-to-one chat tap it
+ * for the safety number. [missing] names the group members whose app cannot encrypt yet.
+ */
 @Composable
-internal fun SecureChip(secure: Boolean, saved: Boolean, onClick: () -> Unit) {
+internal fun SecureChip(
+    secure: Boolean,
+    saved: Boolean,
+    group: Boolean = false,
+    missing: String = "",
+    onClick: (() -> Unit)? = null,
+) {
     val k = KTheme.colors
     val text = when {
         saved -> tr("Պահված նամակները գաղտնագրված են և կարդացվում են միայն քո հեռախոսում")
+        group && secure -> tr("Խմբի նամակները պաշտպանված են end-to-end գաղտնագրմամբ. դրանք կարող են կարդալ միայն խմբի անդամները")
+        group -> trf("Այս խումբը դեռ գաղտնագրված չէ. հավելվածը դեռ չեն թարմացրել՝ {0}", missing)
         secure -> tr("Նամակները պաշտպանված են end-to-end գաղտնագրմամբ. դրանք կարող են կարդալ միայն դու և զրուցակիցդ")
         else -> tr("Այս զրույցը դեռ գաղտնագրված չէ. զրուցակցի հավելվածը դեռ չի թարմացվել")
     }
@@ -107,7 +118,7 @@ internal fun SecureChip(secure: Boolean, saved: Boolean, onClick: () -> Unit) {
             .padding(horizontal = Space.l, vertical = Space.m)
             .clip(RoundedCornerShape(Corner.l))
             .background(k.surfaceHigh)
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(Space.m),
         verticalAlignment = Alignment.CenterVertically,
     ) {

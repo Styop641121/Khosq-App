@@ -41,6 +41,8 @@ data class Chat(
     val gpv: Long = 0L,
     /** True while [lastText] is still sealed (end-to-end); the repository opens it before the screens see it. */
     val lastEnc: Boolean = false,
+    /** For a group: the key of the last message, wrapped for every member. Only needed to open [lastText]. */
+    val lastW: Map<String, String> = emptyMap(),
 )
 
 /** My private choices: chats pinned to the top and chats whose notifications are off. */
@@ -68,6 +70,8 @@ data class Message(
     val wave: String = "",
     /** Was sent end-to-end encrypted. The text, the quote and the bytes here are already opened. */
     val enc: Boolean = false,
+    /** For a group: the message key wrapped for every member. The repository uses it to open the message and then drops it. */
+    val wraps: Map<String, String> = emptyMap(),
 )
 
 /** A starred message: a small private copy kept in my own space, so the list never has to open the chats. */

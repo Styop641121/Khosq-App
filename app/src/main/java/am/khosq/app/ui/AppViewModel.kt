@@ -77,9 +77,13 @@ class AppViewModel : ViewModel() {
 
     private var starsJob: Job? = null
 
-    /** null while it is being checked; true when the open chat is protected end-to-end; false for groups and people with an old app. */
+    /** null while it is being checked; true when the open chat is protected end-to-end; false when somebody has an old app. */
     private val _secure = MutableStateFlow<Boolean?>(null)
     val secure: StateFlow<Boolean?> = _secure.asStateFlow()
+
+    /** For the open group: the members whose app has no encryption key yet (the group is then not encrypted). */
+    private val _groupMissing = MutableStateFlow<List<String>>(emptyList())
+    val groupMissing: StateFlow<List<String>> = _groupMissing.asStateFlow()
     private var openId = ""
     private var keyJob: Job? = null
 
@@ -270,14 +274,13 @@ class AppViewModel : ViewModel() {
         }
     }
 
-    /** Gets the encryption key of every one-to-one chat ready, so sending never has to wait for it. */
+    /** Gets the encryption keys of every chat ready, so sending never has to wait for them. */
     private fun prepareKeys(list: List<Chat>) {
         keyJob?.cancel()
         keyJob = viewModelScope.launch {
             for (c in list) {
-                if (c.isGroup && !c.saved) continue
                 try {
-                    E2E.keyFor(c.id, uid)
+                    if (c.isGroup && !c.saved) prepareGroup(c) else E2E.keyFor(c.id, uid)
                 } catch (e: Exception) {
                     // this chat stays unencrypted until the key can be made
                 }
@@ -285,11 +288,25 @@ class AppViewModel : ViewModel() {
         }
     }
 
-    /** Runs [block] once the chat's key is known, so a message goes out encrypted whenever the other side can read it. */
+    /** Gets the keys of all the members of a group ready; for the group on screen it also tells whether everybody can be written to securely. */
+    private suspend fun prepareGroup(c: Chat) {
+        val missing = E2E.prepareGroup(c.members, uid)
+        if (openId == c.id) {
+            _groupMissing.value = missing
+            _secure.value = missing.isEmpty()
+        }
+    }
+
+    /** Runs [block] once the chat's keys are known, so a message goes out encrypted whenever everybody can read it. */
     private fun withKey(chatId: String, block: () -> Unit) {
         viewModelScope.launch {
             try {
-                E2E.keyFor(chatId, uid)
+                val c = _chats.value.firstOrNull { x -> x.id == chatId }
+                if (E2E.isGroup(chatId, uid)) {
+                    if (c != null) E2E.prepareGroup(c.members, uid)
+                } else {
+                    E2E.keyFor(chatId, uid)
+                }
             } catch (e: Exception) {
                 // sent without encryption only if the key really cannot be made
             }
@@ -316,11 +333,21 @@ class AppViewModel : ViewModel() {
                     .collect { info -> _peerInfo.value = info }
             }
         }
+        _groupMissing.value = emptyList()
         viewModelScope.launch {
             try {
                 if (peer != null) E2E.refreshPeer(peer, uid)
-                val ok = E2E.keyFor(id, uid) != null
-                if (openId == id) _secure.value = ok
+                if (E2E.isGroup(id, uid)) {
+                    // a member may have a new phone: look at every key again, then see whether the whole group can be sealed
+                    val c = _chats.value.firstOrNull { x -> x.id == id }
+                    if (c != null) {
+                        for (m in c.members) if (m != uid) E2E.refreshPeer(m, uid)
+                        prepareGroup(c)
+                    }
+                } else {
+                    val ok = E2E.keyFor(id, uid) != null
+                    if (openId == id) _secure.value = ok
+                }
             } catch (e: Exception) {
                 if (openId == id) _secure.value = false
             }

@@ -240,6 +240,8 @@ object Strings {
         map["Համեմատիր այս թիվը զրուցակցիդ հեռախոսի վրա. եթե նույնն է, ոչ ոք չի կարող միջամտել նամակներին։"] = arrayOf("Compare this number on the other person's phone. If it matches, nobody can tamper with the messages.", "Сравни этот номер на телефоне собеседника. Если он совпадает, никто не вмешивается в переписку.")
         map["Զրուցակցի անվտանգության թիվը փոխվել է։ Դա կարող է նշանակել, որ նա նոր հեռախոս է օգտագործում։ Համեմատիր թիվը նրա հետ։"] = arrayOf("The other person's safety number has changed. This may mean they use a new phone. Compare the number with them.", "Номер безопасности собеседника изменился. Возможно, у него новый телефон. Сверь номер с ним.")
         map["Հասկացա"] = arrayOf("Got it", "Понятно")
+        map["Խմբի նամակները պաշտպանված են end-to-end գաղտնագրմամբ. դրանք կարող են կարդալ միայն խմբի անդամները"] = arrayOf("Group messages are protected with end-to-end encryption. Only the members of the group can read them", "Сообщения группы защищены сквозным шифрованием. Их могут прочитать только участники группы")
+        map["Այս խումբը դեռ գաղտնագրված չէ. հավելվածը դեռ չեն թարմացրել՝ {0}"] = arrayOf("This group is not encrypted yet. These people have not updated the app: {0}", "Эта группа пока не зашифрована. Приложение ещё не обновили: {0}")
     }
 
     init {

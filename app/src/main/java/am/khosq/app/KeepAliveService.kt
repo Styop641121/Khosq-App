@@ -179,13 +179,19 @@ class KeepAliveService : Service() {
         if (d.getBoolean("lastEnc") == true) {
             // an encrypted message is opened on this phone; the key may need a moment
             val from = d.getString("lastFrom") ?: ""
+            val wraps = HashMap<String, String>()
+            val rawWraps = d.get("lastW") as? Map<*, *>
+            if (rawWraps != null) {
+                for ((k, v) in rawWraps) {
+                    if (k is String && v is String) wraps[k] = v
+                }
+            }
             scope.launch {
-                val key = try {
-                    am.khosq.app.crypto.E2E.keyFor(d.id, me)
+                val plain = try {
+                    am.khosq.app.crypto.E2E.openLast(d.id, me, from, sealed, wraps)
                 } catch (e: Exception) {
                     null
                 }
-                val plain = if (key == null) null else am.khosq.app.crypto.E2E.openText(key, d.id, from, "l", sealed)
                 postMessage(d, me, members, names, plain ?: tr("Նոր նամակ"))
             }
             return

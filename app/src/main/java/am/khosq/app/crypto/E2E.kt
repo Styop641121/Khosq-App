@@ -26,13 +26,17 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * End-to-end encryption for one-to-one chats and the private spaces (saved messages, stars).
+ * End-to-end encryption for one-to-one chats, groups and the private spaces (saved messages, stars).
  *
  * Every phone makes a key pair once (P-256). The public half is published in users/{uid}/pk, the private half never
  * leaves the phone: it is stored wrapped by a key that lives in the Android Keystore. For a chat, both phones combine
  * their own private key with the other public key and get the same secret (ECDH), from which the message key is made
  * (HKDF-SHA256). Messages are sealed with AES-256-GCM, bound to the chat, the sender and the field they belong to.
  * The server only ever sees sealed text.
+ *
+ * Groups: every message gets its own random-looking key (made from my secret and the message id). The message key is
+ * wrapped once for every member, with the key that I share with that member (ECDH again), and the wraps travel inside
+ * the message. A member who joined later, or who was removed, simply has no wrap for the messages he must not read.
  */
 object E2E {
     private const val WRAP_ALIAS = "khosq_e2e_wrap"
@@ -105,7 +109,7 @@ object E2E {
 
     // ------------------------------------------------------------------ keys of the chats
 
-    /** The other member of a one-to-one chat, myself for "saved messages", null for groups (they are not encrypted yet). */
+    /** The other member of a one-to-one chat, myself for "saved messages", null for groups (they have their own keys, below). */
     private fun peerOf(chatId: String, myUid: String): String? {
         if (chatId == "saved$myUid") return myUid
         val p = chatId.split("_")
@@ -113,7 +117,7 @@ object E2E {
         return if (p[0] == myUid) p[1] else p[0]
     }
 
-    /** The key of a chat if it is ready right now (no waiting); null for groups and for chats whose other side has no key. */
+    /** The key of a one-to-one chat if it is ready right now (no waiting); null for groups and for chats whose other side has no key. */
     fun ready(chatId: String): ByteArray? = keys[chatId]
 
     /** The key of a chat; fetches the other person's public key the first time. Null when the chat cannot be encrypted. */
@@ -131,7 +135,9 @@ object E2E {
         return k
     }
 
-    private fun selfKey(): ByteArray = derive(mine.pub, "self")
+    private val selfK: ByteArray by lazy { derive(mine.pub, "self") }
+
+    private fun selfKey(): ByteArray = selfK
 
     private fun derive(peerPub: PublicKey, salt: String): ByteArray {
         val agreement = KeyAgreement.getInstance("ECDH")
@@ -148,6 +154,91 @@ object E2E {
         mac.update(info)
         mac.update(1.toByte())
         return mac.doFinal()
+    }
+
+    // ------------------------------------------------------------------ groups
+
+    /** Keys I share with single people (person id -> key). A group message key is wrapped with them, one wrap per member. */
+    private val pairKeys = ConcurrentHashMap<String, ByteArray>()
+
+    /** What a new message is sealed with. [wraps] is set only for groups: the message key, wrapped for every member. */
+    class Seal(val key: ByteArray, val wraps: Map<String, String>?)
+
+    /** True for a group chat: anything that is neither a one-to-one chat nor my saved messages. */
+    fun isGroup(chatId: String, myUid: String): Boolean = peerOf(chatId, myUid) == null
+
+    private suspend fun pairKey(person: String, myUid: String): ByteArray? {
+        pairKeys[person]?.let { return it }
+        val k = if (person == myUid) {
+            derive(mine.pub, "wrap|self")
+        } else {
+            val pub = peerPublic(person) ?: return null
+            val a = if (person < myUid) person else myUid
+            val b = if (person < myUid) myUid else person
+            derive(pub, "wrap|$a|$b")
+        }
+        pairKeys[person] = k
+        return k
+    }
+
+    /** Gets the keys of all the members ready. Returns the people whose app has no key yet (empty = the group can be encrypted). */
+    suspend fun prepareGroup(members: List<String>, myUid: String): List<String> {
+        val missing = ArrayList<String>()
+        for (m in (members + myUid).distinct()) {
+            if (pairKey(m, myUid) == null) missing.add(m)
+        }
+        return missing
+    }
+
+    /** True when a sealed chat-list preview can be opened right now, without waiting for a key. */
+    fun previewReady(chatId: String, myUid: String, from: String): Boolean =
+        if (isGroup(chatId, myUid)) pairKeys.containsKey(from) else keys.containsKey(chatId)
+
+    private fun wrapAad(chatId: String, from: String, to: String): ByteArray =
+        "w|$chatId|$from|$to".toByteArray(Charsets.UTF_8)
+
+    /** The key of a group message: made from my own secret and the message id, so I can make it again when I edit the message. */
+    private fun messageKey(chatId: String, msgId: String): ByteArray =
+        hkdf(selfKey(), "$chatId|$msgId".toByteArray(Charsets.UTF_8), "khosq-msg-v1".toByteArray(Charsets.UTF_8))
+
+    /**
+     * Starts sealing a new message. One-to-one chats and saved messages use the chat key. A group gets a message key
+     * wrapped for every member (me included). Null when the chat cannot be encrypted right now, so the message goes plain.
+     */
+    fun begin(chatId: String, msgId: String, myUid: String, others: List<String>): Seal? {
+        if (!isGroup(chatId, myUid)) {
+            val k = keys[chatId] ?: return null
+            return Seal(k, null)
+        }
+        val ck = messageKey(chatId, msgId)
+        val wraps = HashMap<String, String>()
+        for (m in (others + myUid).distinct()) {
+            val pk = pairKeys[m] ?: return null
+            wraps[m] = encode(seal(pk, wrapAad(chatId, myUid, m), ck))
+        }
+        return Seal(ck, wraps)
+    }
+
+    /** The key of a message I sent myself, to change its text later. */
+    fun sentKey(chatId: String, msgId: String, myUid: String): ByteArray? =
+        if (isGroup(chatId, myUid)) messageKey(chatId, msgId) else keys[chatId]
+
+    /** The key of a group message that [from] sent, taken out of the wrap made for me. */
+    suspend fun groupKey(chatId: String, from: String, myUid: String, wraps: Map<String, String>): ByteArray? {
+        val myWrap = wraps[myUid] ?: return null
+        val pk = pairKey(from, myUid) ?: return null
+        val raw = try {
+            decode(myWrap)
+        } catch (e: Exception) {
+            return null
+        }
+        return open(pk, wrapAad(chatId, from, myUid), raw)
+    }
+
+    /** Opens the chat-list preview (the last message) of any kind of chat. */
+    suspend fun openLast(chatId: String, myUid: String, from: String, sealed: String, wraps: Map<String, String>): String? {
+        val key = if (isGroup(chatId, myUid)) groupKey(chatId, from, myUid, wraps) else keyFor(chatId, myUid)
+        return if (key == null) null else openText(key, chatId, from, "l", sealed)
     }
 
     // ------------------------------------------------------------------ other people's public keys
@@ -199,6 +290,7 @@ object E2E {
         pubs[peer] = k
         missUntil.remove(peer)
         for (id in keys.keys.toList()) if (id.contains(peer)) keys.remove(id)
+        pairKeys.remove(peer)
         if (pinned.isNotEmpty()) Prefs.putStringSync("pkchg.$peer", "1")
     }
 

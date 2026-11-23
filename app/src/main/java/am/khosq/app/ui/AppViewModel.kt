@@ -10,12 +10,15 @@ import am.khosq.app.AppState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -95,13 +98,13 @@ class AppViewModel : ViewModel() {
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)
-                .catch { _notice.value = describe(it) }
+                .resilient("Զրույցներ")
                 .collect { _chats.value = it }
         }
         callsJob?.cancel()
         callsJob = viewModelScope.launch {
             repo.callHistory(p.uid)
-                .catch { }
+                .resilient("Զանգեր")
                 .collect { _calls.value = it }
         }
         storiesJob?.cancel()
@@ -110,7 +113,7 @@ class AppViewModel : ViewModel() {
                 repo.storiesForMe(p.uid).onStart { emit(emptyList<Story>()) },
                 repo.myStories(p.uid).onStart { emit(emptyList<Story>()) },
             ) { a, b -> (a + b).distinctBy { st -> st.id } }
-                .catch { _notice.value = describe(it) }
+                .resilient("Սթորիներ")
                 .collect { list ->
                     _stories.value = list
                     val now = System.currentTimeMillis()
@@ -120,6 +123,20 @@ class AppViewModel : ViewModel() {
                 }
         }
     }
+
+    /**
+     * Firestore ends a listener for good after one error (for example while new rules are being published).
+     * This starts it again after a short wait, and only shows a notice if it keeps failing.
+     */
+    private fun <T> Flow<T>.resilient(what: String): Flow<T> =
+        retryWhen { cause, attempt ->
+            if (attempt >= 2L) _notice.value = what + ": " + describe(cause)
+            delay(minOf(30_000L, 3_000L * (attempt + 1L)))
+            true
+        }.onEach {
+            val n = _notice.value
+            if (n != null && n.startsWith(what + ": ")) _notice.value = null
+        }
 
     fun register(name: String, handle: String, onError: (String) -> Unit) {
         viewModelScope.launch {
@@ -171,7 +188,7 @@ class AppViewModel : ViewModel() {
         repo.markRead(id, uid)
         messagesJob = viewModelScope.launch {
             repo.messages(id)
-                .catch { _notice.value = describe(it) }
+                .resilient("Նամակներ")
                 .collect { list ->
                     _messages.value = list
                     val last = list.lastOrNull()

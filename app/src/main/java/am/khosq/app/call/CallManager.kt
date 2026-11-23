@@ -162,7 +162,19 @@ object CallManager {
             .whereEqualTo("callee", uid)
             .whereEqualTo("state", "ringing")
             .addSnapshotListener { snap, err ->
-                if (err != null || snap == null) return@addSnapshotListener
+                if (err != null) {
+                    // a failed listener never comes back by itself: drop it and listen again soon
+                    main.postDelayed({
+                        incomingReg?.remove()
+                        incomingReg = null
+                        if (listenedUid == uid) {
+                            listenedUid = null
+                            listen(uid)
+                        }
+                    }, 5000L)
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
                 val docs = snap.documents
                 main.post { onIncoming(docs) }
             }

@@ -171,13 +171,21 @@ class Repository {
         }
         val r1 = db.collection("calls").whereEqualTo("caller", uid)
             .addSnapshotListener { snap, err ->
-                if (err != null || snap == null) return@addSnapshotListener
+                if (err != null) {
+                    close(err)
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
                 made = snap.documents.mapNotNull { toCall(it, uid) }
                 push()
             }
         val r2 = db.collection("calls").whereEqualTo("callee", uid)
             .addSnapshotListener { snap, err ->
-                if (err != null || snap == null) return@addSnapshotListener
+                if (err != null) {
+                    close(err)
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
                 got = snap.documents.mapNotNull { toCall(it, uid) }
                 push()
             }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.content.Intent
@@ -33,6 +34,7 @@ class KeepAliveService : Service() {
     private var registration: ListenerRegistration? = null
     private val seenTs = HashMap<String, Long>()
     private var first = true
+    private var retryMs = 4000L
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate() {
@@ -129,7 +131,19 @@ class KeepAliveService : Service() {
         registration = FirebaseFirestore.getInstance().collection("chats")
             .whereArrayContains("members", uid)
             .addSnapshotListener { snap, err ->
-                if (err != null || snap == null) return@addSnapshotListener
+                if (err != null) {
+                    // the listener is dead after an error; start it again later so notifications keep coming
+                    registration?.remove()
+                    val wait = retryMs
+                    retryMs = minOf(60_000L, retryMs * 2)
+                    scope.launch {
+                        delay(wait)
+                        listen()
+                    }
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
+                retryMs = 4000L
                 for (d in snap.documents) handle(d, uid)
                 first = false
             }
@@ -148,6 +162,7 @@ class KeepAliveService : Service() {
         val members = d.get("members") as? List<*> ?: return
         val names = d.get("names") as? Map<*, *>
         val last = d.getString("lastText") ?: return
+        if (last.isEmpty()) return
         val name: String
         val text: String
         if (d.getBoolean("group") == true) {

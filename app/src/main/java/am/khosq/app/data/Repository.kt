@@ -100,6 +100,7 @@ class Repository {
             lastFrom = d.getString("lastFrom") ?: "",
             unread = (unread?.get(me) as? Number)?.toLong() ?: 0L,
             peerRead = (read?.get(peer) as? Number)?.toLong() ?: 0L,
+            peerTyping = ((d.get("typing") as? Map<*, *>)?.get(peer) as? Number)?.toLong() ?: 0L,
         )
     }
 
@@ -123,6 +124,10 @@ class Repository {
                         kind = d.getString("kind") ?: "text",
                         data = d.getBlob("data")?.toBytes(),
                         dur = (d.getLong("dur") ?: 0L).toInt(),
+                        reply = d.getString("reply") ?: "",
+                        replyName = d.getString("replyName") ?: "",
+                        deleted = d.getBoolean("deleted") ?: false,
+                        reactions = readReactions(d.get("reactions")),
                     )
                 }
                 trySend(list)
@@ -131,14 +136,63 @@ class Repository {
     }
 
     /** Works offline too: Firestore keeps the write and sends it when the network is back. */
-    fun send(chatId: String, me: Profile, peerUid: String, text: String) {
+    private fun readReactions(raw: Any?): Map<String, String> {
+        val m = raw as? Map<*, *> ?: return emptyMap()
+        val out = HashMap<String, String>()
+        for ((k, v) in m) {
+            if (k is String && v is String) out[k] = v
+        }
+        return out
+    }
+
+    private fun preview(m: Message): String = when (m.kind) {
+        "img" -> "📷 Նկար"
+        "voice" -> "🎤 Ձայնային նամակ"
+        else -> m.text.take(80)
+    }
+
+    fun setTyping(chatId: String, uid: String, on: Boolean) {
+        db.collection("chats").document(chatId).update("typing." + uid, if (on) System.currentTimeMillis() else 0L)
+    }
+
+    fun touchSeen(uid: String) {
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("lastSeen" to FieldValue.serverTimestamp()), SetOptions.merge())
+    }
+
+    fun userSeen(uid: String): Flow<Long> = callbackFlow {
+        val reg = db.collection("users").document(uid).addSnapshotListener { d, _ ->
+            val t = d?.getTimestamp("lastSeen", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
+            trySend(t?.toDate()?.time ?: 0L)
+        }
+        awaitClose { reg.remove() }
+    }
+
+    fun react(chatId: String, msgId: String, uid: String, emoji: String?) {
+        db.collection("chats").document(chatId).collection("messages").document(msgId)
+            .update("reactions." + uid, emoji ?: FieldValue.delete())
+    }
+
+    fun deleteForAll(chatId: String, msgId: String) {
+        db.collection("chats").document(chatId).collection("messages").document(msgId).update(
+            mapOf(
+                "deleted" to true,
+                "text" to "",
+                "data" to FieldValue.delete(),
+                "reply" to FieldValue.delete(),
+            ),
+        )
+    }
+
+    fun send(chatId: String, me: Profile, peerUid: String, text: String, reply: Message? = null, replyName: String = "") {
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
-        batch.set(
-            msg,
-            hashMapOf<String, Any>("from" to me.uid, "text" to text, "ts" to FieldValue.serverTimestamp()),
-        )
+        val body = hashMapOf<String, Any>("from" to me.uid, "text" to text, "ts" to FieldValue.serverTimestamp())
+        if (reply != null) {
+            body["reply"] = preview(reply)
+            body["replyName"] = replyName
+        }
+        batch.set(msg, body)
         batch.update(
             chat,
             hashMapOf<String, Any>(

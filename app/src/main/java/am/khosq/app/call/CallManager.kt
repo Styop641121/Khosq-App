@@ -95,6 +95,7 @@ object CallManager {
     private var listenedUid: String? = null
 
     private var isCaller = false
+    private var myUidCur = ""
     private var pendingOffer: SessionDescription? = null
     private var remoteSet = false
     private var answerApplied = false
@@ -252,6 +253,7 @@ object CallManager {
     fun startOutgoing(myUid: String, myName: String, peerUid: String, peerName: String, video: Boolean) {
         if (!::app.isInitialized || _ui.value.phase != Phase.IDLE || peerUid.isEmpty()) return
         isCaller = true
+        myUidCur = myUid
         val id = db.collection("calls").document().id
         _ui.value = CallUi(
             phase = Phase.OUTGOING,
@@ -593,6 +595,7 @@ object CallManager {
 
         _ui.value = cur.copy(phase = Phase.ENDED, note = note ?: "", remoteVideo = null, localVideo = null)
         val endedId = cur.callId
+        if (isCaller) logCall(cur, note)
 
         main.postDelayed({
             try { conn?.dispose() } catch (e: Exception) { }
@@ -607,6 +610,40 @@ object CallManager {
             val c = _ui.value
             if (c.phase == Phase.ENDED && c.callId == endedId) _ui.value = CallUi()
         }, if (note.isNullOrEmpty()) 400L else 1800L)
+    }
+
+    /** Writes a small "call" line into the chat so the history shows missed and finished calls. */
+    private fun logCall(cur: CallUi, note: String?) {
+        if (myUidCur.isEmpty() || cur.peerUid.isEmpty()) return
+        var missed = false
+        val text: String = if (cur.startedAt > 0L) {
+            val sec = ((System.currentTimeMillis() - cur.startedAt) / 1000).toInt().coerceAtLeast(0)
+            (if (cur.video) "📹 Տեսազանգ · " else "📞 Զանգ · ") + am.khosq.app.ui.formatDur(sec)
+        } else when (note) {
+            null -> "📵 Չեղարկված զանգ"
+            "Չպատասխանեց" -> {
+                missed = true
+                "📵 Բաց թողնված զանգ"
+            }
+            "Զանգը մերժվեց" -> "📵 Մերժված զանգ"
+            else -> return
+        }
+        val a = myUidCur
+        val b = cur.peerUid
+        val chatId = if (a < b) a + "_" + b else b + "_" + a
+        val chat = db.collection("chats").document(chatId)
+        val batch = db.batch()
+        batch.set(
+            chat.collection("messages").document(),
+            hashMapOf<String, Any>("from" to a, "text" to text, "kind" to "call", "ts" to com.google.firebase.firestore.FieldValue.serverTimestamp()),
+        )
+        if (missed) {
+            batch.update(
+                chat,
+                hashMapOf<String, Any>("lastText" to text, "lastTs" to System.currentTimeMillis(), "lastFrom" to a),
+            )
+        }
+        batch.commit()
     }
 
     // ---------------------------------------------------------------- audio

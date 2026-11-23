@@ -12,6 +12,7 @@ data class Chat(
     val lastFrom: String,
     val unread: Long,
     val peerRead: Long,
+    val peerTyping: Long = 0L,
 )
 
 data class Message(
@@ -23,6 +24,10 @@ data class Message(
     val kind: String = "text",
     val data: ByteArray? = null,
     val dur: Int = 0,
+    val reply: String = "",
+    val replyName: String = "",
+    val deleted: Boolean = false,
+    val reactions: Map<String, String> = emptyMap(),
 )
 
 data class Story(

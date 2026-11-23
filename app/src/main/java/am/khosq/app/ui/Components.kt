@@ -28,6 +28,14 @@ import java.util.Locale
 
 fun formatDur(s: Int): String = (s / 60).toString() + ":" + (s % 60).toString().padStart(2, '0')
 
+fun formatSeen(ts: Long): String {
+    val cal = java.util.Calendar.getInstance()
+    val today = cal.get(java.util.Calendar.DAY_OF_YEAR) to cal.get(java.util.Calendar.YEAR)
+    cal.timeInMillis = ts
+    val same = (cal.get(java.util.Calendar.DAY_OF_YEAR) to cal.get(java.util.Calendar.YEAR)) == today
+    return if (same) formatTime(ts) else SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(ts))
+}
+
 fun formatTime(ts: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ts))
 
 private fun avatarShape(k: Int): Shape = when (k) {

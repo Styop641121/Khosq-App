@@ -21,7 +21,9 @@ import kotlinx.coroutines.launch
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,6 +77,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -396,6 +399,8 @@ private fun CircleAction(onClick: () -> Unit, content: @Composable () -> Unit) {
 fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit) {
     val chats by vm.chats.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
+    val replyTo by vm.replyTo.collectAsStateWithLifecycle()
+    val peerSeen by vm.peerSeen.collectAsStateWithLifecycle()
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
     var text by remember { mutableStateOf("") }
@@ -404,6 +409,38 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val recorder = remember { VoiceRecorder(ctx) }
     var recording by remember { mutableStateOf(false) }
     var recSec by remember { mutableStateOf(0) }
+    var menuFor by remember { mutableStateOf<Message?>(null) }
+    var typingNow by remember { mutableStateOf(false) }
+    var baseTyping by remember { mutableStateOf(-1L) }
+    var clock by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(chat?.peerTyping) {
+        val v = chat?.peerTyping
+        if (v == null) return@LaunchedEffect
+        if (baseTyping == -1L) {
+            baseTyping = v
+            return@LaunchedEffect
+        }
+        if (v > 0L && v != baseTyping) {
+            typingNow = true
+            delay(5000)
+            typingNow = false
+        } else {
+            typingNow = false
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(20_000)
+            clock = System.currentTimeMillis()
+        }
+    }
+    val statusText = when {
+        typingNow -> "գրում է…"
+        peerSeen > 0L && clock - peerSeen < 100_000L -> "առցանց"
+        peerSeen > 0L -> "վերջին անգամ՝ " + formatSeen(peerSeen)
+        else -> ""
+    }
 
     fun finishRecording(send: Boolean) {
         val result = recorder.stop(send)
@@ -462,6 +499,51 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
     }
 
+    val mm = menuFor
+    if (mm != null) {
+        val clip = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Փակել") } },
+            text = {
+                Column {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        for (e in listOf("👍", "❤️", "😂", "😮", "😢", "🙏")) {
+                            Text(
+                                text = e,
+                                fontSize = 28.sp,
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable {
+                                        vm.react(chatId, mm, e)
+                                        menuFor = null
+                                    }
+                                    .padding(6.dp),
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        vm.setReply(mm)
+                        menuFor = null
+                    }) { Text("↩ Պատասխանել") }
+                    if (mm.kind == "text") {
+                        TextButton(onClick = {
+                            clip.setText(AnnotatedString(mm.text))
+                            menuFor = null
+                        }) { Text("⧉ Պատճենել") }
+                    }
+                    if (mm.from == me.uid) {
+                        TextButton(onClick = {
+                            vm.deleteMessage(chatId, mm)
+                            menuFor = null
+                        }) { Text("🗑 Ջնջել բոլորի համար", color = MaterialTheme.colorScheme.error) }
+                    }
+                }
+            },
+        )
+    }
+
     Column(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
@@ -481,9 +563,14 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = if (chat != null && chat.peerHandle.isNotEmpty()) "@" + chat.peerHandle else "",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = listOf(
+                        if (chat != null && chat.peerHandle.isNotEmpty()) "@" + chat.peerHandle else "",
+                        statusText,
+                    ).filter { t -> t.isNotEmpty() }.joinToString(" · "),
+                    color = if (typingNow) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             IconButton(onClick = { startCall(false) }) { Text(text = "📞", fontSize = 22.sp) }
@@ -497,7 +584,46 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(messages.asReversed(), key = { m -> m.id }) { m ->
-                Bubble(m = m, mine = m.from == me.uid, peerRead = chat?.peerRead ?: 0L)
+                Bubble(
+                    m = m,
+                    mine = m.from == me.uid,
+                    peerRead = chat?.peerRead ?: 0L,
+                    onLong = { if (!m.deleted && !m.pending && m.kind != "call") menuFor = m },
+                )
+            }
+        }
+
+        val rt = replyTo
+        if (rt != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = if (rt.from == me.uid) "Դու" else (chat?.peerName ?: ""),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = when (rt.kind) {
+                            "img" -> "📷 Նկար"
+                            "voice" -> "🎤 Ձայնային նամակ"
+                            else -> rt.text
+                        },
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { vm.setReply(null) }) { Text(text = "✕", fontSize = 16.sp) }
             }
         }
 
@@ -537,7 +663,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 }
                 TextField(
                     value = text,
-                    onValueChange = { text = it.take(4000) },
+                    onValueChange = {
+                        text = it.take(4000)
+                        if (it.isNotBlank()) vm.typing(chatId)
+                    },
                     placeholder = { Text("Գրիր նամակ…") },
                     maxLines = 5,
                     modifier = Modifier.weight(1f),
@@ -619,8 +748,23 @@ private fun VoiceBody(m: Message, mine: Boolean) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: Message, mine: Boolean, peerRead: Long) {
+private fun Bubble(m: Message, mine: Boolean, peerRead: Long, onLong: () -> Unit) {
+    if (m.kind == "call") {
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Text(
+                text = m.text + "  " + formatTime(m.ts),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+            )
+        }
+        return
+    }
     val shape = if (mine) RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp) else RoundedCornerShape(20.dp, 20.dp, 20.dp, 6.dp)
     val fill = if (mine) {
         Modifier.background(Brush.linearGradient(listOf(Color(0xFFFFD36A), Color(0xFFFFA24A))))
@@ -639,12 +783,50 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long) {
                 .widthIn(max = 300.dp)
                 .clip(shape)
                 .then(fill)
+                .combinedClickable(onClick = {}, onLongClick = onLong)
                 .padding(horizontal = 13.dp, vertical = 8.dp),
         ) {
-            when (m.kind) {
-                "img" -> ImageBody(m)
-                "voice" -> VoiceBody(m, mine)
-                else -> Text(text = m.text, color = ink, fontSize = 16.sp)
+            if (m.deleted) {
+                Text(text = "🚫 Նամակը ջնջված է", color = soft, fontSize = 15.sp, fontStyle = FontStyle.Italic)
+            } else {
+                if (m.reply.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .padding(bottom = 6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0x22000000))
+                            .padding(8.dp),
+                    ) {
+                        Text(text = m.replyName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ink)
+                        Text(
+                            text = m.reply,
+                            fontSize = 13.sp,
+                            color = soft,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                when (m.kind) {
+                    "img" -> ImageBody(m)
+                    "voice" -> VoiceBody(m, mine)
+                    else -> Text(text = m.text, color = ink, fontSize = 16.sp)
+                }
+                if (m.reactions.isNotEmpty()) {
+                    Row(Modifier.padding(top = 4.dp)) {
+                        for ((e, n) in m.reactions.values.groupingBy { it }.eachCount()) {
+                            Text(
+                                text = if (n > 1) "$e $n" else e,
+                                fontSize = 14.sp,
+                                modifier = Modifier
+                                    .padding(end = 6.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0x22000000))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
+                    }
+                }
             }
             Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
                 Text(text = formatTime(m.ts), fontSize = 11.sp, color = soft)

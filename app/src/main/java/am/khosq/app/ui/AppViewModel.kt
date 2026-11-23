@@ -5,6 +5,7 @@ import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Repository
 import am.khosq.app.data.Story
+import am.khosq.app.AppState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 sealed class Boot {
@@ -42,6 +44,16 @@ class AppViewModel : ViewModel() {
     private val _stories = MutableStateFlow<List<Story>>(emptyList())
     val stories: StateFlow<List<Story>> = _stories.asStateFlow()
 
+    private val _replyTo = MutableStateFlow<Message?>(null)
+    val replyTo: StateFlow<Message?> = _replyTo.asStateFlow()
+
+    private val _peerSeen = MutableStateFlow(0L)
+    val peerSeen: StateFlow<Long> = _peerSeen.asStateFlow()
+
+    private var seenJob: Job? = null
+    private var beatJob: Job? = null
+    private var lastTypingSent = 0L
+
     private var chatsJob: Job? = null
     private var storiesJob: Job? = null
     private var messagesJob: Job? = null
@@ -66,6 +78,13 @@ class AppViewModel : ViewModel() {
     private fun ready(p: Profile) {
         _boot.value = Boot.Ready(p)
         am.khosq.app.call.CallManager.listen(p.uid)
+        beatJob?.cancel()
+        beatJob = viewModelScope.launch {
+            while (true) {
+                if (AppState.inForeground) repo.touchSeen(p.uid)
+                delay(45_000L)
+            }
+        }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
         chatsJob?.cancel()
@@ -129,6 +148,15 @@ class AppViewModel : ViewModel() {
     fun openChat(id: String) {
         messagesJob?.cancel()
         _messages.value = emptyList()
+        _replyTo.value = null
+        _peerSeen.value = 0L
+        seenJob?.cancel()
+        val peer = id.split("_").firstOrNull { p -> p != uid }
+        if (peer != null) {
+            seenJob = viewModelScope.launch {
+                repo.userSeen(peer).catch { }.collect { t -> _peerSeen.value = t }
+            }
+        }
         repo.markRead(id, uid)
         messagesJob = viewModelScope.launch {
             repo.messages(id)
@@ -142,6 +170,8 @@ class AppViewModel : ViewModel() {
     }
 
     fun closeChat() {
+        seenJob?.cancel()
+        _replyTo.value = null
         messagesJob?.cancel()
         _messages.value = emptyList()
     }
@@ -149,7 +179,36 @@ class AppViewModel : ViewModel() {
     fun send(chatId: String, peerUid: String, text: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         if (text.isBlank()) return
-        repo.send(chatId, me, peerUid, text)
+        val r = _replyTo.value
+        val rn = when {
+            r == null -> ""
+            r.from == me.uid -> "Դու"
+            else -> _chats.value.firstOrNull { c -> c.id == chatId }?.peerName ?: ""
+        }
+        repo.send(chatId, me, peerUid, text, r, rn)
+        _replyTo.value = null
+        lastTypingSent = 0L
+        repo.setTyping(chatId, me.uid, false)
+    }
+
+    fun typing(chatId: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastTypingSent < 3000L || uid.isEmpty()) return
+        lastTypingSent = now
+        repo.setTyping(chatId, uid, true)
+    }
+
+    fun setReply(m: Message?) {
+        _replyTo.value = m
+    }
+
+    fun react(chatId: String, m: Message, emoji: String) {
+        val current = m.reactions[uid]
+        repo.react(chatId, m.id, uid, if (current == emoji) null else emoji)
+    }
+
+    fun deleteMessage(chatId: String, m: Message) {
+        if (m.from == uid) repo.deleteForAll(chatId, m.id)
     }
 
     fun sendImage(chatId: String, peerUid: String, bytes: ByteArray) {

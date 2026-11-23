@@ -223,6 +223,8 @@ object Strings {
         map["{0} փոխեց խմբի նկարագրությունը"] = arrayOf("{0} changed the group description", "{0} изменил(а) описание группы")
         map["✎  Փոխել նկարագրությունը"] = arrayOf("✎  Edit description", "✎  Изменить описание")
         map["Զրույցի ֆոն"] = arrayOf("Chat wallpaper", "Фон чата")
+        map["Փոքրացնել"] = arrayOf("Minimize", "Свернуть")
+        map["Սեղմիր՝ զանգին վերադառնալու համար"] = arrayOf("Tap to return to the call", "Нажмите, чтобы вернуться к звонку")
     }
 
     init {

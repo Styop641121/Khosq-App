@@ -118,6 +118,8 @@ class AppViewModel : ViewModel() {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
         ProfileStore.want(viewModelScope, repo, p.uid, p.pv)
+        // fetch the TURN settings for calls early, so even the first call of a session can use them
+        am.khosq.app.push.IceClient.refresh()
         viewModelScope.launch {
             try {
                 repo.ensureSaved(p)

@@ -12,6 +12,7 @@ import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.Vibrator
 import androidx.core.content.ContextCompat
@@ -114,6 +115,10 @@ object CallManager {
             setState("missed")
             finish("Չպատասխանեց")
         }
+    }
+    /** A call that has been answered but never gets a connection must not hang on "Connecting" forever. */
+    private val connectTimeout = Runnable {
+        if (_ui.value.phase == Phase.CONNECTING) finish("Կապը չհաջողվեց")
     }
     private val graceTimeout = Runnable {
         val p = _ui.value.phase
@@ -218,6 +223,8 @@ object CallManager {
         if (cur.phase != Phase.INCOMING || offer == null) return
         stopRinging()
         _ui.value = cur.copy(phase = Phase.CONNECTING)
+        main.removeCallbacks(connectTimeout)
+        main.postDelayed(connectTimeout, 30_000L)
         startAudioMode(cur.speaker)
         CallService.start(app)
         try {
@@ -355,6 +362,51 @@ object CallManager {
         val s = !_ui.value.speaker
         setSpeaker(s)
         _ui.value = _ui.value.copy(speaker = s)
+        updateProximity()
+    }
+
+    private var prox: PowerManager.WakeLock? = null
+    private var camPausedByApp = false
+
+    /** In a voice call held to the ear the screen goes dark by itself (so a cheek cannot press buttons). */
+    private fun updateProximity() {
+        val s = _ui.value
+        val want = s.phase == Phase.CONNECTED && !s.video && !s.speaker
+        try {
+            if (want) {
+                if (prox == null) {
+                    val pm = app.getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (pm.isWakeLockLevelSupported(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK)) {
+                        prox = pm.newWakeLock(PowerManager.PROXIMITY_SCREEN_OFF_WAKE_LOCK, "khosq:proximity")
+                    }
+                }
+                val w = prox
+                if (w != null && !w.isHeld) w.acquire(4L * 3600L * 1000L)
+            } else {
+                val w = prox
+                if (w != null && w.isHeld) w.release()
+            }
+        } catch (e: Exception) {
+            // no proximity sensor: the screen simply stays on
+        }
+    }
+
+    /** The app went out of sight (screen locked, another app): the camera stops, and starts again when it is back. */
+    fun appVisible(visible: Boolean) {
+        val c = capturer ?: return
+        val s = _ui.value
+        if (!s.video || s.phase == Phase.IDLE || s.phase == Phase.ENDED) return
+        try {
+            if (!visible && !camPausedByApp && s.cameraOn) {
+                c.stopCapture()
+                camPausedByApp = true
+            } else if (visible && camPausedByApp) {
+                c.startCapture(640, 480, 24)
+                camPausedByApp = false
+            }
+        } catch (e: Exception) {
+            // the camera is busy; the next change of visibility tries again
+        }
     }
 
     fun toggleCamera() {
@@ -473,6 +525,7 @@ object CallManager {
                     PeerConnection.IceConnectionState.CONNECTED,
                     PeerConnection.IceConnectionState.COMPLETED -> {
                         main.removeCallbacks(graceTimeout)
+                        main.removeCallbacks(connectTimeout)
                         main.removeCallbacks(ringTimeout)
                         stopRingback()
                         val cur = _ui.value
@@ -481,6 +534,7 @@ object CallManager {
                                 phase = Phase.CONNECTED,
                                 startedAt = if (cur.startedAt == 0L) System.currentTimeMillis() else cur.startedAt,
                             )
+                            updateProximity()
                         }
                     }
                     PeerConnection.IceConnectionState.DISCONNECTED -> {
@@ -570,6 +624,8 @@ object CallManager {
                 main.removeCallbacks(ringTimeout)
                 stopRingback()
                 _ui.value = cur.copy(phase = Phase.CONNECTING)
+                main.removeCallbacks(connectTimeout)
+                main.postDelayed(connectTimeout, 30_000L)
                 pc?.setRemoteDescription(object : Sdp() {
                     override fun onSetSuccess() {
                         main.post {
@@ -593,11 +649,19 @@ object CallManager {
         if (cur.phase == Phase.IDLE || cur.phase == Phase.ENDED) return
         main.removeCallbacks(ringTimeout)
         main.removeCallbacks(graceTimeout)
+        main.removeCallbacks(connectTimeout)
         callReg?.remove(); callReg = null
         candReg?.remove(); candReg = null
         stopRinging()
         stopRingback()
         stopAudioMode()
+        camPausedByApp = false
+        try {
+            val w = prox
+            if (w != null && w.isHeld) w.release()
+        } catch (e: Exception) {
+            // already released
+        }
 
         val conn = pc
         val cap = capturer

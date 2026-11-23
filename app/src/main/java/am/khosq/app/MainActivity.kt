@@ -2,7 +2,11 @@ package am.khosq.app
 
 import am.khosq.app.call.CallManager
 import am.khosq.app.data.Profile
+import am.khosq.app.ui.CallBar
 import am.khosq.app.ui.CallOverlay
+import am.khosq.app.ui.CallPip
+import am.khosq.app.ui.CallUiState
+import am.khosq.app.ui.callIsOn
 import am.khosq.app.ui.AppViewModel
 import am.khosq.app.ui.Boot
 import am.khosq.app.ui.ChatScreen
@@ -16,6 +20,10 @@ import am.khosq.app.update.Updater
 import am.khosq.app.ui.backgroundBrush
 import android.Manifest
 import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.res.Configuration
+import android.util.Rational
+import android.view.WindowManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -37,6 +45,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -48,6 +59,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -108,11 +120,33 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         AppState.inForeground = true
+        CallManager.appVisible(true)
     }
 
     override fun onStop() {
         AppState.inForeground = false
+        CallManager.appVisible(false)
         super.onStop()
+    }
+
+    /** Home or recents during a call: the call shrinks into a small floating window instead of disappearing. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val p = CallManager.ui.value.phase
+        if (callIsOn(p)) {
+            try {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(Rational(9, 16)).build(),
+                )
+            } catch (e: Exception) {
+                // this phone does not allow it: the call goes on from the notification as before
+            }
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        AppState.inPip.value = isInPictureInPictureMode
     }
 }
 
@@ -128,6 +162,21 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val call by CallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
+    val pip by AppState.inPip.collectAsStateWithLifecycle()
+    val callOn = callIsOn(call.phase)
+    val showBar = callOn && CallUiState.minimized && !pip
+
+    // the floating window has nothing left to show once the call is over
+    LaunchedEffect(pip, callOn) {
+        if (pip && !callOn) (ctx as? Activity)?.moveTaskToBack(true)
+    }
+
+    // the screen stays lit for as long as a call is going on
+    DisposableEffect(call.phase != am.khosq.app.call.Phase.IDLE) {
+        val w = (ctx as? Activity)?.window
+        if (call.phase != am.khosq.app.call.Phase.IDLE) w?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose { w?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
 
     LaunchedEffect(boot is Boot.Ready) {
         if (boot is Boot.Ready) {
@@ -163,39 +212,50 @@ private fun Root(vm: AppViewModel = viewModel()) {
     }
 
     Box(Modifier.fillMaxSize().background(backgroundBrush())) {
-        when (val b = boot) {
-            is Boot.Loading -> CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = MaterialTheme.colorScheme.primary,
-            )
-            is Boot.Failed -> Column(
-                modifier = Modifier.align(Alignment.Center).padding(28.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+        Column(Modifier.fillMaxSize()) {
+            if (showBar) CallBar()
+            // below the green bar the status bar is already taken care of
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .then(if (showBar) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier),
             ) {
-                Text(text = b.text, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                GradientButton(text = tr("Նորից փորձել"), onClick = { vm.start() }, modifier = Modifier.fillMaxWidth())
+                when (val b = boot) {
+                    is Boot.Loading -> CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    is Boot.Failed -> Column(
+                        modifier = Modifier.align(Alignment.Center).padding(28.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        Text(text = b.text, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                        GradientButton(text = tr("Նորից փորձել"), onClick = { vm.start() }, modifier = Modifier.fillMaxWidth())
+                    }
+                    is Boot.NeedSetup -> SetupScreen(vm)
+                    is Boot.Ready -> MainNav(vm, b.me)
+                }
+
+                val n = notice
+                if (n != null) {
+                    Text(
+                        text = n,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(24.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable { vm.clearNotice() }
+                            .padding(horizontal = 18.dp, vertical = 12.dp),
+                    )
+                }
             }
-            is Boot.NeedSetup -> SetupScreen(vm)
-            is Boot.Ready -> MainNav(vm, b.me)
         }
 
-        val n = notice
-        if (n != null) {
-            Text(
-                text = n,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(24.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable { vm.clearNotice() }
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-            )
-        }
-
-        CallOverlay()
+        if (pip && callOn) CallPip() else CallOverlay()
         if (boot is Boot.Ready) UpdateDialog()
     }
 

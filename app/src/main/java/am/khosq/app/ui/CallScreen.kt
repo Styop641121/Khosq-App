@@ -6,6 +6,7 @@ import am.khosq.app.callNote
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
 import am.khosq.app.call.Phase
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
@@ -48,6 +49,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -145,10 +148,119 @@ private fun Pulse(active: Boolean, content: @Composable () -> Unit) {
     }
 }
 
+/** True while the call is shrunk to the green bar at the top, so the rest of the app can be used. */
+object CallUiState {
+    var minimized by mutableStateOf(false)
+}
+
+/** A call that is ringing out, connecting or running (not ringing in, not finished). */
+fun callIsOn(p: Phase): Boolean = p == Phase.OUTGOING || p == Phase.CONNECTING || p == Phase.CONNECTED
+
+/** The green strip shown above the app while a call is minimized. Tap it to get the call screen back. */
+@Composable
+fun CallBar() {
+    val s by CallManager.ui.collectAsStateWithLifecycle()
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(s.phase) {
+        while (s.phase == Phase.CONNECTED) {
+            now = System.currentTimeMillis()
+            delay(500)
+        }
+    }
+    val status = when (s.phase) {
+        Phase.CONNECTED -> formatDur(((now - s.startedAt) / 1000).toInt().coerceAtLeast(0))
+        Phase.CONNECTING -> tr("Միանում է…")
+        else -> tr("Զանգում է…")
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Good)
+            .clickable { CallUiState.minimized = false }
+            .statusBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (s.video) KIcons.Video else KIcons.Call,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = s.peerName,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(text = tr("Սեղմիր՝ զանգին վերադառնալու համար"), color = Color(0xCCFFFFFF), fontSize = 11.sp)
+        }
+        Text(text = status, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+    }
+}
+
+/** What the small floating window (picture-in-picture) shows: the other person's picture, or their avatar and the time. */
+@Composable
+fun CallPip() {
+    val s by CallManager.ui.collectAsStateWithLifecycle()
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(s.phase) {
+        while (s.phase == Phase.CONNECTED) {
+            now = System.currentTimeMillis()
+            delay(500)
+        }
+    }
+    val time = when (s.phase) {
+        Phase.CONNECTED -> formatDur(((now - s.startedAt) / 1000).toInt().coerceAtLeast(0))
+        Phase.CONNECTING -> tr("Միանում է…")
+        else -> tr("Զանգում է…")
+    }
+    val remoteShown = s.video && s.remoteVideo != null && s.phase == Phase.CONNECTED
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(Color(0xFF1B2570), Color(0xFF090C22), Color(0xFF26124A)))),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (remoteShown) {
+            VideoView(s.remoteVideo, mirror = false, overlay = false, modifier = Modifier.fillMaxSize())
+            Text(
+                text = time,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 6.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x88000000))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Avatar(name = s.peerName.ifEmpty { "?" }, seed = s.peerUid, size = 56.dp, circle = true)
+                Spacer(Modifier.height(6.dp))
+                Text(text = s.peerName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = time, color = Color(0xFFD8DCFF), fontSize = 12.sp)
+            }
+        }
+    }
+}
+
 @Composable
 fun CallOverlay() {
     val s by CallManager.ui.collectAsStateWithLifecycle()
+    LaunchedEffect(s.phase) {
+        // a new or finished call always starts on the full call screen
+        if (s.phase == Phase.IDLE || s.phase == Phase.INCOMING || s.phase == Phase.ENDED) CallUiState.minimized = false
+    }
     if (s.phase == Phase.IDLE) return
+    if (CallUiState.minimized && callIsOn(s.phase)) return
+    BackHandler(enabled = callIsOn(s.phase)) { CallUiState.minimized = true }
     val ctx = LocalContext.current
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(s.phase) {
@@ -278,6 +390,17 @@ fun CallOverlay() {
                     Spacer(Modifier.height(10.dp))
                 }
             }
+        }
+        if (callIsOn(s.phase)) {
+            IconCircle(
+                icon = KIcons.Down,
+                onClick = { CallUiState.minimized = true },
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(start = 14.dp, top = 12.dp),
+                size = 40.dp,
+                bg = Glass,
+                tint = Color.White,
+                description = tr("Փոքրացնել"),
+            )
         }
     }
 }

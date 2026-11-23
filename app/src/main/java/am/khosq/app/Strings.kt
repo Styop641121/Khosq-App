@@ -227,6 +227,9 @@ object Strings {
         map["Ավելացնել անդամ"] = arrayOf("Add member", "Добавить участника")
         map["Փոխանցված"] = arrayOf("Forwarded", "Переслано")
         map["Նամակը ջնջված է"] = arrayOf("Message deleted", "Сообщение удалено")
+        map["Զանգը կողպված էկրանին"] = arrayOf("Call on the lock screen", "Звонок на экране блокировки")
+        map["Միացված է. զանգի էկրանը կբացվի ինքնուրույն"] = arrayOf("On. The call screen opens by itself", "Включено. Экран звонка откроется сам")
+        map["Անջատված է. սեղմիր և թույլ տուր, որ զանգին կարողանաս պատասխանել առանց ապակողպելու"] = arrayOf("Off. Tap and allow it, so you can answer a call without unlocking", "Выключено. Нажми и разреши, чтобы отвечать на звонок без разблокировки")
     }
 
     init {

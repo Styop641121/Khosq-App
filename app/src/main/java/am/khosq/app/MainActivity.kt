@@ -141,12 +141,14 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         AppState.inForeground = true
+        AppState.started()
         CallManager.appVisible(true)
     }
 
     override fun onStop() {
         AppState.inForeground = false
-        CallManager.appVisible(false)
+        // the camera pauses only when the call screen is not on show either
+        if (AppState.stopped()) CallManager.appVisible(false)
         super.onStop()
     }
 

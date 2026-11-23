@@ -11,6 +11,8 @@ import am.khosq.app.update.UpState
 import am.khosq.app.update.Updater
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -51,6 +53,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,9 +75,42 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
+/** True when the incoming call may open by itself above the lock screen (phones older than Android 14 always allow it). */
+private fun fullScreenAllowed(ctx: Context): Boolean {
+    if (Build.VERSION.SDK_INT < 34) return true
+    return try {
+        (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).canUseFullScreenIntent()
+    } catch (e: Exception) {
+        true
+    }
+}
+
+/** Opens the system screen where "full-screen notifications" are allowed for this app. */
+private fun openFullScreenSettings(ctx: Context) {
+    try {
+        ctx.startActivity(
+            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:" + ctx.packageName))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    } catch (e: Exception) {
+        try {
+            ctx.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        } catch (e2: Exception) {
+            // the phone has no such screen
+        }
+    }
+}
 
 /** Opens the system screen where the person picks the sound, vibration and importance of message notifications. */
 private fun openSoundSettings(ctx: Context) {
@@ -239,6 +275,15 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
     var about by remember(me.about) { mutableStateOf(me.about) }
     val changed = name.trim() != me.name || about.trim() != me.about
     var copied by remember { mutableStateOf(false) }
+
+    // the answer to "may the call open above the lock screen" can change in the system settings, so it is read again on return
+    var fullScreenOk by remember { mutableStateOf(fullScreenAllowed(ctx)) }
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val watcher = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) fullScreenOk = fullScreenAllowed(ctx) }
+        owner.lifecycle.addObserver(watcher)
+        onDispose { owner.lifecycle.removeObserver(watcher) }
+    }
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -444,6 +489,18 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
                 subtitle = tr("Ընտրիր ձայնը և թրթռոցը"),
                 onClick = { openSoundSettings(ctx) },
             )
+            if (Build.VERSION.SDK_INT >= 34) {
+                SettingsRow(
+                    icon = KIcons.Call,
+                    title = tr("Զանգը կողպված էկրանին"),
+                    subtitle = if (fullScreenOk) {
+                        tr("Միացված է. զանգի էկրանը կբացվի ինքնուրույն")
+                    } else {
+                        tr("Անջատված է. սեղմիր և թույլ տուր, որ զանգին կարողանաս պատասխանել առանց ապակողպելու")
+                    },
+                    onClick = { openFullScreenSettings(ctx) },
+                )
+            }
         }
         SettingsGroup(tr("Գաղտնիություն")) {
             SettingsRow(

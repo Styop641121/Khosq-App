@@ -89,12 +89,19 @@ class KeepAliveService : Service() {
 
     private fun showCall(name: String, video: Boolean) {
         wakeScreen()
+        // the call screen is its own small activity: it may show above the lock screen, the chats may not
+        val screen = Intent(this, CallActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val tap = PendingIntent.getActivity(
             this,
             77,
-            Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                .putExtra("call", true),
+            Intent(screen),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val answer = PendingIntent.getActivity(
+            this,
+            79,
+            Intent(screen).putExtra(CallActivity.EXTRA_ANSWER, true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val decline = PendingIntent.getService(
@@ -112,6 +119,8 @@ class KeepAliveService : Service() {
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(0, tr("Պատասխանել"), answer)
             .addAction(0, tr("Մերժել"), decline)
             .build()
         try {

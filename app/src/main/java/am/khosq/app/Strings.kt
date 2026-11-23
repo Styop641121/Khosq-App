@@ -186,11 +186,40 @@ object Strings {
         map["Եթե անջատես, ուրիշները չեն տեսնի՝ երբ ես առցանց, ոչ էլ վերջին այցս։"] = arrayOf("If you turn this off, others will not see when you are online or when you were last seen.", "Если выключить, другие не увидят, когда вы в сети и когда заходили в последний раз.")
         map["Նկարագրություն"] = arrayOf("About", "О себе")
         map["Դեռ ոչինչ չի գրել"] = arrayOf("Has not written anything yet", "Пока ничего не написал(а)")
+        map["📌 Ամրացնել"] = arrayOf("📌 Pin", "📌 Закрепить")
+        map["📌 Ապաամրացնել"] = arrayOf("📌 Unpin", "📌 Открепить")
+        map["🔕 Անջատել ձայնը"] = arrayOf("🔕 Mute", "🔕 Отключить звук")
+        map["🔔 Միացնել ձայնը"] = arrayOf("🔔 Unmute", "🔔 Включить звук")
+        map["Նշումներ, հղումներ, նկարներ՝ քեզ համար"] = arrayOf("Notes, links and pictures for yourself", "Заметки, ссылки и картинки для себя")
+    }
+
+    private fun part3() {
+        map["Ներքև"] = arrayOf("Down", "Вниз")
+        map["Պահպանված նամակներ"] = arrayOf("Saved messages", "Избранное")
+        map["Այսօր"] = arrayOf("Today", "Сегодня")
+        map["Երեկ"] = arrayOf("Yesterday", "Вчера")
+        map["Հավելվածը"] = arrayOf("App", "Приложение")
+        map["Ստուգվում է…"] = arrayOf("Checking…", "Проверяем…")
+        map["Ունես վերջին տարբերակը ✓"] = arrayOf("You have the latest version ✓", "У вас последняя версия ✓")
+        map["Չհաջողվեց ստուգել թարմացումը"] = arrayOf("Could not check for updates", "Не удалось проверить обновление")
+        map["Նոր տարբերակ՝ {0}"] = arrayOf("New version: {0}", "Новая версия: {0}")
+        map["Թարմացնել"] = arrayOf("Update", "Обновить")
+        map["Ներբեռնվում է… {0}%"] = arrayOf("Downloading… {0}%", "Загрузка… {0}%")
+        map["Տեղադրել"] = arrayOf("Install", "Установить")
+        map["Ստուգել թարմացումը"] = arrayOf("Check for updates", "Проверить обновление")
+        map["Նոր տարբերակ կա"] = arrayOf("A new version is available", "Доступна новая версия")
+        map["{0} · {1} ՄԲ"] = arrayOf("{0} · {1} MB", "{0} · {1} МБ")
+        map["Ավելի ուշ"] = arrayOf("Later", "Позже")
+        map["Ներբեռնվում է…"] = arrayOf("Downloading…", "Загрузка…")
+        map["Թաքցնել"] = arrayOf("Hide", "Скрыть")
+        map["Թարմացումը պատրաստ է"] = arrayOf("The update is ready", "Обновление готово")
+        map["Սեղմիր «Տեղադրել»։ Եթե Android-ը հարցնի, թույլ տուր տեղադրումը այս հավելվածից։"] = arrayOf("Tap “Install”. If Android asks, allow installing from this app.", "Нажмите «Установить». Если Android спросит, разрешите установку из этого приложения.")
     }
 
     init {
         part0()
         part1()
         part2()
+        part3()
     }
 }

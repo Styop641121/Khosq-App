@@ -166,6 +166,7 @@ class Repository {
         val reads = d.get("read") as? Map<*, *>
         val typing = d.get("typing") as? Map<*, *>
         val unread = d.get("unread") as? Map<*, *>
+        val dlvMap = longMap(d.get("dlv"))
         return Chat(
             id = d.id,
             peerUid = d.id,
@@ -184,6 +185,9 @@ class Repository {
             admins = (d.get("admins") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
             lastKind = d.getString("lastKind") ?: "",
             pv = longMap(d.get("pv")),
+            dlv = longMap(d.get("dlv")),
+            peerDelivered = if (others.isEmpty()) 0L else others.minOf { o -> (dlvMap[o] ?: 0L) },
+            saved = d.getBoolean("saved") == true,
         )
     }
 
@@ -213,7 +217,51 @@ class Repository {
                 ?.filter { e -> e.value == true }?.mapNotNull { e -> e.key as? String } ?: emptyList(),
             lastKind = d.getString("lastKind") ?: "",
             pv = longMap(d.get("pv")),
+            dlv = longMap(d.get("dlv")),
+            peerDelivered = longMap(d.get("dlv"))[peer] ?: 0L,
         )
+    }
+
+    /* ---------- my private choices (pins, muted chats) ---------- */
+
+    private fun strSet(raw: Any?): Set<String> = (raw as? List<*>)?.filterIsInstance<String>()?.toSet() ?: emptySet()
+
+    fun prefs(uid: String): Flow<UserPrefs> = callbackFlow {
+        val reg = db.collection("prefs").document(uid).addSnapshotListener { d, err ->
+            if (err != null) {
+                close(err)
+                return@addSnapshotListener
+            }
+            trySend(UserPrefs(pins = strSet(d?.get("pins")), muted = strSet(d?.get("muted"))))
+        }
+        awaitClose { reg.remove() }
+    }
+
+    /** field is "pins" or "muted". */
+    fun setPref(uid: String, field: String, chatId: String, on: Boolean) {
+        val change: Any = if (on) FieldValue.arrayUnion(chatId) else FieldValue.arrayRemove(chatId)
+        db.collection("prefs").document(uid).set(hashMapOf<String, Any>(field to change), SetOptions.merge())
+    }
+
+    /** "Saved messages": a chat with myself. It is a one-member group, so the existing rules already allow it. */
+    suspend fun ensureSaved(me: Profile) {
+        val ref = db.collection("chats").document("saved" + me.uid)
+        if (ref.get().await().exists()) return
+        val data = hashMapOf<String, Any>(
+            "group" to true,
+            "saved" to true,
+            "title" to "",
+            "members" to listOf(me.uid),
+            "admins" to listOf(me.uid),
+            "names" to mapOf(me.uid to me.name),
+            "handles" to mapOf(me.uid to me.handle),
+            "pv" to mapOf(me.uid to me.pv),
+            "status" to "active",
+            "lastText" to "",
+            "lastTs" to System.currentTimeMillis(),
+            "lastFrom" to me.uid,
+        )
+        ref.set(data).await()
     }
 
     /** Calls I made plus calls made to me, newest first. Two listeners, merged here (no index needed). */
@@ -399,7 +447,7 @@ class Repository {
             ),
         )
         batch.commit().addOnSuccessListener {
-            pushMsg(chatId, me, groupTitle, text)
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, text)
         }
     }
 
@@ -447,7 +495,7 @@ class Repository {
             ),
         )
         batch.commit().addOnSuccessListener {
-            pushMsg(chatId, me, groupTitle, preview)
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview)
         }
     }
 
@@ -481,7 +529,7 @@ class Repository {
             ),
         )
         b.commit().addOnSuccessListener {
-            pushMsg(target.id, me, if (target.isGroup) target.peerName else "", prev)
+            if (others.isNotEmpty()) pushMsg(target.id, me, if (target.isGroup) target.peerName else "", prev)
         }
     }
 
@@ -642,5 +690,22 @@ class Repository {
                 "read." + uid to System.currentTimeMillis(),
             ),
         )
+    }
+}
+
+/**
+ * Tells the sender that this phone has received the newest message of a chat (the grey double tick).
+ * Both the open app and the background service call it, so it writes at most once per new message.
+ */
+object Delivery {
+    private val done = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+    fun mark(chatId: String, me: String, lastTs: Long, lastFrom: String, myStamp: Long) {
+        if (lastFrom.isEmpty() || lastFrom == me || lastTs <= 0L || lastTs <= myStamp) return
+        val prev = done[chatId] ?: 0L
+        if (lastTs <= prev) return
+        done[chatId] = lastTs
+        FirebaseFirestore.getInstance().collection("chats").document(chatId)
+            .update("dlv." + me, maxOf(System.currentTimeMillis(), lastTs))
     }
 }

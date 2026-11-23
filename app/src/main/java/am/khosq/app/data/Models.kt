@@ -34,7 +34,13 @@ data class Chat(
     val admins: List<String> = emptyList(),
     val lastKind: String = "",
     val pv: Map<String, Long> = emptyMap(),
+    val dlv: Map<String, Long> = emptyMap(),
+    val peerDelivered: Long = 0L,
+    val saved: Boolean = false,
 )
+
+/** My private choices: chats pinned to the top and chats whose notifications are off. */
+data class UserPrefs(val pins: Set<String> = emptySet(), val muted: Set<String> = emptySet())
 
 data class Message(
     val id: String,

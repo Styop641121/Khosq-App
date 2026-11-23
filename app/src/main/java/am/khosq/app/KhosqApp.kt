@@ -9,5 +9,6 @@ class KhosqApp : Application() {
         super.onCreate()
         Prefs.init(this)
         ProfileStore.init(this)
+        am.khosq.app.update.Updater.cleanup(this)
     }
 }

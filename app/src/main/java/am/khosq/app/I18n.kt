@@ -22,6 +22,23 @@ object Prefs {
     fun putString(key: String, value: String) {
         sp?.edit()?.putString(key, value)?.apply()
     }
+
+    fun getString(key: String, def: String = ""): String = sp?.getString(key, def) ?: def
+
+    fun putLong(key: String, value: Long) {
+        sp?.edit()?.putLong(key, value)?.apply()
+    }
+
+    fun getLong(key: String, def: Long = 0L): Long = sp?.getLong(key, def) ?: def
+
+    fun putSet(key: String, value: Set<String>) {
+        sp?.edit()?.putStringSet(key, HashSet(value))?.apply()
+    }
+
+    fun getSet(key: String): Set<String> = sp?.getStringSet(key, null) ?: emptySet()
+
+    /** Chats with notifications switched off. The background services read this too. */
+    fun isMuted(chatId: String): Boolean = getSet("muted").contains(chatId)
 }
 
 object Lang {

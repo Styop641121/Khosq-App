@@ -10,6 +10,8 @@ import am.khosq.app.ui.GradientButton
 import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
+import am.khosq.app.ui.UpdateDialog
+import am.khosq.app.update.Updater
 import am.khosq.app.ui.backgroundBrush
 import android.Manifest
 import android.app.Activity
@@ -129,6 +131,12 @@ private fun Root(vm: AppViewModel = viewModel()) {
     LaunchedEffect(boot is Boot.Ready) {
         if (boot is Boot.Ready) {
             KeepAliveService.start(ctx)
+            // look for a newer build at most every three hours, and say something only if there is one
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - Prefs.getLong("upd_at") > 3L * 3600L * 1000L) {
+                Prefs.putLong("upd_at", nowMs)
+                Updater.checkAsync(ctx, true)
+            }
             val prefs = ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE)
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
             if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
@@ -187,6 +195,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
 
         CallOverlay()
+        if (boot is Boot.Ready) UpdateDialog()
     }
 
     if (askFullScreen) {

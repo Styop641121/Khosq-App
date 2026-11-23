@@ -8,7 +8,10 @@ import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import am.khosq.app.data.ProfileStore
+import am.khosq.app.data.Delivery
 import am.khosq.app.data.UserInfo
+import am.khosq.app.data.UserPrefs
+import am.khosq.app.Prefs
 import am.khosq.app.data.Repository
 import am.khosq.app.data.Story
 import am.khosq.app.AppState
@@ -62,6 +65,11 @@ class AppViewModel : ViewModel() {
     private val _peerInfo = MutableStateFlow(UserInfo())
     val peerInfo: StateFlow<UserInfo> = _peerInfo.asStateFlow()
 
+    private val _prefs = MutableStateFlow(UserPrefs())
+    val prefs: StateFlow<UserPrefs> = _prefs.asStateFlow()
+
+    private var prefsJob: Job? = null
+
     private val healed = HashSet<String>()
 
     private var seenJob: Job? = null
@@ -104,6 +112,25 @@ class AppViewModel : ViewModel() {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
         ProfileStore.want(viewModelScope, repo, p.uid, p.pv)
+        viewModelScope.launch {
+            try {
+                repo.ensureSaved(p)
+            } catch (e: Exception) {
+                // tried again at the next start
+            }
+        }
+        prefsJob?.cancel()
+        prefsJob = viewModelScope.launch {
+            repo.prefs(p.uid)
+                .retryWhen { _, _ ->
+                    delay(5_000L)
+                    true
+                }
+                .collect { pr ->
+                    _prefs.value = pr
+                    Prefs.putSet("muted", pr.muted)
+                }
+        }
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)
@@ -149,6 +176,7 @@ class AppViewModel : ViewModel() {
             for (m in people) {
                 if (m != me.uid) best[m] = maxOf(best[m] ?: 0L, c.pv[m] ?: 0L)
             }
+            Delivery.mark(c.id, me.uid, c.lastTs, c.lastFrom, c.dlv[me.uid] ?: 0L)
             val stale = c.memberNames[me.uid] != me.name || (c.pv[me.uid] ?: 0L) != me.pv
             if (stale && healed.add(c.id + "|" + me.name + "|" + me.pv)) {
                 repo.syncSelf(c.id, me.uid, me.name, me.pv)
@@ -285,6 +313,20 @@ class AppViewModel : ViewModel() {
     fun react(chatId: String, m: Message, emoji: String) {
         val current = m.reactions[uid]
         repo.react(chatId, m.id, uid, if (current == emoji) null else emoji)
+    }
+
+    fun togglePin(chatId: String) {
+        val on = chatId !in _prefs.value.pins
+        _prefs.value = _prefs.value.copy(pins = if (on) _prefs.value.pins + chatId else _prefs.value.pins - chatId)
+        if (uid.isNotEmpty()) repo.setPref(uid, "pins", chatId, on)
+    }
+
+    fun toggleMute(chatId: String) {
+        val on = chatId !in _prefs.value.muted
+        val next = if (on) _prefs.value.muted + chatId else _prefs.value.muted - chatId
+        _prefs.value = _prefs.value.copy(muted = next)
+        Prefs.putSet("muted", next)
+        if (uid.isNotEmpty()) repo.setPref(uid, "muted", chatId, on)
     }
 
     /** Changes the text of one of my own messages. */

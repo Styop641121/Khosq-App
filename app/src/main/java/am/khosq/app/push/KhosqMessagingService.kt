@@ -32,6 +32,7 @@ class KhosqMessagingService : FirebaseMessagingService() {
         }
         if (AppState.inForeground) return
         val chatId = m.data["chatId"] ?: return
+        if (am.khosq.app.Prefs.isMuted(chatId)) return
         val title = m.data["title"] ?: "KHOSQ"
         val body = m.data["body"] ?: ""
         val tap = PendingIntent.getActivity(

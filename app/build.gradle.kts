@@ -13,8 +13,11 @@ android {
         applicationId = "am.khosq.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        // GitHub Actions sets GITHUB_RUN_NUMBER; the same number is at the end of the release tag (v2.0.N),
+        // which is how the app knows whether a newer build exists.
+        val run = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toIntOrNull() ?: 1
+        versionCode = run
+        versionName = "2.0." + run
     }
 
     signingConfigs {

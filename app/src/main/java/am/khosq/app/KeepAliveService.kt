@@ -151,8 +151,12 @@ class KeepAliveService : Service() {
 
     private fun handle(d: DocumentSnapshot, me: String) {
         val ts = d.getLong("lastTs") ?: 0L
+        val stamp = ((d.get("dlv") as? Map<*, *>)?.get(me) as? Number)?.toLong() ?: 0L
+        if (!d.metadata.hasPendingWrites()) {
+            am.khosq.app.data.Delivery.mark(d.id, me, ts, d.getString("lastFrom") ?: "", stamp)
+        }
         val before = seenTs[d.id] ?: 0L
-        if (!first && ts > before && d.getString("lastFrom") != me && !AppState.inForeground) {
+        if (!first && ts > before && d.getString("lastFrom") != me && !AppState.inForeground && !Prefs.isMuted(d.id)) {
             showMessage(d, me)
         }
         seenTs[d.id] = maxOf(ts, before)

@@ -6,6 +6,9 @@ import am.khosq.app.Lang
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
 import am.khosq.app.tr
+import am.khosq.app.trf
+import am.khosq.app.update.UpState
+import am.khosq.app.update.Updater
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -30,7 +33,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -57,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Opens the system screen where the person picks the sound, vibration and importance of message notifications. */
 private fun openSoundSettings(ctx: Context) {
@@ -274,7 +280,100 @@ fun SettingsTab(vm: AppViewModel, me: Profile) {
                 Switch(checked = !me.hideSeen, onCheckedChange = { on -> vm.setHideSeen(!on) })
             }
         }
+        UpdateSection()
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+private fun megabytes(n: Long): String = if (n <= 0L) "" else ((n + 524_288L) / 1_048_576L).toString()
+
+/** App version and the "check for a new version" button. */
+@Composable
+private fun UpdateSection() {
+    val ctx = LocalContext.current
+    val up by Updater.state.collectAsStateWithLifecycle()
+    Section(tr("Հավելվածը")) {
+        Text(
+            text = "KHOSQ " + Updater.currentName(ctx),
+            fontWeight = FontWeight.SemiBold,
+        )
+        when (val u = up) {
+            is UpState.Checking -> Text(text = tr("Ստուգվում է…"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is UpState.UpToDate -> Text(text = tr("Ունես վերջին տարբերակը ✓"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            is UpState.Failed -> Text(text = tr("Չհաջողվեց ստուգել թարմացումը"), color = MaterialTheme.colorScheme.error)
+            is UpState.Available -> {
+                Text(text = trf("Նոր տարբերակ՝ {0}", u.info.name), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                GradientButton(
+                    text = tr("Թարմացնել"),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { Updater.startDownload(ctx, u.info) },
+                )
+            }
+            is UpState.Downloading -> {
+                Text(text = trf("Ներբեռնվում է… {0}%", u.percent.toString()), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            }
+            is UpState.Ready -> {
+                GradientButton(
+                    text = tr("Տեղադրել"),
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { Updater.install(ctx, u.path) },
+                )
+            }
+            else -> Unit
+        }
+        if (up !is UpState.Downloading && up !is UpState.Ready && up !is UpState.Available) {
+            TextButton(onClick = { Updater.checkAsync(ctx, false) }, enabled = up !is UpState.Checking) {
+                Text(tr("Ստուգել թարմացումը"))
+            }
+        }
+    }
+}
+
+/** Pops up when a newer build exists, while it downloads, and when it is ready to install. */
+@Composable
+fun UpdateDialog() {
+    val ctx = LocalContext.current
+    val up by Updater.state.collectAsStateWithLifecycle()
+    var hidden by remember { mutableStateOf("") }
+    val u = up
+    val key = when (u) {
+        is UpState.Available -> "a" + u.info.code
+        is UpState.Downloading -> "d"
+        is UpState.Ready -> "r" + u.info.code
+        else -> ""
+    }
+    if (key.isEmpty() || key == hidden) return
+    when (u) {
+        is UpState.Available -> AlertDialog(
+            onDismissRequest = { hidden = key },
+            title = { Text(tr("Նոր տարբերակ կա")) },
+            text = {
+                val mb = megabytes(u.info.size)
+                Text(if (mb.isEmpty()) u.info.name else trf("{0} · {1} ՄԲ", u.info.name, mb))
+            },
+            confirmButton = { TextButton(onClick = { Updater.startDownload(ctx, u.info) }) { Text(tr("Թարմացնել")) } },
+            dismissButton = { TextButton(onClick = { hidden = key }) { Text(tr("Ավելի ուշ")) } },
+        )
+        is UpState.Downloading -> AlertDialog(
+            onDismissRequest = { hidden = key },
+            title = { Text(tr("Ներբեռնվում է…")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                    Text(text = u.percent.toString() + "%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            },
+            confirmButton = { TextButton(onClick = { hidden = key }) { Text(tr("Թաքցնել")) } },
+        )
+        is UpState.Ready -> AlertDialog(
+            onDismissRequest = { hidden = key },
+            title = { Text(tr("Թարմացումը պատրաստ է")) },
+            text = { Text(tr("Սեղմիր «Տեղադրել»։ Եթե Android-ը հարցնի, թույլ տուր տեղադրումը այս հավելվածից։")) },
+            confirmButton = { TextButton(onClick = { Updater.install(ctx, u.path) }) { Text(tr("Տեղադրել")) } },
+            dismissButton = { TextButton(onClick = { hidden = key }) { Text(tr("Ավելի ուշ")) } },
+        )
+        else -> Unit
     }
 }
 

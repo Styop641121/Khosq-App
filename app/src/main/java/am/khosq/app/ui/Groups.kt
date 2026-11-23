@@ -61,10 +61,10 @@ private fun PickRow(chat: Chat, on: Boolean, onToggle: () -> Unit) {
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(name = chat.peerName, seed = chat.peerUid, size = 40.dp)
+        if (chat.saved) SavedAvatar(40.dp) else Avatar(name = chat.peerName, seed = chat.peerUid, size = 40.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(text = chat.peerName, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(text = chat.label(), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (chat.peerHandle.isNotEmpty()) {
                 Text(
                     text = "@" + chat.peerHandle,

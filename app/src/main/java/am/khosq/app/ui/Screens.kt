@@ -53,6 +53,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -191,6 +193,8 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     val clipboard = LocalClipboardManager.current
     val calls by vm.calls.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
+    var menuChat by remember { mutableStateOf<Chat?>(null) }
     BackHandler(enabled = tab != 0) { tab = 0 }
     BackHandler(enabled = homeSearch && tab == 0) {
         homeSearch = false
@@ -253,13 +257,13 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                     }
                     val shownChats = if (homeSearch && homeQuery.isNotBlank()) {
                         chats.filter { c ->
-                            c.peerName.contains(homeQuery.trim(), ignoreCase = true) ||
+                            c.label().contains(homeQuery.trim(), ignoreCase = true) ||
                                 c.peerHandle.contains(homeQuery.trim(), ignoreCase = true) ||
                                 previewOf(c.lastKind, c.lastText).contains(homeQuery.trim(), ignoreCase = true)
                         }
                     } else {
                         chats
-                    }
+                    }.sortedByDescending { c -> c.id in prefs.pins }
                     if (shownChats.isEmpty()) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(36.dp),
@@ -282,7 +286,14 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(shownChats, key = { c -> c.id }) { chat ->
-                                ChatRow(chat = chat, myUid = me.uid, onClick = { onOpen(chat.id) })
+                                ChatRow(
+                                    chat = chat,
+                                    myUid = me.uid,
+                                    pinned = chat.id in prefs.pins,
+                                    muted = chat.id in prefs.muted,
+                                    onClick = { onOpen(chat.id) },
+                                    onLong = { menuChat = chat },
+                                )
                             }
                         }
                     }
@@ -336,6 +347,28 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
         )
     }
 
+    val mc = menuChat
+    if (mc != null) {
+        AlertDialog(
+            onDismissRequest = { menuChat = null },
+            confirmButton = { TextButton(onClick = { menuChat = null }) { Text(tr("Փակել")) } },
+            title = { Text(mc.label(), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    TextButton(onClick = {
+                        vm.togglePin(mc.id)
+                        menuChat = null
+                    }) { Text(if (mc.id in prefs.pins) tr("📌 Ապաամրացնել") else tr("📌 Ամրացնել")) }
+                    if (!mc.saved) {
+                        TextButton(onClick = {
+                            vm.toggleMute(mc.id)
+                            menuChat = null
+                        }) { Text(if (mc.id in prefs.muted) tr("🔔 Միացնել ձայնը") else tr("🔕 Անջատել ձայնը")) }
+                    }
+                }
+            },
+        )
+    }
     if (showAdd) {
         AddContactSheet(vm = vm, onClose = { showAdd = false }, onOpen = onOpen)
     }
@@ -421,8 +454,9 @@ private fun TabItem(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
+private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
     val shape = RoundedCornerShape(22.dp)
     Row(
         modifier = Modifier
@@ -430,15 +464,15 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.75f))
             .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLong)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(name = chat.peerName, seed = chat.peerUid)
+        if (chat.saved) SavedAvatar() else Avatar(name = chat.peerName, seed = chat.peerUid)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (chat.isGroup) {
+                if (chat.isGroup && !chat.saved) {
                     Icon(
                         imageVector = KIcons.Group,
                         contentDescription = null,
@@ -448,7 +482,7 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(
-                    text = chat.peerName,
+                    text = chat.label(),
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
                     maxLines = 1,
@@ -465,6 +499,7 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
                     chat.blockedBy.isNotEmpty() -> tr("🚫 Արգելափակված")
                     chat.status == "pending" && chat.requester != myUid -> tr("🔔 Նոր հարցում")
                     chat.status == "pending" -> tr("⏳ Սպասում է հաստատման")
+                    chat.lastText.isEmpty() && chat.saved -> tr("Նշումներ, հղումներ, նկարներ՝ քեզ համար")
                     chat.lastText.isEmpty() && chat.isGroup -> membersText(chat.members.size)
                     chat.lastText.isEmpty() -> "@" + chat.peerHandle
                     else -> prefix + previewOf(chat.lastKind, chat.lastText)
@@ -478,7 +513,7 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(5.dp)) {
             if (chat.lastTs > 0L) {
                 Text(
-                    text = formatTime(chat.lastTs),
+                    text = (if (muted) "🔕 " else "") + formatTime(chat.lastTs),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -487,12 +522,17 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Brush.linearGradient(BrandColors))
+                        .background(
+                            if (muted) Brush.linearGradient(listOf(Color(0xFF8A8FA8), Color(0xFF8A8FA8)))
+                            else Brush.linearGradient(BrandColors),
+                        )
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(text = chat.unread.toString(), color = InkOnBrand, fontWeight = FontWeight.ExtraBold, fontSize = 12.sp)
                 }
+            } else if (pinned) {
+                Text(text = "📌", fontSize = 12.sp)
             }
         }
     }
@@ -572,6 +612,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val messages by vm.messages.collectAsStateWithLifecycle()
     val replyTo by vm.replyTo.collectAsStateWithLifecycle()
     val peerInfo by vm.peerInfo.collectAsStateWithLifecycle()
+    val prefs by vm.prefs.collectAsStateWithLifecycle()
     val peerSeen = peerInfo.seen
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
@@ -579,7 +620,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val waiting = chat != null && chat.status == "pending" && chat.requester == me.uid
     val iBlocked = chat != null && me.uid in chat.blockedBy
     val canCall = chat != null && !chat.isGroup && chat.status == "active" && chat.blockedBy.isEmpty()
-    val isGroup = chat != null && chat.isGroup
+    val isSaved = chat?.saved == true
+    val isGroup = chat != null && chat.isGroup && !isSaved
     var showInfo by remember { mutableStateOf(false) }
     var showContact by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Message?>(null) }
@@ -628,6 +670,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
     }
     val statusText = when {
+        isSaved -> ""
         chat != null && chat.isGroup -> if (typingNow) tr("գրում են…") else membersText(chat.members.size)
         typingNow -> tr("գրում է…")
         peerSeen > 0L && clock - peerSeen < 100_000L -> tr("առցանց")
@@ -800,16 +843,16 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Հետ"))
             }
             Row(
-                modifier = Modifier.weight(1f).clickable(enabled = chat != null) {
+                modifier = Modifier.weight(1f).clickable(enabled = chat != null && !isSaved) {
                     if (isGroup) showInfo = true else showContact = true
                 },
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-            Avatar(name = chat?.peerName ?: "?", seed = peerUid, size = 42.dp)
+            if (isSaved) SavedAvatar(42.dp) else Avatar(name = chat?.peerName ?: "?", seed = peerUid, size = 42.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = chat?.peerName ?: "…",
+                    text = chat?.label() ?: "…",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
                     maxLines = 1,
@@ -858,6 +901,22 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             searching = true
                         },
                     )
+                    DropdownMenuItem(
+                        text = { Text(if (chatId in prefs.pins) tr("📌 Ապաամրացնել") else tr("📌 Ամրացնել")) },
+                        onClick = {
+                            moreOpen = false
+                            vm.togglePin(chatId)
+                        },
+                    )
+                    if (!isSaved) {
+                        DropdownMenuItem(
+                            text = { Text(if (chatId in prefs.muted) tr("🔔 Միացնել ձայնը") else tr("🔕 Անջատել ձայնը")) },
+                            onClick = {
+                                moreOpen = false
+                                vm.toggleMute(chatId)
+                            },
+                        )
+                    }
                     if (isGroup) {
                         DropdownMenuItem(
                             text = { Text(tr("Խմբի տվյալներ")) },
@@ -866,7 +925,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                                 showInfo = true
                             },
                         )
-                    } else {
+                    } else if (!isSaved) {
                         DropdownMenuItem(
                             text = { Text(if (iBlocked) tr("Ապաարգելափակել") else tr("Արգելափակել")) },
                             onClick = {
@@ -879,23 +938,54 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
         }
 
-        LazyColumn(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            reverseLayout = true,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            items(shown.asReversed(), key = { m -> m.id }) { m ->
-                Bubble(
-                    m = m,
-                    mine = m.from == me.uid,
-                    peerRead = chat?.peerRead ?: 0L,
-                    sender = if (chat != null && chat.isGroup && m.from != me.uid) (chat.memberNames[m.from] ?: "?") else null,
-                    senderKey = m.from,
-                    myUid = me.uid,
-                    names = chat?.memberNames ?: emptyMap(),
-                    peerName = chat?.peerName ?: "",
-                    onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
+        val listState = rememberLazyListState()
+        val showDown by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
+        val dateHeads = remember(shown) {
+            val set = HashSet<String>()
+            var prev = -1
+            for (x in shown) {
+                val k = dayKey(x.ts)
+                if (k != prev) set.add(x.id)
+                prev = k
+            }
+            set
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+                reverseLayout = true,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(shown.asReversed(), key = { m -> m.id }) { m ->
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (m.id in dateHeads) DateChip(dayLabel(m.ts))
+                        Bubble(
+                            m = m,
+                            mine = m.from == me.uid,
+                            peerRead = chat?.peerRead ?: 0L,
+                            peerDelivered = chat?.peerDelivered ?: 0L,
+                            showTicks = !isSaved,
+                            sender = if (chat != null && chat.isGroup && m.from != me.uid) (chat.memberNames[m.from] ?: "?") else null,
+                            senderKey = m.from,
+                            myUid = me.uid,
+                            names = chat?.memberNames ?: emptyMap(),
+                            peerName = chat?.peerName ?: "",
+                            onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
+                        )
+                    }
+                }
+            }
+            if (showDown) {
+                IconCircle(
+                    icon = KIcons.Down,
+                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).shadow(6.dp, CircleShape),
+                    size = 44.dp,
+                    bg = MaterialTheme.colorScheme.surface,
+                    tint = MaterialTheme.colorScheme.primary,
+                    description = tr("Ներքև"),
                 )
             }
         }
@@ -1071,6 +1161,22 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
 }
 
 @Composable
+private fun DateChip(text: String) {
+    Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+    }
+}
+
+@Composable
 private fun NoticeBar(
     text: String,
     primary: String,
@@ -1189,6 +1295,8 @@ private fun Bubble(
     m: Message,
     mine: Boolean,
     peerRead: Long,
+    peerDelivered: Long,
+    showTicks: Boolean,
     sender: String?,
     senderKey: String,
     myUid: String,
@@ -1219,6 +1327,7 @@ private fun Bubble(
     val ink = if (mine) InkOnBrand else MaterialTheme.colorScheme.onSurface
     val soft = if (mine) Color(0xB31B1000) else MaterialTheme.colorScheme.onSurfaceVariant
     val read = mine && !m.pending && peerRead >= m.ts
+    val delivered = read || (mine && !m.pending && peerDelivered >= m.ts)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
@@ -1306,10 +1415,10 @@ private fun Bubble(
                     Spacer(Modifier.width(5.dp))
                 }
                 Text(text = formatTime(m.ts), fontSize = 11.sp, color = soft)
-                if (mine) {
+                if (mine && showTicks) {
                     Spacer(Modifier.width(5.dp))
                     Text(
-                        text = if (m.pending) "🕓" else if (read) "✓✓" else "✓",
+                        text = if (m.pending) "🕓" else if (delivered) "✓✓" else "✓",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (read) Color(0xFF1A3FD0) else soft,

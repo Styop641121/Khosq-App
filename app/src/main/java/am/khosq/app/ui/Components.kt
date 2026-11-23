@@ -1,5 +1,10 @@
 package am.khosq.app.ui
 
+import am.khosq.app.Lang
+import am.khosq.app.data.Chat
+import am.khosq.app.tr
+import androidx.compose.material3.Icon
+import java.util.Calendar
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -126,4 +131,33 @@ fun BrandMark(size: Dp) {
     ) {
         Text(text = "Խ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold, fontSize = (size.value * 0.5f).sp)
     }
+}
+
+/** "Saved messages" has no name of its own in the data, so each phone writes it in its own language. */
+fun Chat.label(): String = if (saved) tr("Պահպանված նամակներ") else peerName
+
+@Composable
+fun SavedAvatar(size: Dp = 52.dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.size(size).clip(CircleShape).background(Brush.linearGradient(BrandColors)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(imageVector = KIcons.Bookmark, contentDescription = null, tint = InkOnBrand, modifier = Modifier.size(size * 0.5f))
+    }
+}
+
+fun dayKey(ts: Long): Int {
+    val c = Calendar.getInstance()
+    c.timeInMillis = ts
+    return c.get(Calendar.YEAR) * 400 + c.get(Calendar.DAY_OF_YEAR)
+}
+
+/** "Today", "Yesterday" or "12 November" for the date lines inside a chat. */
+fun dayLabel(ts: Long): String {
+    val now = System.currentTimeMillis()
+    val d = dayKey(ts)
+    if (d == dayKey(now)) return tr("Այսօր")
+    if (d == dayKey(now - 24L * 3600L * 1000L)) return tr("Երեկ")
+    val sameYear = d / 400 == dayKey(now) / 400
+    return SimpleDateFormat(if (sameYear) "d MMMM" else "d MMMM yyyy", Locale(Lang.code)).format(Date(ts))
 }

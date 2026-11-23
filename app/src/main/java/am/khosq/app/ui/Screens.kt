@@ -1,5 +1,11 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+import am.khosq.app.trf
+import am.khosq.app.membersText
+import am.khosq.app.previewOf
+import am.khosq.app.replyText
+
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
 import am.khosq.app.data.Chat
@@ -14,7 +20,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.asImageBitmap
@@ -117,14 +122,15 @@ fun SetupScreen(vm: AppViewModel) {
         Spacer(Modifier.height(28.dp))
         BrandMark(88.dp)
         BrandTitle(34.sp)
+        LanguageChips()
         Text(
-            text = "Գրիր անունդ և ընտրիր քո ID-ն։ Ընկերդ քեզ կգտնի հենց այդ ID-ով։",
+            text = tr("Գրիր անունդ և ընտրիր քո ID-ն։ Ընկերդ քեզ կգտնի հենց այդ ID-ով։"),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(
             value = name,
             onValueChange = { name = it.take(30) },
-            label = { Text("Քո անունը") },
+            label = { Text(tr("Քո անունը")) },
             singleLine = true,
             shape = RoundedCornerShape(17.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -132,7 +138,7 @@ fun SetupScreen(vm: AppViewModel) {
         OutlinedTextField(
             value = handle,
             onValueChange = { handle = cleanHandle(it) },
-            label = { Text("Քո ID-ն (լատինատառ, թվեր)") },
+            label = { Text(tr("Քո ID-ն (լատինատառ, թվեր)")) },
             singleLine = true,
             shape = RoundedCornerShape(17.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -142,15 +148,15 @@ fun SetupScreen(vm: AppViewModel) {
             Text(text = e, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
         }
         GradientButton(
-            text = "Սկսել",
+            text = tr("Սկսել"),
             enabled = !busy,
             modifier = Modifier.fillMaxWidth(),
             onClick = {
                 val n = name.trim()
                 if (n.isEmpty()) {
-                    error = "Գրիր քո անունը"
+                    error = tr("Գրիր քո անունը")
                 } else if (handle.length < 3) {
-                    error = "ID-ն պետք է լինի առնվազն 3 նշան"
+                    error = tr("ID-ն պետք է լինի առնվազն 3 նշան")
                 } else {
                     error = null
                     busy = true
@@ -210,7 +216,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                     size = 40.dp,
                     bg = MaterialTheme.colorScheme.surfaceVariant,
                     tint = MaterialTheme.colorScheme.onSurface,
-                    description = "Որոնել",
+                    description = tr("Որոնել"),
                 )
                 Spacer(Modifier.width(10.dp))
             }
@@ -233,7 +239,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                             value = homeQuery,
                             onValueChange = { v -> homeQuery = v },
                             singleLine = true,
-                            placeholder = { Text("Որոնել զրույցներում…") },
+                            placeholder = { Text(tr("Որոնել զրույցներում…")) },
                             shape = RoundedCornerShape(24.dp),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).focusRequester(homeFocus),
                         )
@@ -249,7 +255,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                         chats.filter { c ->
                             c.peerName.contains(homeQuery.trim(), ignoreCase = true) ||
                                 c.peerHandle.contains(homeQuery.trim(), ignoreCase = true) ||
-                                c.lastText.contains(homeQuery.trim(), ignoreCase = true)
+                                previewOf(c.lastKind, c.lastText).contains(homeQuery.trim(), ignoreCase = true)
                         }
                     } else {
                         chats
@@ -261,11 +267,11 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             if (chats.isNotEmpty()) {
-                                Text(text = "Ոչինչ չի գտնվել", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(text = tr("Ոչինչ չի գտնվել"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             } else {
-                                Text(text = "Դեռ զրույցներ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(text = tr("Դեռ զրույցներ չկան"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Text(
-                                    text = "Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։",
+                                    text = tr("Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։"),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -298,7 +304,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                     ) {
                         Icon(
                             imageVector = KIcons.Group,
-                            contentDescription = "Նոր խումբ",
+                            contentDescription = tr("Նոր խումբ"),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(26.dp),
                         )
@@ -313,11 +319,13 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                             .padding(horizontal = 24.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(text = "+  Նոր կոնտակտ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
+                        Text(text = tr("+  Նոր կոնտակտ"), color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
                     }
                 }
-            } else {
+            } else if (tab == 1) {
                 CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
+            } else {
+                SettingsTab(vm = vm, me = me)
             }
         }
 
@@ -344,13 +352,13 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     if (showMe) {
         AlertDialog(
             onDismissRequest = { showMe = false },
-            title = { Text("Իմ ID-ն") },
+            title = { Text(tr("Իմ ID-ն")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(text = me.name, fontWeight = FontWeight.Bold)
                     Text(text = me.handle, fontFamily = FontFamily.Monospace, fontSize = 20.sp)
                     Text(
-                        text = "Ուղարկիր այս ID-ն ընկերոջդ, որ նա քեզ գտնի։",
+                        text = tr("Ուղարկիր այս ID-ն ընկերոջդ, որ նա քեզ գտնի։"),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -359,9 +367,9 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                 TextButton(onClick = {
                     clipboard.setText(AnnotatedString(me.handle))
                     showMe = false
-                }) { Text("Պատճենել") }
+                }) { Text(tr("Պատճենել")) }
             },
-            dismissButton = { TextButton(onClick = { showMe = false }) { Text("Փակել") } },
+            dismissButton = { TextButton(onClick = { showMe = false }) { Text(tr("Փակել")) } },
         )
     }
 }
@@ -373,11 +381,12 @@ private fun HomeTabs(tab: Int, missed: Int, onTab: (Int) -> Unit) {
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        TabItem(Modifier.weight(1f), KIcons.Chat, "Զրույցներ", tab == 0, 0) { onTab(0) }
-        TabItem(Modifier.weight(1f), KIcons.Call, "Զանգեր", tab == 1, missed) { onTab(1) }
+        TabItem(Modifier.weight(1f), KIcons.Chat, tr("Զրույցներ"), tab == 0, 0) { onTab(0) }
+        TabItem(Modifier.weight(1f), KIcons.Call, tr("Զանգեր"), tab == 1, missed) { onTab(1) }
+        TabItem(Modifier.weight(1f), KIcons.Person, tr("Պրոֆիլ"), tab == 2, 0) { onTab(2) }
     }
 }
 
@@ -447,18 +456,18 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
                 )
             }
             val prefix = when {
-                chat.lastFrom == myUid -> "Դու՝ "
-                chat.isGroup -> (chat.memberNames[chat.lastFrom] ?: "").let { n -> if (n.isEmpty()) "" else "$n՝ " }
+                chat.lastFrom == myUid -> tr("Դու") + ": "
+                chat.isGroup -> (chat.memberNames[chat.lastFrom] ?: "").let { n -> if (n.isEmpty()) "" else "$n: " }
                 else -> ""
             }
             Text(
                 text = when {
-                    chat.blockedBy.isNotEmpty() -> "🚫 Արգելափակված"
-                    chat.status == "pending" && chat.requester != myUid -> "🔔 Նոր հարցում"
-                    chat.status == "pending" -> "⏳ Սպասում է հաստատման"
-                    chat.lastText.isEmpty() && chat.isGroup -> chat.members.size.toString() + " անդամ"
+                    chat.blockedBy.isNotEmpty() -> tr("🚫 Արգելափակված")
+                    chat.status == "pending" && chat.requester != myUid -> tr("🔔 Նոր հարցում")
+                    chat.status == "pending" -> tr("⏳ Սպասում է հաստատման")
+                    chat.lastText.isEmpty() && chat.isGroup -> membersText(chat.members.size)
                     chat.lastText.isEmpty() -> "@" + chat.peerHandle
-                    else -> prefix + chat.lastText
+                    else -> prefix + previewOf(chat.lastKind, chat.lastText)
                 },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
@@ -506,11 +515,11 @@ private fun AddContactSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (Stri
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(text = "Նոր կոնտակտ", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Նոր կոնտակտ"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = handle,
                 onValueChange = { handle = cleanHandle(it) },
-                label = { Text("Ընկերոջդ ID-ն") },
+                label = { Text(tr("Ընկերոջդ ID-ն")) },
                 singleLine = true,
                 shape = RoundedCornerShape(17.dp),
                 modifier = Modifier.fillMaxWidth(),
@@ -520,7 +529,7 @@ private fun AddContactSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (Stri
                 Text(text = e, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
             }
             GradientButton(
-                text = "Գտնել և սկսել զրույց",
+                text = tr("Գտնել և սկսել զրույց"),
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
@@ -562,7 +571,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val chats by vm.chats.collectAsStateWithLifecycle()
     val messages by vm.messages.collectAsStateWithLifecycle()
     val replyTo by vm.replyTo.collectAsStateWithLifecycle()
-    val peerSeen by vm.peerSeen.collectAsStateWithLifecycle()
+    val peerInfo by vm.peerInfo.collectAsStateWithLifecycle()
+    val peerSeen = peerInfo.seen
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
     val pendingForMe = chat != null && chat.status == "pending" && chat.requester != me.uid
@@ -571,6 +581,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val canCall = chat != null && !chat.isGroup && chat.status == "active" && chat.blockedBy.isEmpty()
     val isGroup = chat != null && chat.isGroup
     var showInfo by remember { mutableStateOf(false) }
+    var showContact by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Message?>(null) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var forwardMsg by remember { mutableStateOf<Message?>(null) }
@@ -616,10 +628,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
     }
     val statusText = when {
-        chat != null && chat.isGroup -> if (typingNow) "գրում են…" else chat.members.size.toString() + " անդամ"
-        typingNow -> "գրում է…"
-        peerSeen > 0L && clock - peerSeen < 100_000L -> "առցանց"
-        peerSeen > 0L -> "վերջին անգամ՝ " + formatSeen(peerSeen)
+        chat != null && chat.isGroup -> if (typingNow) tr("գրում են…") else membersText(chat.members.size)
+        typingNow -> tr("գրում է…")
+        peerSeen > 0L && clock - peerSeen < 100_000L -> tr("առցանց")
+        peerSeen > 0L -> trf("վերջին անգամ՝ {0}", formatSeen(peerSeen))
         else -> ""
     }
 
@@ -685,7 +697,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         val clip = LocalClipboardManager.current
         AlertDialog(
             onDismissRequest = { menuFor = null },
-            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Փակել") } },
+            confirmButton = { TextButton(onClick = { menuFor = null }) { Text(tr("Փակել")) } },
             text = {
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -707,22 +719,30 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     TextButton(onClick = {
                         vm.setReply(mm)
                         menuFor = null
-                    }) { Text("↩ Պատասխանել") }
+                    }) { Text(tr("↩ Պատասխանել")) }
                     TextButton(onClick = {
                         forwardMsg = mm
                         menuFor = null
-                    }) { Text("↪ Փոխանցել") }
+                    }) { Text(tr("↪ Փոխանցել")) }
                     if (mm.kind == "text") {
                         TextButton(onClick = {
                             clip.setText(AnnotatedString(mm.text))
                             menuFor = null
-                        }) { Text("⧉ Պատճենել") }
+                        }) { Text(tr("⧉ Պատճենել")) }
+                    }
+                    if (mm.from == me.uid && mm.kind == "text" && System.currentTimeMillis() - mm.ts < 15L * 60_000L) {
+                        TextButton(onClick = {
+                            vm.setReply(null)
+                            editing = mm
+                            text = mm.text
+                            menuFor = null
+                        }) { Text(tr("✎ Խմբագրել")) }
                     }
                     if (mm.from == me.uid) {
                         TextButton(onClick = {
                             vm.deleteMessage(chatId, mm)
                             menuFor = null
-                        }) { Text("🗑 Ջնջել բոլորի համար", color = MaterialTheme.colorScheme.error) }
+                        }) { Text(tr("🗑 Ջնջել բոլորի համար"), color = MaterialTheme.colorScheme.error) }
                     }
                 }
             },
@@ -738,6 +758,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     if (fm != null) {
         ForwardSheet(vm = vm, message = fm, onClose = { forwardMsg = null })
     }
+    if (showContact && chat != null && !chat.isGroup) {
+        ContactSheet(chat = chat, about = peerInfo.about, status = statusText, onClose = { showContact = false })
+    }
     if (showInfo && chat != null && chat.isGroup) {
         GroupInfoSheet(vm = vm, me = me, chat = chat, onClose = { showInfo = false }, onLeft = onBack)
     }
@@ -751,12 +774,12 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 IconButton(onClick = {
                     searching = false
                     query = ""
-                }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Հետ") }
+                }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Հետ")) }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { v -> query = v },
                     singleLine = true,
-                    placeholder = { Text("Որոնել նամակներում…") },
+                    placeholder = { Text(tr("Որոնել նամակներում…")) },
                     shape = RoundedCornerShape(24.dp),
                     modifier = Modifier.weight(1f).focusRequester(searchFocus),
                 )
@@ -774,11 +797,17 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Հետ")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Հետ"))
             }
+            Row(
+                modifier = Modifier.weight(1f).clickable(enabled = chat != null) {
+                    if (isGroup) showInfo = true else showContact = true
+                },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             Avatar(name = chat?.peerName ?: "?", seed = peerUid, size = 42.dp)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).clickable(enabled = isGroup) { showInfo = true }) {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = chat?.peerName ?: "…",
                     fontWeight = FontWeight.Bold,
@@ -797,6 +826,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            }
             if (canCall) {
                 IconCircle(
                     icon = KIcons.Call,
@@ -804,7 +834,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     size = 40.dp,
                     bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                     tint = MaterialTheme.colorScheme.primary,
-                    description = "Զանգ",
+                    description = tr("Զանգ"),
                 )
                 Spacer(Modifier.width(8.dp))
                 IconCircle(
@@ -813,16 +843,16 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     size = 40.dp,
                     bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                     tint = MaterialTheme.colorScheme.primary,
-                    description = "Տեսազանգ",
+                    description = tr("Տեսազանգ"),
                 )
             }
             Box {
                 IconButton(onClick = { moreOpen = true }) {
-                    Icon(imageVector = KIcons.More, contentDescription = "Ավելին")
+                    Icon(imageVector = KIcons.More, contentDescription = tr("Ավելին"))
                 }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
                     DropdownMenuItem(
-                        text = { Text("Որոնել նամակներում") },
+                        text = { Text(tr("Որոնել նամակներում")) },
                         onClick = {
                             moreOpen = false
                             searching = true
@@ -830,7 +860,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     )
                     if (isGroup) {
                         DropdownMenuItem(
-                            text = { Text("Խմբի տվյալներ") },
+                            text = { Text(tr("Խմբի տվյալներ")) },
                             onClick = {
                                 moreOpen = false
                                 showInfo = true
@@ -838,7 +868,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         )
                     } else {
                         DropdownMenuItem(
-                            text = { Text(if (iBlocked) "Ապաարգելափակել" else "Արգելափակել") },
+                            text = { Text(if (iBlocked) tr("Ապաարգելափակել") else tr("Արգելափակել")) },
                             onClick = {
                                 moreOpen = false
                                 vm.setBlocked(chatId, !iBlocked)
@@ -862,6 +892,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     peerRead = chat?.peerRead ?: 0L,
                     sender = if (chat != null && chat.isGroup && m.from != me.uid) (chat.memberNames[m.from] ?: "?") else null,
                     senderKey = m.from,
+                    myUid = me.uid,
+                    names = chat?.memberNames ?: emptyMap(),
+                    peerName = chat?.peerName ?: "",
                     onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                 )
             }
@@ -880,17 +913,13 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = if (rt.from == me.uid) "Դու" else if (chat != null && chat.isGroup) (chat.memberNames[rt.from] ?: "") else (chat?.peerName ?: ""),
+                        text = if (rt.from == me.uid) tr("Դու") else if (chat != null && chat.isGroup) (chat.memberNames[rt.from] ?: "") else (chat?.peerName ?: ""),
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = when (rt.kind) {
-                            "img" -> "📷 Նկար"
-                            "voice" -> "🎤 Ձայնային նամակ"
-                            else -> rt.text
-                        },
+                        text = previewOf(rt.kind, rt.text),
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -901,9 +930,49 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
         }
 
+        val ed = editing
+        if (ed != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(start = 12.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = KIcons.Edit,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = tr("Խմբագրում"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = ed.text,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = {
+                    editing = null
+                    text = ""
+                }) { Text(text = "✕", fontSize = 16.sp) }
+            }
+        }
+
         if (waiting) {
             Text(
-                text = "⏳ Սպասում ես, որ " + (chat?.peerName ?: "") + "-ը ընդունի հարցումդ",
+                text = trf("⏳ Սպասում ես, որ {0}-ը ընդունի հարցումդ", chat?.peerName ?: ""),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 18.dp),
@@ -912,16 +981,16 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         val pill = RoundedCornerShape(30.dp)
         if (pendingForMe) {
             NoticeBar(
-                text = (chat?.peerName ?: "") + "-ը ուզում է գրել քեզ",
-                primary = "Ընդունել",
+                text = trf("{0}-ը ուզում է գրել քեզ", chat?.peerName ?: ""),
+                primary = tr("Ընդունել"),
                 onPrimary = { vm.acceptChat(chatId) },
-                secondary = "Արգելափակել",
+                secondary = tr("Արգելափակել"),
                 onSecondary = { vm.setBlocked(chatId, true) },
             )
         } else if (iBlocked) {
             NoticeBar(
-                text = "Դու արգելափակել ես այս մարդուն",
-                primary = "Ապաարգելափակել",
+                text = tr("Դու արգելափակել ես այս մարդուն"),
+                primary = tr("Ապաարգելափակել"),
                 onPrimary = { vm.setBlocked(chatId, false) },
             )
         } else Row(
@@ -941,9 +1010,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f).padding(start = 14.dp, bottom = 14.dp),
                 )
-                TextButton(onClick = { finishRecording(false) }) { Text("Չեղարկել") }
+                TextButton(onClick = { finishRecording(false) }) { Text(tr("Չեղարկել")) }
                 CircleAction(onClick = { finishRecording(true) }) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = tr("Ուղարկել"), tint = InkOnBrand)
                 }
             } else {
                 Box(
@@ -963,7 +1032,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         text = it.take(4000)
                         if (it.isNotBlank()) vm.typing(chatId)
                     },
-                    placeholder = { Text("Գրիր նամակ…") },
+                    placeholder = { Text(tr("Գրիր նամակ…")) },
                     maxLines = 5,
                     modifier = Modifier.weight(1f),
                     colors = TextFieldDefaults.colors(
@@ -974,7 +1043,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         disabledIndicatorColor = Color.Transparent,
                     ),
                 )
-                if (text.isBlank()) {
+                if (text.isBlank() && editing == null) {
                     CircleAction(onClick = {
                         val granted = ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) ==
                             PackageManager.PERMISSION_GRANTED
@@ -984,10 +1053,16 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     }
                 } else {
                     CircleAction(onClick = {
-                        vm.send(chatId, peerUid, text.trim())
+                        val e = editing
+                        if (e != null) {
+                            vm.editMessage(chatId, e, text)
+                            editing = null
+                        } else {
+                            vm.send(chatId, peerUid, text.trim())
+                        }
                         text = ""
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = tr("Ուղարկել"), tint = InkOnBrand)
                     }
                 }
             }
@@ -1034,12 +1109,12 @@ private fun ImageBody(m: Message) {
     if (bmp != null) {
         Image(
             bitmap = bmp,
-            contentDescription = "Նկար",
+            contentDescription = tr("Նկար"),
             contentScale = ContentScale.FillWidth,
             modifier = Modifier.width(240.dp).clip(RoundedCornerShape(14.dp)),
         )
     } else {
-        Text(text = "📷 Նկար", fontSize = 16.sp)
+        Text(text = tr("📷 Նկար"), fontSize = 16.sp)
     }
 }
 
@@ -1079,7 +1154,7 @@ private fun VoiceBody(m: Message, mine: Boolean) {
 private fun senderColor(key: String): Color {
     var h = 0
     for (c in key) h = (h * 31 + c.code) and 0x7fffffff
-    val dark = isSystemInDarkTheme()
+    val dark = isDark()
     val palette = if (dark) {
         listOf(Color(0xFFFFB23F), Color(0xFF8FA6FF), Color(0xFFFF8A80), Color(0xFF7BE0B0), Color(0xFFD7A6FF), Color(0xFF7FD6F5))
     } else {
@@ -1088,13 +1163,43 @@ private fun senderColor(key: String): Color {
     return palette[h % palette.size]
 }
 
+private fun systemLine(m: Message, actor: String): String {
+    if (m.kind == "call") {
+        return when (m.code) {
+            "call_done" -> (if (m.vid) "📹 " + tr("Տեսազանգ") else "📞 " + tr("Զանգ")) + " · " + formatDur(m.dur)
+            "call_missed" -> "📵 " + tr("Բաց թողնված զանգ")
+            "call_declined" -> "📵 " + tr("Մերժված զանգ")
+            "call_cancelled" -> "📵 " + tr("Չեղարկված զանգ")
+            else -> m.text
+        }
+    }
+    return when (m.code) {
+        "grp_created" -> trf("{0} ստեղծեց խումբը", actor)
+        "grp_added" -> trf("{0} ավելացրեց՝ {1}", actor, m.arg)
+        "grp_removed" -> trf("{0} հեռացրեց՝ {1}", actor, m.arg)
+        "grp_renamed" -> trf("{0} փոխեց խմբի անունը՝ «{1}»", actor, m.arg)
+        "grp_left" -> trf("{0} լքեց խումբը", actor)
+        else -> m.text
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, senderKey: String, onLong: () -> Unit) {
+private fun Bubble(
+    m: Message,
+    mine: Boolean,
+    peerRead: Long,
+    sender: String?,
+    senderKey: String,
+    myUid: String,
+    names: Map<String, String>,
+    peerName: String,
+    onLong: () -> Unit,
+) {
     if (m.kind == "call" || m.kind == "sys") {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(
-                text = m.text + "  " + formatTime(m.ts),
+                text = systemLine(m, names[m.from] ?: peerName) + "  " + formatTime(m.ts),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
@@ -1137,7 +1242,7 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, s
             }
             if (m.fwd && !m.deleted) {
                 Text(
-                    text = "↪ Փոխանցված",
+                    text = tr("↪ Փոխանցված"),
                     color = soft,
                     fontSize = 11.sp,
                     fontStyle = FontStyle.Italic,
@@ -1145,7 +1250,7 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, s
                 )
             }
             if (m.deleted) {
-                Text(text = "🚫 Նամակը ջնջված է", color = soft, fontSize = 15.sp, fontStyle = FontStyle.Italic)
+                Text(text = tr("🚫 Նամակը ջնջված է"), color = soft, fontSize = 15.sp, fontStyle = FontStyle.Italic)
             } else {
                 if (m.reply.isNotEmpty()) {
                     Column(
@@ -1155,9 +1260,18 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, s
                             .background(Color(0x22000000))
                             .padding(8.dp),
                     ) {
-                        Text(text = m.replyName, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ink)
                         Text(
-                            text = m.reply,
+                            text = when {
+                                m.replyFrom.isEmpty() -> m.replyName
+                                m.replyFrom == myUid -> tr("Դու")
+                                else -> names[m.replyFrom] ?: peerName
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = ink,
+                        )
+                        Text(
+                            text = replyText(m.reply),
                             fontSize = 13.sp,
                             color = soft,
                             maxLines = 2,
@@ -1187,6 +1301,10 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, s
                 }
             }
             Row(modifier = Modifier.align(Alignment.End), verticalAlignment = Alignment.CenterVertically) {
+                if (m.edited && !m.deleted) {
+                    Text(text = tr("փոխված"), fontSize = 11.sp, color = soft, fontStyle = FontStyle.Italic)
+                    Spacer(Modifier.width(5.dp))
+                }
                 Text(text = formatTime(m.ts), fontSize = 11.sp, color = soft)
                 if (mine) {
                     Spacer(Modifier.width(5.dp))

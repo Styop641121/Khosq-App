@@ -15,32 +15,34 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 object MediaUtil {
+    private fun decode(ctx: Context, uri: Uri, limit: Int): Bitmap? =
+        if (Build.VERSION.SDK_INT >= 28) {
+            val src = ImageDecoder.createSource(ctx.contentResolver, uri)
+            ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
+                val w = info.size.width
+                val h = info.size.height
+                val side = maxOf(w, h)
+                if (side > limit) {
+                    val k = limit.toFloat() / side
+                    decoder.setTargetSize(maxOf(1, (w * k).toInt()), maxOf(1, (h * k).toInt()))
+                }
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        } else {
+            val bounds = BitmapFactory.Options()
+            bounds.inJustDecodeBounds = true
+            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > limit * 5 / 4) sample *= 2
+            val opts = BitmapFactory.Options()
+            opts.inSampleSize = sample
+            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+        }
+
     /** Shrinks a photo to at most ~1280 px and about 700 KB so it fits inside one message. */
     fun compressImage(ctx: Context, uri: Uri): ByteArray? {
         return try {
-            val bmp: Bitmap? = if (Build.VERSION.SDK_INT >= 28) {
-                val src = ImageDecoder.createSource(ctx.contentResolver, uri)
-                ImageDecoder.decodeBitmap(src) { decoder, info, _ ->
-                    val w = info.size.width
-                    val h = info.size.height
-                    val side = maxOf(w, h)
-                    if (side > 1280) {
-                        val k = 1280f / side
-                        decoder.setTargetSize(maxOf(1, (w * k).toInt()), maxOf(1, (h * k).toInt()))
-                    }
-                    decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                }
-            } else {
-                val bounds = BitmapFactory.Options()
-                bounds.inJustDecodeBounds = true
-                ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-                var sample = 1
-                while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
-                val opts = BitmapFactory.Options()
-                opts.inSampleSize = sample
-                ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
-            }
-            if (bmp == null) return null
+            val bmp = decode(ctx, uri, 1280) ?: return null
             var quality = 80
             var out: ByteArray
             do {
@@ -50,6 +52,27 @@ object MediaUtil {
                 quality -= 10
             } while (out.size > 700_000 && quality >= 30)
             if (out.size > 900_000) null else out
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** A profile photo: the middle square of the picture, 256 x 256 px, about 15-30 KB. */
+    fun avatar(ctx: Context, uri: Uri): ByteArray? {
+        return try {
+            val bmp = decode(ctx, uri, 1024) ?: return null
+            val side = minOf(bmp.width, bmp.height)
+            val square = Bitmap.createBitmap(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side)
+            val small = Bitmap.createScaledBitmap(square, 256, 256, true)
+            var quality = 85
+            var out: ByteArray
+            do {
+                val bos = ByteArrayOutputStream()
+                small.compress(Bitmap.CompressFormat.JPEG, quality, bos)
+                out = bos.toByteArray()
+                quality -= 10
+            } while (out.size > 60_000 && quality >= 40)
+            out
         } catch (e: Exception) {
             null
         }

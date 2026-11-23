@@ -1,5 +1,9 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+import am.khosq.app.trf
+import am.khosq.app.membersText
+
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
@@ -102,22 +106,22 @@ fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> 
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(text = "Նոր խումբ", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Նոր խումբ"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
             OutlinedTextField(
                 value = title,
                 onValueChange = { v -> if (v.length <= 40) title = v },
-                label = { Text("Խմբի անունը") },
+                label = { Text(tr("Խմբի անունը")) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             if (contacts.isEmpty()) {
                 Text(
-                    text = "Խումբ ստեղծելու համար նախ պետք է ունենաս առնվազն մեկ ընդունված կոնտակտ։",
+                    text = tr("Խումբ ստեղծելու համար նախ պետք է ունենաս առնվազն մեկ ընդունված կոնտակտ։"),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
                 Text(
-                    text = "Ընտրիր անդամներին (" + picked.size + ")",
+                    text = trf("Ընտրիր անդամներին ({0})", picked.size.toString()),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                 )
@@ -137,7 +141,7 @@ fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> 
             val err = error
             if (err != null) Text(text = err, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
             GradientButton(
-                text = if (busy) "Ստեղծվում է…" else "Ստեղծել խումբը",
+                text = if (busy) tr("Ստեղծվում է…") else tr("Ստեղծել խումբը"),
                 enabled = !busy && title.isNotBlank() && picked.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
@@ -149,7 +153,7 @@ fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> 
                             onClose()
                             onOpen(id)
                         } else {
-                            error = e ?: "Չհաջողվեց"
+                            error = e ?: tr("Չհաջողվեց")
                         }
                     }
                 },
@@ -192,7 +196,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = chat.members.size.toString() + " անդամ",
+                        text = membersText(chat.members.size),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
                     )
@@ -204,28 +208,28 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                     OutlinedTextField(
                         value = newTitle,
                         onValueChange = { v -> if (v.length <= 40) newTitle = v },
-                        label = { Text("Խմբի նոր անունը") },
+                        label = { Text(tr("Խմբի նոր անունը")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { renaming = false }) { Text("Չեղարկել") }
+                        TextButton(onClick = { renaming = false }) { Text(tr("Չեղարկել")) }
                         TextButton(
                             enabled = newTitle.isNotBlank() && newTitle.trim() != chat.peerName,
                             onClick = {
                                 vm.renameGroup(chat.id, newTitle)
                                 renaming = false
                             },
-                        ) { Text("Պահպանել") }
+                        ) { Text(tr("Պահպանել")) }
                     }
                 } else {
-                    TextButton(onClick = { renaming = true }) { Text("✎  Փոխել անունը") }
+                    TextButton(onClick = { renaming = true }) { Text(tr("✎  Փոխել անունը")) }
                 }
             }
 
-            Text(text = "Անդամներ", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(text = tr("Անդամներ"), fontWeight = FontWeight.Bold, fontSize = 15.sp)
             for (uid in chat.members) {
-                val name = if (uid == me.uid) "Դու" else (chat.memberNames[uid] ?: "?")
+                val name = if (uid == me.uid) tr("Դու") else (chat.memberNames[uid] ?: "?")
                 val handle = chat.memberHandles[uid] ?: ""
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -241,7 +245,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                     }
                     if (uid in chat.admins) {
                         Text(
-                            text = "ադմին",
+                            text = tr("ադմին"),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
@@ -263,7 +267,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                 if (adding) {
                     if (candidates.isEmpty()) {
                         Text(
-                            text = "Բոլոր կոնտակտներդ արդեն խմբում են։",
+                            text = tr("Բոլոր կոնտակտներդ արդեն խմբում են։"),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp,
                         )
@@ -278,7 +282,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                         TextButton(onClick = {
                             adding = false
                             picked.clear()
-                        }) { Text("Չեղարկել") }
+                        }) { Text(tr("Չեղարկել")) }
                         TextButton(
                             enabled = picked.isNotEmpty(),
                             onClick = {
@@ -286,15 +290,15 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                                 picked.clear()
                                 adding = false
                             },
-                        ) { Text("Ավելացնել (" + picked.size + ")") }
+                        ) { Text(trf("Ավելացնել ({0})", picked.size.toString())) }
                     }
                 } else {
-                    TextButton(onClick = { adding = true }) { Text("+  Ավելացնել անդամ") }
+                    TextButton(onClick = { adding = true }) { Text(tr("+  Ավելացնել անդամ")) }
                 }
             }
 
             TextButton(onClick = { confirmLeave = true }) {
-                Text("Լքել խումբը", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                Text(tr("Լքել խումբը"), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -302,17 +306,17 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
     if (confirmLeave) {
         AlertDialog(
             onDismissRequest = { confirmLeave = false },
-            title = { Text("Լքե՞լ խումբը") },
-            text = { Text("Դու այլևս չես տեսնի այս խմբի նամակները։") },
+            title = { Text(tr("Լքե՞լ խումբը")) },
+            text = { Text(tr("Դու այլևս չես տեսնի այս խմբի նամակները։")) },
             confirmButton = {
                 TextButton(onClick = {
                     confirmLeave = false
                     vm.leaveGroup(chat)
                     onClose()
                     onLeft()
-                }) { Text("Լքել", color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("Լքել"), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Ոչ") } },
+            dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(tr("Ոչ")) } },
         )
     }
 }
@@ -332,9 +336,9 @@ fun ForwardSheet(vm: AppViewModel, message: Message, onClose: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(text = "Փոխանցել…", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Փոխանցել…"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
             if (targets.isEmpty()) {
-                Text(text = "Դեռ չկա զրույց, որին կարելի է փոխանցել։", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = tr("Դեռ չկա զրույց, որին կարելի է փոխանցել։"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Column(
                     modifier = Modifier
@@ -350,7 +354,7 @@ fun ForwardSheet(vm: AppViewModel, message: Message, onClose: () -> Unit) {
                 }
             }
             GradientButton(
-                text = if (picked.isEmpty()) "Ընտրիր զրույց" else "Ուղարկել (" + picked.size + ")",
+                text = if (picked.isEmpty()) tr("Ընտրիր զրույց") else trf("Ուղարկել ({0})", picked.size.toString()),
                 enabled = picked.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {

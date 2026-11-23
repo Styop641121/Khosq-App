@@ -1,6 +1,17 @@
 package am.khosq.app.data
 
-data class Profile(val uid: String, val handle: String, val name: String)
+/** pv = version of my photo (0 = no photo). about/hideSeen are my own settings. */
+data class Profile(
+    val uid: String,
+    val handle: String,
+    val name: String,
+    val about: String = "",
+    val hideSeen: Boolean = false,
+    val pv: Long = 0L,
+)
+
+/** What I know about one other person: last seen (0 = hidden or never), the "about" line, whether they hide it. */
+data class UserInfo(val seen: Long = 0L, val about: String = "", val hideSeen: Boolean = false)
 
 data class Chat(
     val id: String,
@@ -21,6 +32,8 @@ data class Chat(
     val memberNames: Map<String, String> = emptyMap(),
     val memberHandles: Map<String, String> = emptyMap(),
     val admins: List<String> = emptyList(),
+    val lastKind: String = "",
+    val pv: Map<String, Long> = emptyMap(),
 )
 
 data class Message(
@@ -37,6 +50,11 @@ data class Message(
     val deleted: Boolean = false,
     val reactions: Map<String, String> = emptyMap(),
     val fwd: Boolean = false,
+    val code: String = "",
+    val arg: String = "",
+    val vid: Boolean = false,
+    val edited: Boolean = false,
+    val replyFrom: String = "",
 )
 
 /** One line of the call history, seen from my side. dur = -1 means the call never connected. */

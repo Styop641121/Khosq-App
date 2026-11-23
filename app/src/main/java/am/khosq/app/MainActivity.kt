@@ -126,7 +126,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(boot) {
+    LaunchedEffect(boot is Boot.Ready) {
         if (boot is Boot.Ready) {
             KeepAliveService.start(ctx)
             val prefs = ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE)
@@ -164,7 +164,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(text = b.text, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                GradientButton(text = "Նորից փորձել", onClick = { vm.start() }, modifier = Modifier.fillMaxWidth())
+                GradientButton(text = tr("Նորից փորձել"), onClick = { vm.start() }, modifier = Modifier.fillMaxWidth())
             }
             is Boot.NeedSetup -> SetupScreen(vm)
             is Boot.Ready -> MainNav(vm, b.me)
@@ -196,8 +196,8 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
         AlertDialog(
             onDismissRequest = { done() },
-            title = { Text("Զանգի էկրան") },
-            text = { Text("Որ զանգի ժամանակ էկրանը ինքնուրույն վառվի, թույլ տուր KHOSQ-ին ցույց տալ ամբողջ էկրանով ծանուցումներ։") },
+            title = { Text(tr("Զանգի էկրան")) },
+            text = { Text(tr("Որ զանգի ժամանակ էկրանը ինքնուրույն վառվի, թույլ տուր KHOSQ-ին ցույց տալ ամբողջ էկրանով ծանուցումներ։")) },
             confirmButton = {
                 TextButton(onClick = {
                     done()
@@ -208,9 +208,9 @@ private fun Root(vm: AppViewModel = viewModel()) {
                     } catch (e: Exception) {
                         // the phone has no such screen
                     }
-                }) { Text("Թույլատրել") }
+                }) { Text(tr("Թույլատրել")) }
             },
-            dismissButton = { TextButton(onClick = { done() }) { Text("Ոչ հիմա") } },
+            dismissButton = { TextButton(onClick = { done() }) { Text(tr("Ոչ հիմա")) } },
         )
     }
 
@@ -220,10 +220,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
                 markBatteryAsked(ctx)
                 askBattery = false
             },
-            title = { Text("Նամակներ փակ հավելվածի ժամանակ") },
+            title = { Text(tr("Նամակներ փակ հավելվածի ժամանակ")) },
             text = {
                 Text(
-                    "Որ նամակները հասնեն նաև երբ հավելվածը փակ է, թույլ տուր KHOSQ-ին աշխատել ֆոնում (մարտկոցի խնայողությունից բացառել)։",
+                    tr("Որ նամակները հասնեն նաև երբ հավելվածը փակ է, թույլ տուր KHOSQ-ին աշխատել ֆոնում (մարտկոցի խնայողությունից բացառել)։"),
                 )
             },
             confirmButton = {
@@ -237,13 +237,13 @@ private fun Root(vm: AppViewModel = viewModel()) {
                     } catch (e: Exception) {
                         // the phone has no such screen
                     }
-                }) { Text("Թույլատրել") }
+                }) { Text(tr("Թույլատրել")) }
             },
             dismissButton = {
                 TextButton(onClick = {
                     markBatteryAsked(ctx)
                     askBattery = false
-                }) { Text("Ոչ հիմա") }
+                }) { Text(tr("Ոչ հիմա")) }
             },
         )
     }

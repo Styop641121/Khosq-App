@@ -1,5 +1,6 @@
 package am.khosq.app.data
 
+import am.khosq.app.tr
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.DocumentSnapshot
@@ -25,14 +26,52 @@ class Repository {
         val current = auth.currentUser
         if (current != null) return current.uid
         val result = auth.signInAnonymously().await()
-        return result.user?.uid ?: throw IllegalStateException("Մուտքը չհաջողվեց")
+        return result.user?.uid ?: throw IllegalStateException("sign-in failed")
     }
 
     suspend fun loadProfile(uid: String): Profile? {
         val d = db.collection("users").document(uid).get().await()
         if (!d.exists()) return null
         val handle = d.getString("handle") ?: return null
-        return Profile(uid, handle, d.getString("name") ?: handle)
+        return Profile(
+            uid = uid,
+            handle = handle,
+            name = d.getString("name") ?: handle,
+            about = d.getString("about") ?: "",
+            hideSeen = d.getBoolean("hideSeen") ?: false,
+            pv = d.getLong("pv") ?: 0L,
+        )
+    }
+
+    suspend fun loadPhoto(uid: String): ByteArray? {
+        val d = db.collection("photos").document(uid).get().await()
+        return d.getBlob("data")?.toBytes()
+    }
+
+    /** Saves my photo (about 20 KB) in its own document, so the often-changing "last seen" never drags it along. */
+    suspend fun savePhoto(uid: String, bytes: ByteArray, ver: Long) {
+        db.collection("photos").document(uid).set(hashMapOf<String, Any>("data" to Blob.fromBytes(bytes), "ts" to ver)).await()
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("pv" to ver), SetOptions.merge()).await()
+    }
+
+    suspend fun removePhoto(uid: String) {
+        db.collection("photos").document(uid).delete().await()
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("pv" to 0L), SetOptions.merge()).await()
+    }
+
+    fun saveMyInfo(uid: String, name: String, about: String) {
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("name" to name, "about" to about), SetOptions.merge())
+    }
+
+    fun setHideSeen(uid: String, on: Boolean) {
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("hideSeen" to on), SetOptions.merge())
+    }
+
+    /** Makes the chat documents say the same name and photo version as my profile. */
+    fun syncSelf(chatId: String, uid: String, name: String, pv: Long) {
+        db.collection("chats").document(chatId).update(
+            hashMapOf<String, Any>("names.$uid" to name, "pv.$uid" to pv),
+        )
     }
 
     /** Claims the handle and creates the profile in one step, so two people can never get the same ID. */
@@ -73,6 +112,7 @@ class Repository {
                 "handles" to mapOf(me.uid to me.handle, peer.uid to peer.handle),
                 "status" to "pending",
                 "requester" to me.uid,
+                "pv" to mapOf(me.uid to me.pv),
             )
             ref.set(data).await()
         }
@@ -110,6 +150,15 @@ class Repository {
         return out
     }
 
+    private fun longMap(raw: Any?): Map<String, Long> {
+        val out = HashMap<String, Long>()
+        val m = raw as? Map<*, *> ?: return out
+        for ((k, v) in m) {
+            if (k is String && v is Number) out[k] = v.toLong()
+        }
+        return out
+    }
+
     private fun toGroup(d: DocumentSnapshot, me: String): Chat? {
         val members = (d.get("members") as? List<*>)?.filterIsInstance<String>() ?: return null
         if (me !in members) return null
@@ -120,7 +169,7 @@ class Repository {
         return Chat(
             id = d.id,
             peerUid = d.id,
-            peerName = d.getString("title") ?: "Խումբ",
+            peerName = d.getString("title") ?: tr("Խումբ"),
             peerHandle = "",
             lastText = d.getString("lastText") ?: "",
             lastTs = d.getLong("lastTs") ?: 0L,
@@ -133,6 +182,8 @@ class Repository {
             memberNames = stringMap(d.get("names")),
             memberHandles = stringMap(d.get("handles")),
             admins = (d.get("admins") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+            lastKind = d.getString("lastKind") ?: "",
+            pv = longMap(d.get("pv")),
         )
     }
 
@@ -155,10 +206,13 @@ class Repository {
             unread = (unread?.get(me) as? Number)?.toLong() ?: 0L,
             peerRead = (read?.get(peer) as? Number)?.toLong() ?: 0L,
             peerTyping = ((d.get("typing") as? Map<*, *>)?.get(peer) as? Number)?.toLong() ?: 0L,
+            memberNames = stringMap(d.get("names")),
             status = d.getString("status") ?: "active",
             requester = d.getString("requester") ?: "",
             blockedBy = (d.get("blocked") as? Map<*, *>)?.entries
                 ?.filter { e -> e.value == true }?.mapNotNull { e -> e.key as? String } ?: emptyList(),
+            lastKind = d.getString("lastKind") ?: "",
+            pv = longMap(d.get("pv")),
         )
     }
 
@@ -236,6 +290,11 @@ class Repository {
                         deleted = d.getBoolean("deleted") ?: false,
                         reactions = readReactions(d.get("reactions")),
                         fwd = d.getBoolean("fwd") ?: false,
+                        code = d.getString("code") ?: "",
+                        arg = d.getString("arg") ?: "",
+                        vid = d.getBoolean("vid") ?: false,
+                        edited = d.getBoolean("edited") ?: false,
+                        replyFrom = d.getString("replyFrom") ?: "",
                     )
                 }
                 trySend(list)
@@ -253,10 +312,18 @@ class Repository {
         return out
     }
 
-    private fun preview(m: Message): String = when (m.kind) {
-        "img" -> "📷 Նկար"
-        "voice" -> "🎤 Ձայնային նամակ"
+    /** What is stored for a quoted message: the text, or a marker for a photo / voice message. */
+    private fun replyOf(m: Message): String = when (m.kind) {
+        "img" -> am.khosq.app.REPLY_IMG
+        "voice" -> am.khosq.app.REPLY_VOICE
         else -> m.text.take(80)
+    }
+
+    /** Short text kept in the chat document (older app versions show it as it is). Language-neutral kind goes to lastKind. */
+    private fun lastOf(kind: String, text: String): String = when (kind) {
+        "img" -> "📷"
+        "voice" -> "🎤"
+        else -> text.take(80)
     }
 
     fun setTyping(chatId: String, uid: String, on: Boolean) {
@@ -267,10 +334,16 @@ class Repository {
         db.collection("users").document(uid).set(hashMapOf<String, Any>("lastSeen" to FieldValue.serverTimestamp()), SetOptions.merge())
     }
 
-    fun userSeen(uid: String): Flow<Long> = callbackFlow {
-        val reg = db.collection("users").document(uid).addSnapshotListener { d, _ ->
+    /** Last seen (0 when the person hides it), the "about" line and the hide switch of one person. */
+    fun userInfo(uid: String): Flow<UserInfo> = callbackFlow {
+        val reg = db.collection("users").document(uid).addSnapshotListener { d, err ->
+            if (err != null) {
+                close(err)
+                return@addSnapshotListener
+            }
+            val hide = d?.getBoolean("hideSeen") ?: false
             val t = d?.getTimestamp("lastSeen", DocumentSnapshot.ServerTimestampBehavior.ESTIMATE)
-            trySend(t?.toDate()?.time ?: 0L)
+            trySend(UserInfo(if (hide) 0L else (t?.toDate()?.time ?: 0L), d?.getString("about") ?: "", hide))
         }
         awaitClose { reg.remove() }
     }
@@ -302,7 +375,6 @@ class Repository {
         others: List<String>,
         text: String,
         reply: Message? = null,
-        replyName: String = "",
         groupTitle: String = "",
     ) {
         val chat = db.collection("chats").document(chatId)
@@ -310,8 +382,8 @@ class Repository {
         val batch = db.batch()
         val body = hashMapOf<String, Any>("from" to me.uid, "text" to text, "ts" to FieldValue.serverTimestamp())
         if (reply != null) {
-            body["reply"] = preview(reply)
-            body["replyName"] = replyName
+            body["reply"] = replyOf(reply)
+            body["replyFrom"] = reply.from
         }
         batch.set(msg, body)
         batch.update(
@@ -319,6 +391,7 @@ class Repository {
             bump(
                 hashMapOf<String, Any>(
                     "lastText" to text,
+                    "lastKind" to "text",
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),
@@ -330,6 +403,15 @@ class Repository {
         }
     }
 
+    /** Changes the text of my own message. If it is the last message of the chat, the chat list changes too. */
+    fun editMessage(chatId: String, msgId: String, text: String, isLast: Boolean) {
+        val chat = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(chat.collection("messages").document(msgId), hashMapOf<String, Any>("text" to text, "edited" to true))
+        if (isLast) b.update(chat, hashMapOf<String, Any>("lastText" to text, "lastKind" to "text"))
+        b.commit()
+    }
+
     private fun pushMsg(chatId: String, me: Profile, groupTitle: String, text: String) {
         if (groupTitle.isEmpty()) am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, text)
         else am.khosq.app.push.PushClient.notify(chatId, "msg", groupTitle, me.name + ": " + text)
@@ -337,7 +419,7 @@ class Repository {
 
     /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
     fun sendMedia(chatId: String, me: Profile, others: List<String>, kind: String, bytes: ByteArray, dur: Int, groupTitle: String = "") {
-        val preview = if (kind == "img") "📷 Նկար" else "🎤 Ձայնային նամակ"
+        val preview = lastOf(kind, "")
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
@@ -357,6 +439,7 @@ class Repository {
             bump(
                 hashMapOf<String, Any>(
                     "lastText" to preview,
+                    "lastKind" to kind,
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),
@@ -382,7 +465,7 @@ class Repository {
         )
         val bytes = m.data
         if (bytes != null) body["data"] = Blob.fromBytes(bytes)
-        val prev = preview(m)
+        val prev = lastOf(m.kind, m.text)
         val b = db.batch()
         b.set(msg, body)
         b.update(
@@ -390,6 +473,7 @@ class Repository {
             bump(
                 hashMapOf<String, Any>(
                     "lastText" to prev,
+                    "lastKind" to (if (m.kind == "img" || m.kind == "voice") m.kind else "text"),
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),
@@ -403,8 +487,16 @@ class Repository {
 
     /* ---------- groups ---------- */
 
-    private fun sysLine(chatId: String, from: String, text: String): Map<String, Any> =
-        hashMapOf<String, Any>("from" to from, "text" to text, "kind" to "sys", "ts" to FieldValue.serverTimestamp())
+    /** A line like "Ani added Gor". It stores a code, and every phone writes it in its own language. */
+    private fun sysLine(from: String, code: String, arg: String = ""): Map<String, Any> =
+        hashMapOf<String, Any>(
+            "from" to from,
+            "text" to "",
+            "kind" to "sys",
+            "code" to code,
+            "arg" to arg,
+            "ts" to FieldValue.serverTimestamp(),
+        )
 
     /** Makes a new group chat. Members are my accepted contacts; I become its admin. */
     suspend fun createGroup(me: Profile, title: String, picks: List<Chat>): String {
@@ -420,6 +512,7 @@ class Repository {
             "title" to title,
             "members" to (listOf(me.uid) + picks.map { c -> c.peerUid }),
             "admins" to listOf(me.uid),
+            "pv" to mapOf(me.uid to me.pv),
             "names" to names,
             "handles" to handles,
             "status" to "active",
@@ -428,7 +521,7 @@ class Repository {
             "lastFrom" to me.uid,
         )
         ref.set(data).await()
-        ref.collection("messages").add(sysLine(ref.id, me.uid, me.name + " ստեղծեց խումբը")).await()
+        ref.collection("messages").add(sysLine(me.uid, "grp_created")).await()
         return ref.id
     }
 
@@ -446,7 +539,7 @@ class Repository {
         b.update(ref, upd)
         b.set(
             ref.collection("messages").document(),
-            sysLine(chatId, me.uid, me.name + " ավելացրեց՝ " + picks.joinToString(", ") { c -> c.peerName }),
+            sysLine(me.uid, "grp_added", picks.joinToString(", ") { c -> c.peerName }),
         )
         b.commit()
     }
@@ -455,7 +548,7 @@ class Repository {
         val ref = db.collection("chats").document(chatId)
         val b = db.batch()
         b.update(ref, "members", FieldValue.arrayRemove(uid), "admins", FieldValue.arrayRemove(uid))
-        b.set(ref.collection("messages").document(), sysLine(chatId, me.uid, me.name + " հեռացրեց՝ " + name))
+        b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_removed", name))
         b.commit()
     }
 
@@ -463,7 +556,7 @@ class Repository {
         val ref = db.collection("chats").document(chatId)
         val b = db.batch()
         b.update(ref, "title", title)
-        b.set(ref.collection("messages").document(), sysLine(chatId, me.uid, me.name + " փոխեց խմբի անունը՝ «" + title + "»"))
+        b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_renamed", title))
         b.commit()
     }
 
@@ -475,7 +568,7 @@ class Repository {
             upd["admins"] = chat.admins.filter { a -> a != me.uid }.ifEmpty { rest.take(1) }
         }
         val b = db.batch()
-        b.set(ref.collection("messages").document(), sysLine(chat.id, me.uid, me.name + " լքեց խումբը"))
+        b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_left"))
         b.update(ref, upd)
         b.commit()
     }

@@ -157,6 +157,7 @@ object CallManager {
         if (!::app.isInitialized) return
         if (listenedUid == uid) return
         listenedUid = uid
+        am.khosq.app.push.IceClient.refresh()
         incomingReg?.remove()
         incomingReg = db.collection("calls")
             .whereEqualTo("callee", uid)
@@ -204,6 +205,7 @@ object CallManager {
                 cameraOn = video,
             )
             isCaller = false
+            am.khosq.app.push.IceClient.refresh()
             startRinging()
             watchCall(d.id)
             return
@@ -266,6 +268,7 @@ object CallManager {
         if (!::app.isInitialized || _ui.value.phase != Phase.IDLE || peerUid.isEmpty()) return
         isCaller = true
         myUidCur = myUid
+        am.khosq.app.push.IceClient.refresh()
         val id = db.collection("calls").document().id
         _ui.value = CallUi(
             phase = Phase.OUTGOING,
@@ -309,7 +312,7 @@ object CallManager {
                                         docReady = true
                                         val a = if (myUid < peerUid) myUid + "_" + peerUid else peerUid + "_" + myUid
                                         am.khosq.app.push.PushClient.notify(
-                                            a, "call", myName, if (video) "Մուտքային տեսազանգ" else "Մուտքային զանգ",
+                                            a, "call", myName, if (video) "📹" else "📞",
                                         )
                                         for (c in outCand) pushCandidate(c)
                                         outCand.clear()
@@ -370,7 +373,7 @@ object CallManager {
 
     // ---------------------------------------------------------------- WebRTC
 
-    private fun iceServers(): List<PeerConnection.IceServer> = listOf(
+    private fun fallbackIce(): List<PeerConnection.IceServer> = listOf(
         PeerConnection.IceServer.builder("stun:stun.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("stun:stun1.l.google.com:19302").createIceServer(),
         PeerConnection.IceServer.builder("turn:openrelay.metered.ca:80")
@@ -380,6 +383,12 @@ object CallManager {
         PeerConnection.IceServer.builder("turn:openrelay.metered.ca:443?transport=tcp")
             .setUsername("openrelayproject").setPassword("openrelayproject").createIceServer(),
     )
+
+    /** Cloudflare's TURN when we have fresh settings from the Worker, the free public servers otherwise. */
+    private fun iceServers(): List<PeerConnection.IceServer> {
+        val own = am.khosq.app.push.IceClient.fresh()
+        return if (own.isEmpty()) fallbackIce() else own + fallbackIce().take(2)
+    }
 
     private fun buildPeer(video: Boolean) {
         remoteSet = false
@@ -635,16 +644,17 @@ object CallManager {
     private fun logCall(cur: CallUi, note: String?) {
         if (myUidCur.isEmpty() || cur.peerUid.isEmpty()) return
         var missed = false
-        val text: String = if (cur.startedAt > 0L) {
-            val sec = ((System.currentTimeMillis() - cur.startedAt) / 1000).toInt().coerceAtLeast(0)
-            (if (cur.video) "📹 Տեսազանգ · " else "📞 Զանգ · ") + am.khosq.app.ui.formatDur(sec)
+        var sec = 0
+        val code: String = if (cur.startedAt > 0L) {
+            sec = ((System.currentTimeMillis() - cur.startedAt) / 1000).toInt().coerceAtLeast(0)
+            "call_done"
         } else when (note) {
-            null -> "📵 Չեղարկված զանգ"
+            null -> "call_cancelled"
             "Չպատասխանեց" -> {
                 missed = true
-                "📵 Բաց թողնված զանգ"
+                "call_missed"
             }
-            "Զանգը մերժվեց" -> "📵 Մերժված զանգ"
+            "Զանգը մերժվեց" -> "call_declined"
             else -> return
         }
         val a = myUidCur
@@ -652,14 +662,28 @@ object CallManager {
         val chatId = if (a < b) a + "_" + b else b + "_" + a
         val chat = db.collection("chats").document(chatId)
         val batch = db.batch()
+        // The line stores only a code; every phone writes it in its own language.
         batch.set(
             chat.collection("messages").document(),
-            hashMapOf<String, Any>("from" to a, "text" to text, "kind" to "call", "ts" to com.google.firebase.firestore.FieldValue.serverTimestamp()),
+            hashMapOf<String, Any>(
+                "from" to a,
+                "text" to "",
+                "kind" to "call",
+                "code" to code,
+                "vid" to cur.video,
+                "dur" to sec.toLong(),
+                "ts" to com.google.firebase.firestore.FieldValue.serverTimestamp(),
+            ),
         )
         if (missed) {
             batch.update(
                 chat,
-                hashMapOf<String, Any>("lastText" to text, "lastTs" to System.currentTimeMillis(), "lastFrom" to a),
+                hashMapOf<String, Any>(
+                    "lastText" to "📵",
+                    "lastKind" to "call_missed",
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to a,
+                ),
             )
         }
         batch.commit()

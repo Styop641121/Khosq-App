@@ -1,6 +1,13 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppTheme
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -49,9 +56,38 @@ private val KhosqTypography = Typography(
     bodyLarge = TextStyle(fontSize = 16.sp),
 )
 
+/** The colour mode the person chose in the settings: light, dark, or the same as the phone. */
 @Composable
-fun KhosqTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun isDark(): Boolean = when (AppTheme.mode) {
+    "dark" -> true
+    "light" -> false
+    else -> isSystemInDarkTheme()
+}
+
+private fun findActivity(c: Context): Activity? {
+    var x: Context? = c
+    while (x is ContextWrapper) {
+        if (x is Activity) return x
+        x = x.baseContext
+    }
+    return null
+}
+
+@Composable
+fun KhosqTheme(dark: Boolean = isDark(), content: @Composable () -> Unit) {
     val scheme = if (dark) DarkColors else LightColors
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        // the clock and battery icons must stay readable when the chosen theme differs from the phone's
+        SideEffect {
+            val w = findActivity(view.context)?.window
+            if (w != null) {
+                val c = WindowCompat.getInsetsController(w, view)
+                c.isAppearanceLightStatusBars = !dark
+                c.isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
     MaterialTheme(colorScheme = scheme, typography = KhosqTypography) {
         // Text outside a Material surface would otherwise default to black.
         CompositionLocalProvider(LocalContentColor provides scheme.onBackground) {
@@ -62,7 +98,7 @@ fun KhosqTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
 
 @Composable
 fun backgroundBrush(): Brush =
-    if (isSystemInDarkTheme()) {
+    if (isDark()) {
         Brush.verticalGradient(listOf(Color(0xFF16205F), Color(0xFF090C22), Color(0xFF1E1040)))
     } else {
         Brush.verticalGradient(listOf(Color(0xFFE4E8FF), Color(0xFFF6F1E9), Color(0xFFFFE9CF)))

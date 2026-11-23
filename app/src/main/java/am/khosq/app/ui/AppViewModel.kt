@@ -1,9 +1,14 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+import am.khosq.app.trf
+
 import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
+import am.khosq.app.data.ProfileStore
+import am.khosq.app.data.UserInfo
 import am.khosq.app.data.Repository
 import am.khosq.app.data.Story
 import am.khosq.app.AppState
@@ -54,8 +59,10 @@ class AppViewModel : ViewModel() {
     private val _replyTo = MutableStateFlow<Message?>(null)
     val replyTo: StateFlow<Message?> = _replyTo.asStateFlow()
 
-    private val _peerSeen = MutableStateFlow(0L)
-    val peerSeen: StateFlow<Long> = _peerSeen.asStateFlow()
+    private val _peerInfo = MutableStateFlow(UserInfo())
+    val peerInfo: StateFlow<UserInfo> = _peerInfo.asStateFlow()
+
+    private val healed = HashSet<String>()
 
     private var seenJob: Job? = null
     private var beatJob: Job? = null
@@ -89,22 +96,27 @@ class AppViewModel : ViewModel() {
         beatJob?.cancel()
         beatJob = viewModelScope.launch {
             while (true) {
-                if (AppState.inForeground) repo.touchSeen(p.uid)
+                val cur = (_boot.value as? Boot.Ready)?.me
+                if (AppState.inForeground && cur != null && !cur.hideSeen) repo.touchSeen(p.uid)
                 delay(45_000L)
             }
         }
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
+        ProfileStore.want(viewModelScope, repo, p.uid, p.pv)
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)
-                .resilient("Զրույցներ")
-                .collect { _chats.value = it }
+                .resilient(tr("Զրույցներ"))
+                .collect { list ->
+                    _chats.value = list
+                    syncPeople(list)
+                }
         }
         callsJob?.cancel()
         callsJob = viewModelScope.launch {
             repo.callHistory(p.uid)
-                .resilient("Զանգեր")
+                .resilient(tr("Զանգեր"))
                 .collect { _calls.value = it }
         }
         storiesJob?.cancel()
@@ -113,7 +125,7 @@ class AppViewModel : ViewModel() {
                 repo.storiesForMe(p.uid).onStart { emit(emptyList<Story>()) },
                 repo.myStories(p.uid).onStart { emit(emptyList<Story>()) },
             ) { a, b -> (a + b).distinctBy { st -> st.id } }
-                .resilient("Սթորիներ")
+                .resilient(tr("Սթորիներ"))
                 .collect { list ->
                     _stories.value = list
                     val now = System.currentTimeMillis()
@@ -122,6 +134,27 @@ class AppViewModel : ViewModel() {
                     }
                 }
         }
+    }
+
+    /**
+     * Downloads the photos of the people in my chats, and makes sure every chat shows my current name and photo
+     * (this is also how a new name or photo reaches the others).
+     */
+    private fun syncPeople(list: List<Chat>) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        // the newest photo version anyone's chats know about (a chat that was not updated yet may still say an older one)
+        val best = HashMap<String, Long>()
+        for (c in list) {
+            val people = if (c.isGroup) c.members else listOf(c.peerUid)
+            for (m in people) {
+                if (m != me.uid) best[m] = maxOf(best[m] ?: 0L, c.pv[m] ?: 0L)
+            }
+            val stale = c.memberNames[me.uid] != me.name || (c.pv[me.uid] ?: 0L) != me.pv
+            if (stale && healed.add(c.id + "|" + me.name + "|" + me.pv)) {
+                repo.syncSelf(c.id, me.uid, me.name, me.pv)
+            }
+        }
+        for ((u, v) in best) ProfileStore.want(viewModelScope, repo, u, v)
     }
 
     /**
@@ -144,7 +177,7 @@ class AppViewModel : ViewModel() {
                 repo.register(uid, handle, name)
                 ready(Profile(uid, handle, name))
             } catch (e: Exception) {
-                onError(if (isTaken(e)) "Այս ID-ն արդեն զբաղված է" else describe(e))
+                onError(if (isTaken(e)) tr("Այս ID-ն արդեն զբաղված է") else describe(e))
             }
         }
     }
@@ -154,16 +187,16 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me
         val handle = handleRaw.trim().lowercase().removePrefix("@")
         if (me == null || handle.isEmpty()) {
-            onDone(null, "Գրիր ընկերոջդ ID-ն")
+            onDone(null, tr("Գրիր ընկերոջդ ID-ն"))
             return
         }
         viewModelScope.launch {
             try {
                 val peer = repo.findByHandle(handle)
                 if (peer == null) {
-                    onDone(null, "Այդպիսի ID չի գտնվել")
+                    onDone(null, tr("Այդպիսի ID չի գտնվել"))
                 } else if (peer.uid == me.uid) {
-                    onDone(null, "Սա քո սեփական ID-ն է")
+                    onDone(null, tr("Սա քո սեփական ID-ն է"))
                 } else {
                     onDone(repo.startChat(me, peer), null)
                 }
@@ -177,18 +210,23 @@ class AppViewModel : ViewModel() {
         messagesJob?.cancel()
         _messages.value = emptyList()
         _replyTo.value = null
-        _peerSeen.value = 0L
+        _peerInfo.value = UserInfo()
         seenJob?.cancel()
         val peer = if (id.contains("_")) id.split("_").firstOrNull { p -> p != uid } else null
         if (peer != null) {
             seenJob = viewModelScope.launch {
-                repo.userSeen(peer).catch { }.collect { t -> _peerSeen.value = t }
+                repo.userInfo(peer)
+                    .retryWhen { _, _ ->
+                        delay(5_000L)
+                        true
+                    }
+                    .collect { info -> _peerInfo.value = info }
             }
         }
         repo.markRead(id, uid)
         messagesJob = viewModelScope.launch {
             repo.messages(id)
-                .resilient("Նամակներ")
+                .resilient(tr("Նամակներ"))
                 .collect { list ->
                     _messages.value = list
                     val last = list.lastOrNull()
@@ -219,14 +257,7 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         if (text.isBlank()) return
         val r = _replyTo.value
-        val chat = _chats.value.firstOrNull { c -> c.id == chatId }
-        val rn = when {
-            r == null -> ""
-            r.from == me.uid -> "Դու"
-            chat != null && chat.isGroup -> chat.memberNames[r.from] ?: ""
-            else -> chat?.peerName ?: ""
-        }
-        repo.send(chatId, me, recipients(chatId, peerUid), text, r, rn, groupTitle(chatId))
+        repo.send(chatId, me, recipients(chatId, peerUid), text, r, groupTitle(chatId))
         _replyTo.value = null
         lastTypingSent = 0L
         repo.setTyping(chatId, me.uid, false)
@@ -254,6 +285,14 @@ class AppViewModel : ViewModel() {
     fun react(chatId: String, m: Message, emoji: String) {
         val current = m.reactions[uid]
         repo.react(chatId, m.id, uid, if (current == emoji) null else emoji)
+    }
+
+    /** Changes the text of one of my own messages. */
+    fun editMessage(chatId: String, m: Message, text: String) {
+        val t = text.trim()
+        if (m.from != uid || m.kind != "text" || t.isEmpty() || t == m.text) return
+        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" }
+        repo.editMessage(chatId, m.id, t, lastReal?.id == m.id)
     }
 
     fun deleteMessage(chatId: String, m: Message) {
@@ -289,7 +328,50 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         val chat = _chats.value.firstOrNull { c -> !c.isGroup && c.peerUid == story.owner } ?: return
         if (text.isBlank()) return
-        repo.send(chat.id, me, listOf(story.owner), "📖 Սթորի՝ " + text.trim())
+        repo.send(chat.id, me, listOf(story.owner), "📖 " + text.trim())
+    }
+
+    /* ---------- my profile ---------- */
+
+    private fun updateMe(f: (Profile) -> Profile) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        _boot.value = Boot.Ready(f(me))
+        syncPeople(_chats.value)
+    }
+
+    fun saveProfile(name: String, about: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        val n = name.trim().take(30).ifEmpty { me.name }
+        val a = about.trim().take(140)
+        repo.saveMyInfo(me.uid, n, a)
+        updateMe { p -> p.copy(name = n, about = a) }
+    }
+
+    /** bytes = null removes the photo. */
+    fun setPhoto(bytes: ByteArray?) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        viewModelScope.launch {
+            try {
+                if (bytes == null) {
+                    repo.removePhoto(me.uid)
+                    ProfileStore.clearLocal(me.uid)
+                    updateMe { p -> p.copy(pv = 0L) }
+                } else {
+                    val ver = System.currentTimeMillis()
+                    ProfileStore.setLocal(me.uid, bytes, ver)
+                    repo.savePhoto(me.uid, bytes, ver)
+                    updateMe { p -> p.copy(pv = ver) }
+                }
+            } catch (e: Exception) {
+                _notice.value = describe(e)
+            }
+        }
+    }
+
+    fun setHideSeen(on: Boolean) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.setHideSeen(me.uid, on)
+        updateMe { p -> p.copy(hideSeen = on) }
     }
 
     /** Chats a message can be forwarded to: accepted, not blocked one-to-one chats and my groups. */
@@ -355,12 +437,12 @@ class AppViewModel : ViewModel() {
         val m = e.message ?: e.toString()
         return when {
             m.contains("PERMISSION_DENIED") ->
-                "Firestore-ի անվտանգության կանոնները դեռ չեն տեղադրված (Rules)։"
+                tr("Firestore-ի անվտանգության կանոնները դեռ չեն տեղադրված (Rules)։")
             m.contains("restricted", ignoreCase = true) || m.contains("OPERATION_NOT_ALLOWED") ->
-                "Firebase-ում Anonymous մուտքը միացված չէ։"
+                tr("Firebase-ում Anonymous մուտքը միացված չէ։")
             m.contains("network", ignoreCase = true) || m.contains("UNAVAILABLE") ->
-                "Ինտերնետ կապ չկա։"
-            else -> "Սխալ՝ $m"
+                tr("Ինտերնետ կապ չկա։")
+            else -> trf("Սխալ՝ {0}", m)
         }
     }
 }

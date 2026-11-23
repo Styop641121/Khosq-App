@@ -1,5 +1,7 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Story
 import android.graphics.BitmapFactory
@@ -104,7 +106,7 @@ fun StoriesRail(stories: List<Story>, me: Profile, onOpen: (String) -> Unit, onA
     ) {
         item {
             StoryTile(
-                label = "Իմ սթորին",
+                label = tr("Իմ սթորին"),
                 name = me.name,
                 seed = me.uid,
                 ring = if (mine.isEmpty()) 0 else 1,
@@ -254,7 +256,7 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
                         if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
                     }
                     if (bmp != null) {
-                        Image(bitmap = bmp, contentDescription = "Սթորի", contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+                        Image(bitmap = bmp, contentDescription = tr("Սթորի"), contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
                     }
                     if (story.text.isNotEmpty()) {
                         Text(
@@ -302,7 +304,7 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
-                            text = if (isMine) "Իմ սթորին" else story.ownerName,
+                            text = if (isMine) tr("Իմ սթորին") else story.ownerName,
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                         )
@@ -331,14 +333,14 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
                         TextButton(onClick = {
                             vm.deleteStory(story.id)
                             if (list.size <= 1) onClose()
-                        }) { Text(text = "Ջնջել", color = Color.White) }
+                        }) { Text(text = tr("Ջնջել"), color = Color.White) }
                     }
                 } else {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextField(
                             value = reply,
                             onValueChange = { reply = it.take(500) },
-                            placeholder = { Text("Պատասխանել սթորիին…", color = Color(0xCCFFFFFF)) },
+                            placeholder = { Text(tr("Պատասխանել սթորիին…"), color = Color(0xCCFFFFFF)) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions.Default,
                             textStyle = TextStyle(color = Color.White),
@@ -398,7 +400,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                     photo = bytes
                     mode = "img"
                 } else {
-                    error = "Այս նկարը չհաջողվեց բացել"
+                    error = tr("Այս նկարը չհաջողվեց բացել")
                 }
             }
         }
@@ -416,7 +418,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text(text = "Նոր սթորի", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+            Text(text = tr("Նոր սթորի"), fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
 
             Box(
                 modifier = Modifier
@@ -432,7 +434,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                         onValueChange = { text = it.take(280) },
                         placeholder = {
                             Text(
-                                "Գրիր քո մտքերը…",
+                                tr("Գրիր քո մտքերը…"),
                                 color = Color(0xCCFFFFFF),
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth(),
@@ -459,7 +461,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                         if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
                     }
                     if (bmp != null) {
-                        Image(bitmap = bmp, contentDescription = "Նկար", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                        Image(bitmap = bmp, contentDescription = tr("Նկար"), contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     }
                 }
             }
@@ -483,7 +485,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                 OutlinedTextField(
                     value = caption,
                     onValueChange = { caption = it.take(120) },
-                    label = { Text("Մակագրություն (ըստ ցանկության)") },
+                    label = { Text(tr("Մակագրություն (ըստ ցանկության)")) },
                     singleLine = true,
                     shape = RoundedCornerShape(17.dp),
                     modifier = Modifier.fillMaxWidth(),
@@ -491,28 +493,28 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = { mode = "txt" }, modifier = Modifier.weight(1f)) { Text("Aa Տեքստ") }
+                TextButton(onClick = { mode = "txt" }, modifier = Modifier.weight(1f)) { Text(tr("Aa Տեքստ")) }
                 TextButton(
                     onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     modifier = Modifier.weight(1f),
-                ) { Text("📷 Նկար") }
+                ) { Text(tr("📷 Նկար")) }
             }
 
             val e = error
             if (e != null) Text(text = e, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
 
             Text(
-                text = "Սթորին 24 ժամ կերևա քո զրույցների մարդկանց։",
+                text = tr("Սթորին 24 ժամ կերևա քո զրույցների մարդկանց։"),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 13.sp,
             )
             GradientButton(
-                text = "Հրապարակել",
+                text = tr("Հրապարակել"),
                 modifier = Modifier.fillMaxWidth(),
                 onClick = {
                     if (mode == "txt") {
                         if (text.isBlank()) {
-                            error = "Գրիր տեքստ կամ ընտրիր նկար"
+                            error = tr("Գրիր տեքստ կամ ընտրիր նկար")
                         } else {
                             vm.postStory("txt", text.trim(), bg, null)
                             onClose()
@@ -520,7 +522,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                     } else {
                         val p = photo
                         if (p == null) {
-                            error = "Ընտրիր նկար"
+                            error = tr("Ընտրիր նկար")
                         } else {
                             vm.postStory("img", caption.trim(), bg, p)
                             onClose()

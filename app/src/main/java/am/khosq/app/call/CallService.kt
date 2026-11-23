@@ -1,5 +1,7 @@
 package am.khosq.app.call
 
+import am.khosq.app.tr
+
 import am.khosq.app.MainActivity
 import am.khosq.app.R
 import android.app.Notification
@@ -31,7 +33,7 @@ class CallService : Service() {
         super.onCreate()
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(
-            NotificationChannel(CH_ACTIVE, "Ընթացիկ զանգ", NotificationManager.IMPORTANCE_LOW),
+            NotificationChannel(CH_ACTIVE, tr("Ընթացիկ զանգ"), NotificationManager.IMPORTANCE_LOW),
         )
         val ui = CallManager.ui.value
         val n = build(ui.peerName, ui.video)
@@ -73,11 +75,11 @@ class CallService : Service() {
         return NotificationCompat.Builder(this, CH_ACTIVE)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(if (name.isEmpty()) "KHOSQ" else name)
-            .setContentText(if (video) "Տեսազանգ" else "Զանգ")
+            .setContentText(if (video) tr("Տեսազանգ") else tr("Զանգ"))
             .setContentIntent(open)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
-            .addAction(0, "Ավարտել", hang)
+            .addAction(0, tr("Ավարտել"), hang)
             .build()
     }
 

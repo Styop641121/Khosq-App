@@ -1,8 +1,11 @@
 package am.khosq.app.ui
 
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import am.khosq.app.data.ProfileStore
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
@@ -47,7 +50,7 @@ private fun avatarShape(k: Int): Shape = when (k) {
     else -> RoundedCornerShape(30)
 }
 
-/** The first letter on one of six shapes, picked from the ID, so the same person always looks the same. */
+/** The person's photo, or the first letter on one of six shapes picked from the ID, so the same person always looks the same. */
 @Composable
 fun Avatar(name: String, seed: String, size: Dp = 52.dp, modifier: Modifier = Modifier, circle: Boolean = false) {
     var h = 0
@@ -63,16 +66,26 @@ fun Avatar(name: String, seed: String, size: Dp = 52.dp, modifier: Modifier = Mo
         4 -> { brush = Brush.linearGradient(listOf(Color(0xFF1E2878), Color(0xFF0B1237))); ink = Color(0xFFFFCB52) }
         else -> { brush = Brush.linearGradient(listOf(Color(0xFF9DB0FF), Color(0xFF6A7CFF))); ink = Color(0xFF0B1230) }
     }
+    val photo = ProfileStore.photos[seed]
     Box(
         modifier = modifier.size(size).clip(if (circle) CircleShape else avatarShape(k)).background(brush),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = name.trim().take(1).uppercase(),
-            color = ink,
-            fontWeight = FontWeight.Bold,
-            fontSize = (size.value * 0.42f).sp,
-        )
+        if (photo != null) {
+            Image(
+                bitmap = photo,
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size),
+            )
+        } else {
+            Text(
+                text = name.trim().take(1).uppercase(),
+                color = ink,
+                fontWeight = FontWeight.Bold,
+                fontSize = (size.value * 0.42f).sp,
+            )
+        }
     }
 }
 
@@ -93,7 +106,7 @@ fun GradientButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
 
 @Composable
 fun BrandTitle(size: TextUnit = 22.sp) {
-    val colors = if (isSystemInDarkTheme()) BrandColors else listOf(Color(0xFF2F33C4), Color(0xFFB4308A), Color(0xFFE5483F))
+    val colors = if (isDark()) BrandColors else listOf(Color(0xFF2F33C4), Color(0xFFB4308A), Color(0xFFE5483F))
     Text(
         text = "KHOSQ",
         style = TextStyle(

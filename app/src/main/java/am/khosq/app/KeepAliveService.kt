@@ -50,7 +50,7 @@ class KeepAliveService : Service() {
         val n: Notification = NotificationCompat.Builder(this, CH_SERVICE)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle("KHOSQ")
-            .setContentText("Աշխատում է. նամակները կհասնեն")
+            .setContentText(tr("Աշխատում է. նամակները կհասնեն"))
             .setContentIntent(open)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -106,13 +106,13 @@ class KeepAliveService : Service() {
         val n = NotificationCompat.Builder(this, CH_CALL)
             .setSmallIcon(R.drawable.ic_stat)
             .setContentTitle(name)
-            .setContentText(if (video) "Մուտքային տեսազանգ" else "Մուտքային զանգ")
+            .setContentText(if (video) tr("Մուտքային տեսազանգ") else tr("Մուտքային զանգ"))
             .setContentIntent(tap)
             .setFullScreenIntent(tap, true)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setPriority(NotificationCompat.PRIORITY_MAX)
-            .addAction(0, "Մերժել", decline)
+            .addAction(0, tr("Մերժել"), decline)
             .build()
         try {
             NotificationManagerCompat.from(this).notify(ID_CALL, n)
@@ -161,8 +161,9 @@ class KeepAliveService : Service() {
     private fun showMessage(d: DocumentSnapshot, me: String) {
         val members = d.get("members") as? List<*> ?: return
         val names = d.get("names") as? Map<*, *>
-        val last = d.getString("lastText") ?: return
-        if (last.isEmpty()) return
+        val raw = d.getString("lastText") ?: return
+        if (raw.isEmpty()) return
+        val last = previewOf(d.getString("lastKind") ?: "", raw)
         val name: String
         val text: String
         if (d.getBoolean("group") == true) {
@@ -223,10 +224,10 @@ class KeepAliveService : Service() {
 
         fun createChannels(c: Context) {
             val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            val svc = NotificationChannel(CH_SERVICE, "Աշխատանք ֆոնում", NotificationManager.IMPORTANCE_LOW)
+            val svc = NotificationChannel(CH_SERVICE, tr("Աշխատանք ֆոնում"), NotificationManager.IMPORTANCE_LOW)
             svc.setShowBadge(false)
-            val msg = NotificationChannel(CH_MSG, "Նամակներ", NotificationManager.IMPORTANCE_HIGH)
-            val call = NotificationChannel(CH_CALL, "Զանգեր", NotificationManager.IMPORTANCE_HIGH)
+            val msg = NotificationChannel(CH_MSG, tr("Նամակներ"), NotificationManager.IMPORTANCE_HIGH)
+            val call = NotificationChannel(CH_CALL, tr("Զանգեր"), NotificationManager.IMPORTANCE_HIGH)
             call.setSound(null, null)
             call.enableVibration(false)
             nm.createNotificationChannel(call)

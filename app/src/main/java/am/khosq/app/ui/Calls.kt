@@ -1,5 +1,8 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+import am.khosq.app.trf
+
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
 import am.khosq.app.data.CallRecord
@@ -55,19 +58,19 @@ private fun callTime(ts: Long): String {
     val days = (now.get(Calendar.YEAR) * 366 + now.get(Calendar.DAY_OF_YEAR)) -
         (then.get(Calendar.YEAR) * 366 + then.get(Calendar.DAY_OF_YEAR))
     return when (days) {
-        0 -> "Այսօր " + formatTime(ts)
-        1 -> "Երեկ " + formatTime(ts)
+        0 -> trf("Այսօր {0}", formatTime(ts))
+        1 -> trf("Երեկ {0}", formatTime(ts))
         else -> SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(ts))
     }
 }
 
 private fun callLabel(r: CallRecord): String = when {
-    r.answered -> if (r.dur >= 0) formatDur(r.dur) else "Պատասխանվել է"
-    r.outgoing && r.state == "declined" -> "Մերժվեց"
-    r.outgoing && r.state == "missed" -> "Չպատասխանեց"
-    r.outgoing -> "Չեղարկված"
-    r.state == "declined" -> "Մերժված"
-    else -> "Բաց թողնված"
+    r.answered -> if (r.dur >= 0) formatDur(r.dur) else tr("Պատասխանվել է")
+    r.outgoing && r.state == "declined" -> tr("Մերժվեց")
+    r.outgoing && r.state == "missed" -> tr("Չպատասխանեց")
+    r.outgoing -> tr("Չեղարկված")
+    r.state == "declined" -> tr("Մերժված")
+    else -> tr("Բաց թողնված")
 }
 
 /** The "Զանգեր" tab: every call, newest first. Tap a row to open the chat, tap the round icon to call back. */
@@ -107,10 +110,10 @@ fun CallsTab(me: Profile, calls: List<CallRecord>, chats: List<Chat>, onOpenChat
                 tint = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.size(16.dp))
-            Text(text = "Զանգեր դեռ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Զանգեր դեռ չկան"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.size(6.dp))
             Text(
-                text = "Զանգիր ընկերոջդ զրույցի վերևի կոճակով, և պատմությունը կերևա այստեղ։",
+                text = tr("Զանգիր ընկերոջդ զրույցի վերևի կոճակով, և պատմությունը կերևա այստեղ։"),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -124,7 +127,7 @@ fun CallsTab(me: Profile, calls: List<CallRecord>, chats: List<Chat>, onOpenChat
     ) {
         items(calls, key = { r -> r.id }) { rec ->
             val chat = byPeer[rec.peerUid]
-            val name = chat?.peerName ?: rec.peerName.ifEmpty { "Անհայտ" }
+            val name = chat?.peerName ?: rec.peerName.ifEmpty { tr("Անհայտ") }
             val canCall = chat != null && chat.status == "active" && chat.blockedBy.isEmpty()
             CallRow(
                 rec = rec,
@@ -175,7 +178,7 @@ private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () 
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(
-                    text = (if (rec.video) "Տեսազանգ · " else "") + callLabel(rec) + " · " + callTime(rec.ts),
+                    text = (if (rec.video) tr("Տեսազանգ") + " · " else "") + callLabel(rec) + " · " + callTime(rec.ts),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp,
                     maxLines = 1,
@@ -190,7 +193,7 @@ private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () 
                 size = 42.dp,
                 bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                 tint = MaterialTheme.colorScheme.primary,
-                description = if (rec.video) "Տեսազանգ" else "Զանգ",
+                description = if (rec.video) tr("Տեսազանգ") else tr("Զանգ"),
             )
         }
     }

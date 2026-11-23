@@ -1,5 +1,8 @@
 package am.khosq.app.ui
 
+import am.khosq.app.tr
+import am.khosq.app.callNote
+
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
 import am.khosq.app.call.Phase
@@ -164,11 +167,11 @@ fun CallOverlay() {
     }
 
     val status = when (s.phase) {
-        Phase.OUTGOING -> "Զանգում է…"
-        Phase.INCOMING -> if (s.video) "Մուտքային տեսազանգ" else "Մուտքային զանգ"
-        Phase.CONNECTING -> "Միանում է…"
+        Phase.OUTGOING -> tr("Զանգում է…")
+        Phase.INCOMING -> if (s.video) tr("Մուտքային տեսազանգ") else tr("Մուտքային զանգ")
+        Phase.CONNECTING -> tr("Միանում է…")
         Phase.CONNECTED -> formatDur(((now - s.startedAt) / 1000).toInt().coerceAtLeast(0))
-        Phase.ENDED -> if (s.note.isEmpty()) "Զանգն ավարտվեց" else s.note
+        Phase.ENDED -> if (s.note.isEmpty()) tr("Զանգն ավարտվեց") else callNote(s.note)
         Phase.IDLE -> ""
     }
     val remoteShown = s.video && s.remoteVideo != null && s.phase == Phase.CONNECTED
@@ -195,7 +198,7 @@ fun CallOverlay() {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = if (s.video) "ՏԵՍԱԶԱՆԳ" else "ԶԱՆԳ",
+                text = if (s.video) tr("ՏԵՍԱԶԱՆԳ") else tr("ԶԱՆԳ"),
                 color = Color(0xFFFFCB52),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
@@ -238,8 +241,8 @@ fun CallOverlay() {
                     modifier = Modifier.fillMaxWidth().padding(bottom = 28.dp),
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    CallBtn(KIcons.End, "Մերժել", Danger, Color.White, 76.dp) { CallManager.decline() }
-                    CallBtn(if (s.video) KIcons.Video else KIcons.Call, "Պատասխանել", Good, Color.White, 76.dp) {
+                    CallBtn(KIcons.End, tr("Մերժել"), Danger, Color.White, 76.dp) { CallManager.decline() }
+                    CallBtn(if (s.video) KIcons.Video else KIcons.Call, tr("Պատասխանել"), Good, Color.White, 76.dp) {
                         if (CallPermissions.has(ctx, s.video)) CallManager.accept()
                         else perms.launch(CallPermissions.needed(s.video))
                     }
@@ -255,19 +258,19 @@ fun CallOverlay() {
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
                         CallBtn(
-                            if (s.muted) KIcons.MicOff else KIcons.Mic, "Ձայն",
+                            if (s.muted) KIcons.MicOff else KIcons.Mic, tr("Ձայն"),
                             if (s.muted) Color.White else Glass, if (s.muted) InkOnBrand else Color.White, 56.dp,
                         ) { CallManager.toggleMute() }
                         CallBtn(
-                            if (s.speaker) KIcons.Vol else KIcons.Vol0, "Բարձրախոս",
+                            if (s.speaker) KIcons.Vol else KIcons.Vol0, tr("Բարձրախոս"),
                             if (s.speaker) Color.White else Glass, if (s.speaker) InkOnBrand else Color.White, 56.dp,
                         ) { CallManager.toggleSpeaker() }
                         if (s.video) {
                             CallBtn(
-                                if (s.cameraOn) KIcons.Video else KIcons.VideoOff, "Տեսախցիկ",
+                                if (s.cameraOn) KIcons.Video else KIcons.VideoOff, tr("Տեսախցիկ"),
                                 if (s.cameraOn) Glass else Color.White, if (s.cameraOn) Color.White else InkOnBrand, 56.dp,
                             ) { CallManager.toggleCamera() }
-                            CallBtn(KIcons.Flip, "Շրջել", Glass, Color.White, 56.dp) { CallManager.switchCamera() }
+                            CallBtn(KIcons.Flip, tr("Շրջել"), Glass, Color.White, 56.dp) { CallManager.switchCamera() }
                         }
                     }
                     Spacer(Modifier.height(22.dp))

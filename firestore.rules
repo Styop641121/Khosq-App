@@ -1,74 +1,85 @@
 rules_version = '2';
 service cloud.firestore {
-  match /databases/{database}/documents {
-
-    match /users/{uid} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null && request.auth.uid == uid;
-      allow delete: if false;
-    }
-
-    match /handles/{handle} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
-    }
-
-    match /chats/{chatId} {
-      allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
-      allow read, update: if request.auth != null && request.auth.uid in resource.data.members;
-      allow delete: if false;
-
-      match /messages/{messageId} {
-        allow read: if request.auth != null
-                    && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
-        allow create: if request.auth != null
-                      && request.resource.data.from == request.auth.uid
-                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.members;
-        allow update, delete: if false;
-      }
-    }
-
-    match /stories/{storyId} {
-      allow read: if request.auth != null
-                  && (resource.data.owner == request.auth.uid
-                      || request.auth.uid in resource.data.audience);
-      allow create: if request.auth != null && request.resource.data.owner == request.auth.uid;
-      allow update: if request.auth != null
-                    && request.auth.uid in resource.data.audience
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']);
-      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
-    }
-    match /calls/{callId} {
-      function callDoc() {
-        return get(/databases/$(database)/documents/calls/$(callId)).data;
-      }
-      allow create: if request.auth != null
-                    && request.resource.data.caller == request.auth.uid
-                    && request.resource.data.callee is string
-                    && (exists(/databases/$(database)/documents/chats/$(request.auth.uid + '_' + request.resource.data.callee))
-                        || exists(/databases/$(database)/documents/chats/$(request.resource.data.callee + '_' + request.auth.uid)));
-      allow read: if request.auth != null
-                  && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid);
-      allow update: if request.auth != null
-                    && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid)
-                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'answer']);
-      allow delete: if false;
-
-      match /callerCandidates/{cid} {
-        allow create: if request.auth != null && callDoc().caller == request.auth.uid;
-        allow read: if request.auth != null
-                    && (callDoc().caller == request.auth.uid || callDoc().callee == request.auth.uid);
-      }
-      match /calleeCandidates/{cid} {
-        allow create: if request.auth != null && callDoc().callee == request.auth.uid;
-        allow read: if request.auth != null
-                    && (callDoc().caller == request.auth.uid || callDoc().callee == request.auth.uid);
-      }
-    }
-
-    match /tokens/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
+match /databases/{database}/documents {
+function me() { return request.auth != null; }
+function u() { return request.auth.uid; }
+function nd() { return request.resource.data; }
+function keys() { return request.resource.data.diff(resource.data).affectedKeys(); }
+function cd(id) { return get(/databases/$(database)/documents/chats/$(id)).data; }
+function member(id) { return u() in cd(id).members; }
+function canSend(id) {
+let c = cd(id);
+return u() in c.members && c.get("blocked", {}).size() == 0
+&& (c.get("status", "active") == "active" || c.get("requester", "") == u());
+}
+function adm(x) { return u() in cd(x).get("admins", []); }
+function party(id) {
+let c = get(/databases/$(database)/documents/calls/$(id)).data;
+return u() in [c.caller, c.callee];
+}
+function dmId(a, b) { return a < b ? a + "_" + b : b + "_" + a; }
+function dmOk(id) { return nd().members.size() == 2 && id == dmId(nd().members[0], nd().members[1]); }
+function grpOk(id) { return !id.matches(".*_.*") && (!id.matches("saved.*") || id == "saved" + u()); }
+function ownKey(a, b) { return a.diff(b).affectedKeys().hasOnly([u()]); }
+function callOk(p) {
+let c = get(/databases/$(database)/documents/chats/$(dmId(u(), p))).data;
+return c.get("status", "active") == "active" && c.get("blocked", {}).size() == 0;
+}
+match /users/{x} {
+allow get: if me();
+allow create: if u() == x && !("badges" in nd());
+allow update: if u() == x && !keys().hasAny(["badges"]);
+}
+match /photos/{x} {
+allow get: if me();
+allow create, update: if (u() == x || adm(x)) && nd().data.size() < 90000;
+allow delete: if u() == x || adm(x);
+}
+match /handles/{h} {
+allow get: if me();
+allow create: if nd().uid == u();
+}
+match /tokens/{x} {
+allow read, write: if u() == x;
+}
+match /prefs/{x} {
+allow read, write: if u() == x;
+match /stars/{s} {
+allow read, write: if u() == x;
+}
+}
+match /chats/{chatId} {
+allow create: if u() in nd().members
+&& ((nd().status == "pending" && nd().requester == u() && dmOk(chatId))
+|| (nd().get("group", false) == true && nd().status == "active" && nd().admins == [u()] && grpOk(chatId)));
+allow read: if me() && (resource == null || u() in resource.data.members);
+allow update: if u() in resource.data.members
+&& (!keys().hasAny(["status", "requester", "blocked", "members", "admins", "title", "desc", "gpv"])
+|| (keys().hasOnly(["blocked"]) && ownKey(nd().get("blocked", {}), resource.data.get("blocked", {})))
+|| (keys().hasOnly(["status"]) && nd().status == "active" && resource.data.get("requester", "") != u())
+|| u() in resource.data.get("admins", [])
+|| (keys().hasOnly(["members", "admins"]) && !(u() in nd().members)
+&& nd().members.size() == resource.data.members.size() - 1));
+match /messages/{mid} {
+allow read: if member(chatId);
+allow create: if canSend(chatId) && nd().from == u();
+allow update: if member(chatId) && keys().hasOnly(["reactions", "deleted", "text", "data", "reply", "edited"])
+&& (!keys().hasAny(["reactions"]) || ownKey(nd().get("reactions", {}), resource.data.get("reactions", {})))
+&& (resource.data.from == u() || keys().hasOnly(["reactions"]));
+}
+}
+match /stories/{sid} {
+allow read: if me() && (resource.data.owner == u() || u() in resource.data.audience);
+allow create: if nd().owner == u();
+allow update: if u() in resource.data.audience && keys().hasOnly(["viewers"]);
+allow delete: if resource.data.owner == u();
+}
+match /calls/{callId} {
+allow create: if nd().caller == u() && nd().callee != u() && callOk(nd().callee);
+allow read, update: if me() && (resource.data.caller == u() || resource.data.callee == u());
+match /{sub}/{c} {
+allow read, create: if party(callId);
+}
+}
+}
 }

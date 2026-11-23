@@ -174,8 +174,26 @@ class KeepAliveService : Service() {
     private fun showMessage(d: DocumentSnapshot, me: String) {
         val members = d.get("members") as? List<*> ?: return
         val names = d.get("names") as? Map<*, *>
-        val raw = d.getString("lastText") ?: return
-        if (raw.isEmpty()) return
+        val sealed = d.getString("lastText") ?: return
+        if (sealed.isEmpty()) return
+        if (d.getBoolean("lastEnc") == true) {
+            // an encrypted message is opened on this phone; the key may need a moment
+            val from = d.getString("lastFrom") ?: ""
+            scope.launch {
+                val key = try {
+                    am.khosq.app.crypto.E2E.keyFor(d.id, me)
+                } catch (e: Exception) {
+                    null
+                }
+                val plain = if (key == null) null else am.khosq.app.crypto.E2E.openText(key, d.id, from, "l", sealed)
+                postMessage(d, me, members, names, plain ?: tr("Նոր նամակ"))
+            }
+            return
+        }
+        postMessage(d, me, members, names, sealed)
+    }
+
+    private fun postMessage(d: DocumentSnapshot, me: String, members: List<*>, names: Map<*, *>?, raw: String) {
         val last = previewOf(d.getString("lastKind") ?: "", raw)
         val name: String
         val text: String

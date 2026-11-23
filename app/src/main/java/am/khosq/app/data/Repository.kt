@@ -1,5 +1,7 @@
 package am.khosq.app.data
 
+import am.khosq.app.Prefs
+import am.khosq.app.crypto.E2E
 import am.khosq.app.tr
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.Blob
@@ -10,9 +12,16 @@ import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Transaction
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.tasks.await
 
 class HandleTaken : Exception("handle taken")
@@ -57,6 +66,14 @@ class Repository {
     suspend fun removePhoto(uid: String) {
         db.collection("photos").document(uid).delete().await()
         db.collection("users").document(uid).set(hashMapOf<String, Any>("pv" to 0L), SetOptions.merge()).await()
+    }
+
+    /** Puts my public encryption key on my profile, so other phones can write to me. Does nothing when it is already there. */
+    suspend fun publishKey(uid: String) {
+        val pk = E2E.myPublic()
+        if (Prefs.getString("pk_sent") == "$uid:$pk") return
+        db.collection("users").document(uid).set(hashMapOf<String, Any>("pk" to pk), SetOptions.merge()).await()
+        Prefs.putString("pk_sent", "$uid:$pk")
     }
 
     fun saveMyInfo(uid: String, name: String, about: String) {
@@ -127,7 +144,31 @@ class Repository {
         db.collection("chats").document(chatId).update("blocked." + uid, if (on) true else FieldValue.delete())
     }
 
-    fun chats(uid: String): Flow<List<Chat>> = callbackFlow {
+    /** The chat list with the previews of encrypted chats opened. */
+    fun chats(uid: String): Flow<List<Chat>> = rawChats(uid).transform { list ->
+        if (list.none { c -> c.lastEnc }) {
+            emit(list)
+        } else {
+            // first a quick list without the sealed previews, then the real one
+            if (list.any { c -> c.lastEnc && E2E.ready(c.id) == null }) {
+                emit(list.map { c -> if (c.lastEnc) c.copy(lastText = "", lastEnc = false) else c })
+            }
+            emit(coroutineScope { list.map { c -> async { openPreview(c, uid) } }.awaitAll() })
+        }
+    }.flowOn(Dispatchers.Default)
+
+    private suspend fun openPreview(c: Chat, me: String): Chat {
+        if (!c.lastEnc) return c
+        val key = try {
+            E2E.keyFor(c.id, me)
+        } catch (e: Exception) {
+            null
+        }
+        val plain = if (key == null || c.lastText.isEmpty()) null else E2E.openText(key, c.id, c.lastFrom, "l", c.lastText)
+        return c.copy(lastText = plain ?: tr("Գաղտնագրված նամակ"), lastEnc = false)
+    }
+
+    private fun rawChats(uid: String): Flow<List<Chat>> = callbackFlow {
         val reg = db.collection("chats").whereArrayContains("members", uid)
             .addSnapshotListener { snap, err ->
                 if (err != null) {
@@ -190,6 +231,7 @@ class Repository {
             saved = d.getBoolean("saved") == true,
             desc = d.getString("desc") ?: "",
             gpv = d.getLong("gpv") ?: 0L,
+            lastEnc = d.getBoolean("lastEnc") == true,
         )
     }
 
@@ -221,6 +263,7 @@ class Repository {
             pv = longMap(d.get("pv")),
             dlv = longMap(d.get("dlv")),
             peerDelivered = longMap(d.get("dlv"))[peer] ?: 0L,
+            lastEnc = d.getBoolean("lastEnc") == true,
         )
     }
 
@@ -259,6 +302,17 @@ class Repository {
                 if (snap == null) return@addSnapshotListener
                 trySend(
                     snap.documents.map { d ->
+                        val rawText = d.getString("text") ?: ""
+                        // starred text is sealed with a key only this phone can make
+                        val text = if (d.getBoolean("enc") == true && rawText.isNotEmpty()) {
+                            try {
+                                E2E.openSelf("star|" + d.id, rawText) ?: ""
+                            } catch (e: Exception) {
+                                ""
+                            }
+                        } else {
+                            rawText
+                        }
                         Star(
                             key = d.id,
                             chatId = d.getString("chatId") ?: "",
@@ -266,7 +320,7 @@ class Repository {
                             fromName = d.getString("fromName") ?: "",
                             mine = d.getBoolean("mine") ?: false,
                             kind = d.getString("kind") ?: "text",
-                            text = d.getString("text") ?: "",
+                            text = text,
                             ts = d.getLong("ts") ?: 0L,
                             at = d.getLong("at") ?: 0L,
                         )
@@ -277,6 +331,11 @@ class Repository {
     }
 
     fun setStar(uid: String, s: Star) {
+        val sealed = if (s.text.isEmpty()) null else try {
+            E2E.sealSelf("star|" + s.key, s.text)
+        } catch (e: Exception) {
+            null
+        }
         db.collection("prefs").document(uid).collection("stars").document(s.key).set(
             hashMapOf<String, Any>(
                 "chatId" to s.chatId,
@@ -284,7 +343,8 @@ class Repository {
                 "fromName" to s.fromName,
                 "mine" to s.mine,
                 "kind" to s.kind,
-                "text" to s.text,
+                "text" to (sealed ?: s.text),
+                "enc" to (sealed != null),
                 "ts" to s.ts,
                 "at" to s.at,
             ),
@@ -365,7 +425,34 @@ class Repository {
         )
     }
 
-    fun messages(chatId: String): Flow<List<Message>> = callbackFlow {
+    /** The messages of a chat, with everything that was sent encrypted already opened. */
+    fun messages(chatId: String): Flow<List<Message>> =
+        rawMessages(chatId).map { list -> openAll(chatId, list) }.flowOn(Dispatchers.Default)
+
+    private suspend fun openAll(chatId: String, list: List<Message>): List<Message> {
+        if (list.none { m -> m.enc }) return list
+        val me = auth.currentUser?.uid ?: ""
+        val key = try {
+            E2E.keyFor(chatId, me)
+        } catch (e: Exception) {
+            null
+        }
+        return list.map { m -> if (m.enc) openOne(chatId, key, m) else m }
+    }
+
+    private fun openOne(chatId: String, key: ByteArray?, m: Message): Message {
+        if (m.deleted) return m
+        if (key == null) return m.copy(text = if (m.text.isEmpty()) "" else tr("Նամակը չհաջողվեց բացել"), reply = "", data = null)
+        var text = m.text
+        if (text.isNotEmpty()) text = E2E.openText(key, chatId, m.from, "t", text) ?: tr("Նամակը չհաջողվեց բացել")
+        var reply = m.reply
+        if (reply.isNotEmpty()) reply = E2E.openText(key, chatId, m.from, "r", reply) ?: ""
+        val raw = m.data
+        val bytes = if (raw == null) null else E2E.openBytes(key, chatId, m.from, "d", raw)
+        return m.copy(text = text, reply = reply, data = bytes)
+    }
+
+    private fun rawMessages(chatId: String): Flow<List<Message>> = callbackFlow {
         val reg = db.collection("chats").document(chatId).collection("messages")
             .orderBy("ts")
             .addSnapshotListener(MetadataChanges.INCLUDE) { snap, err ->
@@ -396,6 +483,7 @@ class Repository {
                         edited = d.getBoolean("edited") ?: false,
                         replyFrom = d.getString("replyFrom") ?: "",
                         wave = d.getString("wave") ?: "",
+                        enc = d.getBoolean("e") ?: false,
                     )
                 }
                 trySend(list)
@@ -481,9 +569,17 @@ class Repository {
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
-        val body = hashMapOf<String, Any>("from" to me.uid, "text" to text, "ts" to FieldValue.serverTimestamp())
+        // a chat whose other side has a key is sent end-to-end; the server only gets sealed text
+        val key = E2E.ready(chatId)
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to (if (key != null) E2E.sealText(key, chatId, me.uid, "t", text) else text),
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        if (key != null) body["e"] = true
         if (reply != null) {
-            body["reply"] = replyOf(reply)
+            val quote = replyOf(reply)
+            body["reply"] = if (key != null) E2E.sealText(key, chatId, me.uid, "r", quote) else quote
             body["replyFrom"] = reply.from
         }
         batch.set(msg, body)
@@ -491,7 +587,8 @@ class Repository {
             chat,
             bump(
                 hashMapOf<String, Any>(
-                    "lastText" to text,
+                    "lastText" to (if (key != null) E2E.sealText(key, chatId, me.uid, "l", text) else text),
+                    "lastEnc" to (key != null),
                     "lastKind" to "text",
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
@@ -500,22 +597,40 @@ class Repository {
             ),
         )
         batch.commit().addOnSuccessListener {
-            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, text)
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, text, key != null)
         }
     }
 
-    /** Changes the text of my own message. If it is the last message of the chat, the chat list changes too. */
-    fun editMessage(chatId: String, msgId: String, text: String, isLast: Boolean) {
+    /**
+     * Changes the text of my own message. If it is the last message of the chat, the chat list changes too.
+     * [enc] says whether the message was sent encrypted: an encrypted message stays encrypted.
+     */
+    fun editMessage(chatId: String, msgId: String, text: String, isLast: Boolean, enc: Boolean = false) {
+        val me = auth.currentUser?.uid ?: return
+        val key = if (enc) E2E.ready(chatId) else null
+        if (enc && key == null) return
         val chat = db.collection("chats").document(chatId)
         val b = db.batch()
-        b.update(chat.collection("messages").document(msgId), hashMapOf<String, Any>("text" to text, "edited" to true))
-        if (isLast) b.update(chat, hashMapOf<String, Any>("lastText" to text, "lastKind" to "text"))
+        val sealed = if (key != null) E2E.sealText(key, chatId, me, "t", text) else text
+        b.update(chat.collection("messages").document(msgId), hashMapOf<String, Any>("text" to sealed, "edited" to true))
+        if (isLast) {
+            b.update(
+                chat,
+                hashMapOf<String, Any>(
+                    "lastText" to (if (key != null) E2E.sealText(key, chatId, me, "l", text) else text),
+                    "lastEnc" to (key != null),
+                    "lastKind" to "text",
+                ),
+            )
+        }
         b.commit()
     }
 
-    private fun pushMsg(chatId: String, me: Profile, groupTitle: String, text: String) {
-        if (groupTitle.isEmpty()) am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, text)
-        else am.khosq.app.push.PushClient.notify(chatId, "msg", groupTitle, me.name + ": " + text)
+    /** The push carries no text for encrypted messages: Google and the relay never see them. */
+    private fun pushMsg(chatId: String, me: Profile, groupTitle: String, text: String, enc: Boolean = false) {
+        val shown = if (enc) "" else text
+        if (groupTitle.isEmpty()) am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, shown)
+        else am.khosq.app.push.PushClient.notify(chatId, "msg", groupTitle, me.name + ": " + shown)
     }
 
     /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
@@ -524,14 +639,16 @@ class Repository {
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
+        val key = E2E.ready(chatId)
         val body = hashMapOf<String, Any>(
             "from" to me.uid,
             "text" to "",
             "kind" to kind,
             "dur" to dur.toLong(),
-            "data" to Blob.fromBytes(bytes),
+            "data" to Blob.fromBytes(if (key != null) E2E.sealBytes(key, chatId, me.uid, "d", bytes) else bytes),
             "ts" to FieldValue.serverTimestamp(),
         )
+        if (key != null) body["e"] = true
         if (wave.isNotEmpty()) body["wave"] = wave
         batch.set(msg, body)
         batch.update(
@@ -539,6 +656,7 @@ class Repository {
             bump(
                 hashMapOf<String, Any>(
                     "lastText" to preview,
+                    "lastEnc" to false,
                     "lastKind" to kind,
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
@@ -547,7 +665,7 @@ class Repository {
             ),
         )
         batch.commit().addOnSuccessListener {
-            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview)
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
         }
     }
 
@@ -555,25 +673,30 @@ class Repository {
     fun forward(m: Message, target: Chat, me: Profile, others: List<String>) {
         val chat = db.collection("chats").document(target.id)
         val msg = chat.collection("messages").document()
+        val key = E2E.ready(target.id)
         val body = hashMapOf<String, Any>(
             "from" to me.uid,
-            "text" to m.text,
+            "text" to (if (key != null && m.text.isNotEmpty()) E2E.sealText(key, target.id, me.uid, "t", m.text) else m.text),
             "kind" to m.kind,
             "dur" to m.dur.toLong(),
             "fwd" to true,
             "ts" to FieldValue.serverTimestamp(),
         )
+        if (key != null) body["e"] = true
         val bytes = m.data
-        if (bytes != null) body["data"] = Blob.fromBytes(bytes)
+        if (bytes != null) body["data"] = Blob.fromBytes(if (key != null) E2E.sealBytes(key, target.id, me.uid, "d", bytes) else bytes)
         if (m.wave.isNotEmpty()) body["wave"] = m.wave
         val prev = lastOf(m.kind, m.text)
+        val prevIsText = m.kind != "img" && m.kind != "voice"
+        val sealedPrev = key != null && prevIsText && prev.isNotEmpty()
         val b = db.batch()
         b.set(msg, body)
         b.update(
             chat,
             bump(
                 hashMapOf<String, Any>(
-                    "lastText" to prev,
+                    "lastText" to (if (sealedPrev) E2E.sealText(key!!, target.id, me.uid, "l", prev) else prev),
+                    "lastEnc" to sealedPrev,
                     "lastKind" to (if (m.kind == "img" || m.kind == "voice") m.kind else "text"),
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
@@ -582,7 +705,7 @@ class Repository {
             ),
         )
         b.commit().addOnSuccessListener {
-            if (others.isNotEmpty()) pushMsg(target.id, me, if (target.isGroup) target.peerName else "", prev)
+            if (others.isNotEmpty()) pushMsg(target.id, me, if (target.isGroup) target.peerName else "", prev, key != null)
         }
     }
 

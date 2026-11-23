@@ -10,5 +10,13 @@ class KhosqApp : Application() {
         Prefs.init(this)
         ProfileStore.init(this)
         am.khosq.app.update.Updater.cleanup(this)
+        // the phone's encryption keys are made or loaded in the background, so the first message does not wait for them
+        Thread {
+            try {
+                am.khosq.app.crypto.E2E.myPublic()
+            } catch (e: Exception) {
+                // tried again when the first message is sent
+            }
+        }.start()
     }
 }

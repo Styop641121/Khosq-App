@@ -16,6 +16,7 @@ import am.khosq.app.Prefs
 import am.khosq.app.data.Repository
 import am.khosq.app.data.Story
 import am.khosq.app.AppState
+import am.khosq.app.crypto.E2E
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -76,6 +77,12 @@ class AppViewModel : ViewModel() {
 
     private var starsJob: Job? = null
 
+    /** null while it is being checked; true when the open chat is protected end-to-end; false for groups and people with an old app. */
+    private val _secure = MutableStateFlow<Boolean?>(null)
+    val secure: StateFlow<Boolean?> = _secure.asStateFlow()
+    private var openId = ""
+    private var keyJob: Job? = null
+
     private val healed = HashSet<String>()
 
     private var seenJob: Job? = null
@@ -118,6 +125,14 @@ class AppViewModel : ViewModel() {
         com.google.firebase.messaging.FirebaseMessaging.getInstance().token
             .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
         ProfileStore.want(viewModelScope, repo, p.uid, p.pv)
+        // other phones need my public key to write to me; it is put on my profile once
+        viewModelScope.launch {
+            try {
+                repo.publishKey(p.uid)
+            } catch (e: Exception) {
+                // tried again at the next start
+            }
+        }
         // fetch the TURN settings for calls early, so even the first call of a session can use them
         am.khosq.app.push.IceClient.refresh()
         viewModelScope.launch {
@@ -155,6 +170,7 @@ class AppViewModel : ViewModel() {
                 .collect { list ->
                     _chats.value = list
                     syncPeople(list)
+                    prepareKeys(list)
                 }
         }
         callsJob?.cancel()
@@ -254,8 +270,37 @@ class AppViewModel : ViewModel() {
         }
     }
 
+    /** Gets the encryption key of every one-to-one chat ready, so sending never has to wait for it. */
+    private fun prepareKeys(list: List<Chat>) {
+        keyJob?.cancel()
+        keyJob = viewModelScope.launch {
+            for (c in list) {
+                if (c.isGroup && !c.saved) continue
+                try {
+                    E2E.keyFor(c.id, uid)
+                } catch (e: Exception) {
+                    // this chat stays unencrypted until the key can be made
+                }
+            }
+        }
+    }
+
+    /** Runs [block] once the chat's key is known, so a message goes out encrypted whenever the other side can read it. */
+    private fun withKey(chatId: String, block: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                E2E.keyFor(chatId, uid)
+            } catch (e: Exception) {
+                // sent without encryption only if the key really cannot be made
+            }
+            block()
+        }
+    }
+
     fun openChat(id: String) {
         messagesJob?.cancel()
+        openId = id
+        _secure.value = null
         _messages.value = emptyList()
         _replyTo.value = null
         _peerInfo.value = UserInfo()
@@ -269,6 +314,15 @@ class AppViewModel : ViewModel() {
                         true
                     }
                     .collect { info -> _peerInfo.value = info }
+            }
+        }
+        viewModelScope.launch {
+            try {
+                if (peer != null) E2E.refreshPeer(peer, uid)
+                val ok = E2E.keyFor(id, uid) != null
+                if (openId == id) _secure.value = ok
+            } catch (e: Exception) {
+                if (openId == id) _secure.value = false
             }
         }
         repo.markRead(id, uid)
@@ -305,7 +359,9 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         if (text.isBlank()) return
         val r = _replyTo.value
-        repo.send(chatId, me, recipients(chatId, peerUid), text, r, groupTitle(chatId))
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        withKey(chatId) { repo.send(chatId, me, to, text, r, title) }
         _replyTo.value = null
         lastTypingSent = 0L
         repo.setTyping(chatId, me.uid, false)
@@ -354,7 +410,7 @@ class AppViewModel : ViewModel() {
         val t = text.trim()
         if (m.from != uid || m.kind != "text" || t.isEmpty() || t == m.text) return
         val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" }
-        repo.editMessage(chatId, m.id, t, lastReal?.id == m.id)
+        repo.editMessage(chatId, m.id, t, lastReal?.id == m.id, m.enc)
     }
 
     fun deleteMessage(chatId: String, m: Message) {
@@ -363,12 +419,16 @@ class AppViewModel : ViewModel() {
 
     fun sendImage(chatId: String, peerUid: String, bytes: ByteArray) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "img", bytes, 0, groupTitle(chatId))
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        withKey(chatId) { repo.sendMedia(chatId, me, to, "img", bytes, 0, title) }
     }
 
     fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int, wave: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "voice", bytes, seconds, groupTitle(chatId), wave)
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        withKey(chatId) { repo.sendMedia(chatId, me, to, "voice", bytes, seconds, title, wave) }
     }
 
     /** Puts a message on my starred list, or takes it off again. */
@@ -446,7 +506,8 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         val chat = _chats.value.firstOrNull { c -> !c.isGroup && c.peerUid == story.owner } ?: return
         if (text.isBlank()) return
-        repo.send(chat.id, me, listOf(story.owner), "📖 " + text.trim())
+        val line = "📖 " + text.trim()
+        withKey(chat.id) { repo.send(chat.id, me, listOf(story.owner), line) }
     }
 
     /* ---------- my profile ---------- */
@@ -500,7 +561,7 @@ class AppViewModel : ViewModel() {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         for (c in targets) {
             val others = if (c.isGroup) c.members.filter { x -> x != me.uid } else listOf(c.peerUid)
-            repo.forward(m, c, me, others)
+            withKey(c.id) { repo.forward(m, c, me, others) }
         }
     }
 

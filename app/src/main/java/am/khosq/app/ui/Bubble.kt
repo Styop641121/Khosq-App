@@ -16,6 +16,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -87,6 +88,32 @@ internal fun DateChip(text: String) {
                 .background(k.surfaceHigh.copy(alpha = 0.88f))
                 .padding(horizontal = Space.m, vertical = 5.dp),
         )
+    }
+}
+
+/** The line at the top of a chat that says whether its messages are protected end-to-end. Tap it for the safety number. */
+@Composable
+internal fun SecureChip(secure: Boolean, saved: Boolean, onClick: () -> Unit) {
+    val k = KTheme.colors
+    val text = when {
+        saved -> tr("Պահված նամակները գաղտնագրված են և կարդացվում են միայն քո հեռախոսում")
+        secure -> tr("Նամակները պաշտպանված են end-to-end գաղտնագրմամբ. դրանք կարող են կարդալ միայն դու և զրուցակիցդ")
+        else -> tr("Այս զրույցը դեռ գաղտնագրված չէ. զրուցակցի հավելվածը դեռ չի թարմացվել")
+    }
+    val tone = if (secure || saved) k.textSecondary else k.warning
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Space.l, vertical = Space.m)
+            .clip(RoundedCornerShape(Corner.l))
+            .background(k.surfaceHigh)
+            .clickable(onClick = onClick)
+            .padding(Space.m),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(imageVector = KIcons.Lock, contentDescription = null, tint = tone, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(Space.s))
+        Text(text = text, color = tone, style = TextStyle(fontSize = 12.5.sp, lineHeight = 17.sp))
     }
 }
 

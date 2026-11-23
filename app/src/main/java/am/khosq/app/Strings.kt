@@ -230,6 +230,16 @@ object Strings {
         map["Զանգը կողպված էկրանին"] = arrayOf("Call on the lock screen", "Звонок на экране блокировки")
         map["Միացված է. զանգի էկրանը կբացվի ինքնուրույն"] = arrayOf("On. The call screen opens by itself", "Включено. Экран звонка откроется сам")
         map["Անջատված է. սեղմիր և թույլ տուր, որ զանգին կարողանաս պատասխանել առանց ապակողպելու"] = arrayOf("Off. Tap and allow it, so you can answer a call without unlocking", "Выключено. Нажми и разреши, чтобы отвечать на звонок без разблокировки")
+        map["Գաղտնագրված նամակ"] = arrayOf("Encrypted message", "Зашифрованное сообщение")
+        map["Նամակը չհաջողվեց բացել"] = arrayOf("This message could not be opened", "Не удалось открыть сообщение")
+        map["Նոր նամակ"] = arrayOf("New message", "Новое сообщение")
+        map["Պահված նամակները գաղտնագրված են և կարդացվում են միայն քո հեռախոսում"] = arrayOf("Saved messages are encrypted and can only be read on your phone", "Сохранённые сообщения зашифрованы и читаются только на твоём телефоне")
+        map["Նամակները պաշտպանված են end-to-end գաղտնագրմամբ. դրանք կարող են կարդալ միայն դու և զրուցակիցդ"] = arrayOf("Messages are protected with end-to-end encryption. Only you and the other person can read them", "Сообщения защищены сквозным шифрованием. Их можете прочитать только вы и собеседник")
+        map["Այս զրույցը դեռ գաղտնագրված չէ. զրուցակցի հավելվածը դեռ չի թարմացվել"] = arrayOf("This chat is not encrypted yet: the other person's app has not been updated", "Этот чат пока не зашифрован: приложение собеседника ещё не обновлено")
+        map["Անվտանգության թիվ"] = arrayOf("Safety number", "Номер безопасности")
+        map["Համեմատիր այս թիվը զրուցակցիդ հեռախոսի վրա. եթե նույնն է, ոչ ոք չի կարող միջամտել նամակներին։"] = arrayOf("Compare this number on the other person's phone. If it matches, nobody can tamper with the messages.", "Сравни этот номер на телефоне собеседника. Если он совпадает, никто не вмешивается в переписку.")
+        map["Զրուցակցի անվտանգության թիվը փոխվել է։ Դա կարող է նշանակել, որ նա նոր հեռախոս է օգտագործում։ Համեմատիր թիվը նրա հետ։"] = arrayOf("The other person's safety number has changed. This may mean they use a new phone. Compare the number with them.", "Номер безопасности собеседника изменился. Возможно, у него новый телефон. Сверь номер с ним.")
+        map["Հասկացա"] = arrayOf("Got it", "Понятно")
     }
 
     init {

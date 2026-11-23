@@ -9,6 +9,7 @@ import am.khosq.app.tr
 import am.khosq.app.trf
 import am.khosq.app.update.UpState
 import am.khosq.app.update.Updater
+import am.khosq.app.crypto.E2E
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -56,6 +57,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -671,6 +673,64 @@ fun ContactSheet(chat: Chat, about: String, status: String, onClose: () -> Unit)
                     color = if (about.isBlank()) k.textSecondary else k.text,
                     style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp),
                 )
+            }
+
+            // the safety number: the same on both phones as long as nobody stands between them
+            val number by produceState<String?>(null, chat.peerUid) {
+                value = try {
+                    E2E.safetyNumber(chat.peerUid)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            var changed by remember(chat.peerUid) { mutableStateOf(E2E.keyChanged(chat.peerUid)) }
+            val shownNumber = number
+            if (shownNumber != null) {
+                Spacer(Modifier.height(Space.s))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Corner.l))
+                        .background(k.surfaceHigh)
+                        .padding(Space.l),
+                    verticalArrangement = Arrangement.spacedBy(Space.xs),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(imageVector = KIcons.Lock, contentDescription = null, tint = k.textSecondary, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(Space.xs))
+                        Text(
+                            text = tr("Անվտանգության թիվ"),
+                            color = k.textSecondary,
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+                        )
+                    }
+                    Text(
+                        text = shownNumber,
+                        color = k.text,
+                        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 15.sp, lineHeight = 24.sp),
+                    )
+                    Text(
+                        text = tr("Համեմատիր այս թիվը զրուցակցիդ հեռախոսի վրա. եթե նույնն է, ոչ ոք չի կարող միջամտել նամակներին։"),
+                        color = k.textSecondary,
+                        style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+                    )
+                    if (changed) {
+                        Spacer(Modifier.height(Space.xs))
+                        Text(
+                            text = tr("Զրուցակցի անվտանգության թիվը փոխվել է։ Դա կարող է նշանակել, որ նա նոր հեռախոս է օգտագործում։ Համեմատիր թիվը նրա հետ։"),
+                            color = k.warning,
+                            style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium),
+                        )
+                        SoftButton(
+                            text = tr("Հասկացա"),
+                            onClick = {
+                                E2E.acknowledge(chat.peerUid)
+                                changed = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
             }
         }
     }

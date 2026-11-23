@@ -34,7 +34,18 @@ class KhosqMessagingService : FirebaseMessagingService() {
         val chatId = m.data["chatId"] ?: return
         if (am.khosq.app.Prefs.isMuted(chatId)) return
         val title = m.data["title"] ?: "KHOSQ"
-        val body = m.data["body"] ?: ""
+        var body = m.data["body"] ?: ""
+        if (body.isEmpty()) {
+            // an encrypted message comes without its text; the app writes the real one if it can open the message itself
+            val nm = getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val shown = try {
+                nm.activeNotifications.any { n -> n.id == chatId.hashCode() }
+            } catch (e: Exception) {
+                false
+            }
+            if (shown) return
+            body = am.khosq.app.tr("Նոր նամակ")
+        }
         val tap = PendingIntent.getActivity(
             this,
             chatId.hashCode(),

@@ -142,6 +142,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val peerInfo by vm.peerInfo.collectAsStateWithLifecycle()
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     val stars by vm.stars.collectAsStateWithLifecycle()
+    val secure by vm.secure.collectAsStateWithLifecycle()
     val starSet = remember(stars) { stars.mapTo(HashSet<String>()) { s -> s.key } }
     val peerSeen = peerInfo.seen
     val chat = chats.firstOrNull { c -> c.id == chatId }
@@ -539,6 +540,13 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             onSwipe = { vm.setReply(m) },
                             onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                         )
+                    }
+                }
+                // the notice about encryption is the last item of the reversed list, which is the top of the chat
+                val sec = secure
+                if (!searching && chat != null && !isGroup && sec != null) {
+                    item(key = "e2e") {
+                        SecureChip(secure = sec, saved = isSaved, onClick = { if (!isSaved) showContact = true })
                     }
                 }
             }

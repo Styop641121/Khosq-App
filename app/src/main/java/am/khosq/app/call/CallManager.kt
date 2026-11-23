@@ -744,6 +744,7 @@ object CallManager {
                 chat,
                 hashMapOf<String, Any>(
                     "lastText" to "📵",
+                    "lastEnc" to false,
                     "lastKind" to "call_missed",
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to a,

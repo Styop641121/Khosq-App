@@ -23,6 +23,11 @@ object Prefs {
         sp?.edit()?.putString(key, value)?.apply()
     }
 
+    /** Written to the disk before this returns: for keys that must never be lost if the app is stopped a moment later. */
+    fun putStringSync(key: String, value: String) {
+        sp?.edit()?.putString(key, value)?.commit()
+    }
+
     fun getString(key: String, def: String = ""): String = sp?.getString(key, def) ?: def
 
     fun putLong(key: String, value: Long) {

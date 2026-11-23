@@ -39,6 +39,8 @@ data class Chat(
     val saved: Boolean = false,
     val desc: String = "",
     val gpv: Long = 0L,
+    /** True while [lastText] is still sealed (end-to-end); the repository opens it before the screens see it. */
+    val lastEnc: Boolean = false,
 )
 
 /** My private choices: chats pinned to the top and chats whose notifications are off. */
@@ -64,6 +66,8 @@ data class Message(
     val edited: Boolean = false,
     val replyFrom: String = "",
     val wave: String = "",
+    /** Was sent end-to-end encrypted. The text, the quote and the bytes here are already opened. */
+    val enc: Boolean = false,
 )
 
 /** A starred message: a small private copy kept in my own space, so the list never has to open the chats. */

@@ -328,7 +328,8 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                 }
                             }
                         }
-                        AnimatedVisibility(
+                        // this sits in a Box that is itself inside a Column: the explicit name picks the plain version
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = !homeSearch,
                             modifier = Modifier.align(Alignment.BottomEnd),
                             enter = fadeIn(tween(Motion.Normal)) + scaleIn(tween(Motion.Normal), initialScale = 0.7f),

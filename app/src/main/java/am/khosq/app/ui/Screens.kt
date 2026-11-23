@@ -558,7 +558,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     )
                 }
             }
-            AnimatedVisibility(
+            // this sits in a Box that is itself inside a Column: the explicit name picks the plain version
+            androidx.compose.animation.AnimatedVisibility(
                 visible = showDown,
                 modifier = Modifier.align(Alignment.BottomEnd),
                 enter = fadeIn(tween(Motion.Fast)) + scaleIn(tween(Motion.Fast), initialScale = 0.7f),

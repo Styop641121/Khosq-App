@@ -66,6 +66,8 @@ class AppViewModel : ViewModel() {
     private fun ready(p: Profile) {
         _boot.value = Boot.Ready(p)
         am.khosq.app.call.CallManager.listen(p.uid)
+        com.google.firebase.messaging.FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { t -> am.khosq.app.push.KhosqMessagingService.saveToken(t) }
         chatsJob?.cancel()
         chatsJob = viewModelScope.launch {
             repo.chats(p.uid)

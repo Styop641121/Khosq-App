@@ -28,5 +28,47 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    match /stories/{storyId} {
+      allow read: if request.auth != null
+                  && (resource.data.owner == request.auth.uid
+                      || request.auth.uid in resource.data.audience);
+      allow create: if request.auth != null && request.resource.data.owner == request.auth.uid;
+      allow update: if request.auth != null
+                    && request.auth.uid in resource.data.audience
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']);
+      allow delete: if request.auth != null && resource.data.owner == request.auth.uid;
+    }
+    match /calls/{callId} {
+      function callDoc() {
+        return get(/databases/$(database)/documents/calls/$(callId)).data;
+      }
+      allow create: if request.auth != null
+                    && request.resource.data.caller == request.auth.uid
+                    && request.resource.data.callee is string
+                    && (exists(/databases/$(database)/documents/chats/$(request.auth.uid + '_' + request.resource.data.callee))
+                        || exists(/databases/$(database)/documents/chats/$(request.resource.data.callee + '_' + request.auth.uid)));
+      allow read: if request.auth != null
+                  && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid);
+      allow update: if request.auth != null
+                    && (resource.data.caller == request.auth.uid || resource.data.callee == request.auth.uid)
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'answer']);
+      allow delete: if false;
+
+      match /callerCandidates/{cid} {
+        allow create: if request.auth != null && callDoc().caller == request.auth.uid;
+        allow read: if request.auth != null
+                    && (callDoc().caller == request.auth.uid || callDoc().callee == request.auth.uid);
+      }
+      match /calleeCandidates/{cid} {
+        allow create: if request.auth != null && callDoc().callee == request.auth.uid;
+        allow read: if request.auth != null
+                    && (callDoc().caller == request.auth.uid || callDoc().callee == request.auth.uid);
+      }
+    }
+
+    match /tokens/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
   }
 }

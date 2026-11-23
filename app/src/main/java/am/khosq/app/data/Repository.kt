@@ -148,7 +148,9 @@ class Repository {
                 "unread." + peerUid to FieldValue.increment(1L),
             ),
         )
-        batch.commit()
+        batch.commit().addOnSuccessListener {
+            am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, text)
+        }
     }
 
     /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
@@ -177,7 +179,9 @@ class Repository {
                 "unread." + peerUid to FieldValue.increment(1L),
             ),
         )
-        batch.commit()
+        batch.commit().addOnSuccessListener {
+            am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, preview)
+        }
     }
 
     /* ---------- stories: 24-hour posts for the people in my chats ---------- */

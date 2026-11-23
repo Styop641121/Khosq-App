@@ -292,6 +292,10 @@ object CallManager {
                                     main.post {
                                         if (_ui.value.callId != id) return@post
                                         docReady = true
+                                        val a = if (myUid < peerUid) myUid + "_" + peerUid else peerUid + "_" + myUid
+                                        am.khosq.app.push.PushClient.notify(
+                                            a, "call", myName, if (video) "Մուտքային տեսազանգ" else "Մուտքային զանգ",
+                                        )
                                         for (c in outCand) pushCandidate(c)
                                         outCand.clear()
                                         watchCall(id)

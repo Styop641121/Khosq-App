@@ -13,6 +13,9 @@ data class Chat(
     val unread: Long,
     val peerRead: Long,
     val peerTyping: Long = 0L,
+    val status: String = "active",
+    val requester: String = "",
+    val blockedBy: List<String> = emptyList(),
 )
 
 data class Message(

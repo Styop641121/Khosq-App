@@ -191,6 +191,14 @@ class AppViewModel : ViewModel() {
         repo.setTyping(chatId, me.uid, false)
     }
 
+    fun acceptChat(chatId: String) {
+        repo.acceptChat(chatId)
+    }
+
+    fun setBlocked(chatId: String, on: Boolean) {
+        if (uid.isNotEmpty()) repo.setBlocked(chatId, uid, on)
+    }
+
     fun typing(chatId: String) {
         val now = System.currentTimeMillis()
         if (now - lastTypingSent < 3000L || uid.isEmpty()) return
@@ -223,7 +231,7 @@ class AppViewModel : ViewModel() {
 
     fun postStory(kind: String, text: String, bg: Int, bytes: ByteArray?) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        val audience = _chats.value.map { c -> c.peerUid }
+        val audience = _chats.value.filter { c -> c.status == "active" && c.blockedBy.isEmpty() }.map { c -> c.peerUid }
         repo.postStory(me, audience, kind, text, bg, bytes)
     }
 

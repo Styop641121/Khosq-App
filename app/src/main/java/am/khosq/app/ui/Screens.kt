@@ -51,6 +51,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -297,7 +299,13 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
             )
             val prefix = if (chat.lastFrom == myUid) "Դու՝ " else ""
             Text(
-                text = if (chat.lastText.isEmpty()) "@" + chat.peerHandle else prefix + chat.lastText,
+                text = when {
+                    chat.blockedBy.isNotEmpty() -> "🚫 Արգելափակված"
+                    chat.status == "pending" && chat.requester != myUid -> "🔔 Նոր հարցում"
+                    chat.status == "pending" -> "⏳ Սպասում է հաստատման"
+                    chat.lastText.isEmpty() -> "@" + chat.peerHandle
+                    else -> prefix + chat.lastText
+                },
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 14.sp,
                 maxLines = 1,
@@ -403,6 +411,11 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val peerSeen by vm.peerSeen.collectAsStateWithLifecycle()
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
+    val pendingForMe = chat != null && chat.status == "pending" && chat.requester != me.uid
+    val waiting = chat != null && chat.status == "pending" && chat.requester == me.uid
+    val iBlocked = chat != null && me.uid in chat.blockedBy
+    val canCall = chat != null && chat.status == "active" && chat.blockedBy.isEmpty()
+    var moreOpen by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -573,8 +586,22 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = { startCall(false) }) { Text(text = "📞", fontSize = 22.sp) }
-            IconButton(onClick = { startCall(true) }) { Text(text = "📹", fontSize = 22.sp) }
+            if (canCall) {
+                IconButton(onClick = { startCall(false) }) { Text(text = "📞", fontSize = 22.sp) }
+                IconButton(onClick = { startCall(true) }) { Text(text = "📹", fontSize = 22.sp) }
+            }
+            Box {
+                IconButton(onClick = { moreOpen = true }) { Text(text = "⋮", fontSize = 24.sp) }
+                DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text(if (iBlocked) "Ապաարգելափակել" else "Արգելափակել") },
+                        onClick = {
+                            moreOpen = false
+                            vm.setBlocked(chatId, !iBlocked)
+                        },
+                    )
+                }
+            }
         }
 
         LazyColumn(
@@ -627,8 +654,30 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
         }
 
+        if (waiting) {
+            Text(
+                text = "⏳ Սպասում ես, որ " + (chat?.peerName ?: "") + "-ը ընդունի հարցումդ",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 18.dp),
+            )
+        }
         val pill = RoundedCornerShape(30.dp)
-        Row(
+        if (pendingForMe) {
+            NoticeBar(
+                text = (chat?.peerName ?: "") + "-ը ուզում է գրել քեզ",
+                primary = "Ընդունել",
+                onPrimary = { vm.acceptChat(chatId) },
+                secondary = "Արգելափակել",
+                onSecondary = { vm.setBlocked(chatId, true) },
+            )
+        } else if (iBlocked) {
+            NoticeBar(
+                text = "Դու արգելափակել ես այս մարդուն",
+                primary = "Ապաարգելափակել",
+                onPrimary = { vm.setBlocked(chatId, false) },
+            )
+        } else Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -694,6 +743,36 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Ուղարկել", tint = InkOnBrand)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoticeBar(
+    text: String,
+    primary: String,
+    onPrimary: () -> Unit,
+    secondary: String? = null,
+    onSecondary: () -> Unit = {},
+) {
+    val shape = RoundedCornerShape(20.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(12.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .padding(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text = text, fontSize = 15.sp)
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GradientButton(text = primary, onClick = onPrimary, modifier = Modifier.weight(1f))
+            if (secondary != null) {
+                TextButton(onClick = onSecondary) { Text(secondary, color = MaterialTheme.colorScheme.error) }
             }
         }
     }

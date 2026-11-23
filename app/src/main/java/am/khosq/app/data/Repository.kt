@@ -60,13 +60,31 @@ class Repository {
 
     suspend fun startChat(me: Profile, peer: Profile): String {
         val id = chatId(me.uid, peer.uid)
-        val data = hashMapOf<String, Any>(
-            "members" to listOf(me.uid, peer.uid),
-            "names" to mapOf(me.uid to me.name, peer.uid to peer.name),
-            "handles" to mapOf(me.uid to me.handle, peer.uid to peer.handle),
-        )
-        db.collection("chats").document(id).set(data, SetOptions.merge()).await()
+        val ref = db.collection("chats").document(id)
+        val exists = try {
+            ref.get().await().exists()
+        } catch (e: Exception) {
+            false
+        }
+        if (!exists) {
+            val data = hashMapOf<String, Any>(
+                "members" to listOf(me.uid, peer.uid),
+                "names" to mapOf(me.uid to me.name, peer.uid to peer.name),
+                "handles" to mapOf(me.uid to me.handle, peer.uid to peer.handle),
+                "status" to "pending",
+                "requester" to me.uid,
+            )
+            ref.set(data).await()
+        }
         return id
+    }
+
+    fun acceptChat(chatId: String) {
+        db.collection("chats").document(chatId).update("status", "active")
+    }
+
+    fun setBlocked(chatId: String, uid: String, on: Boolean) {
+        db.collection("chats").document(chatId).update("blocked." + uid, if (on) true else FieldValue.delete())
     }
 
     fun chats(uid: String): Flow<List<Chat>> = callbackFlow {
@@ -101,6 +119,10 @@ class Repository {
             unread = (unread?.get(me) as? Number)?.toLong() ?: 0L,
             peerRead = (read?.get(peer) as? Number)?.toLong() ?: 0L,
             peerTyping = ((d.get("typing") as? Map<*, *>)?.get(peer) as? Number)?.toLong() ?: 0L,
+            status = d.getString("status") ?: "active",
+            requester = d.getString("requester") ?: "",
+            blockedBy = (d.get("blocked") as? Map<*, *>)?.entries
+                ?.filter { e -> e.value == true }?.mapNotNull { e -> e.key as? String } ?: emptyList(),
         )
     }
 

@@ -12,6 +12,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
@@ -173,11 +175,21 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     var composing by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
     var showGroup by remember { mutableStateOf(false) }
+    var homeSearch by rememberSaveable { mutableStateOf(false) }
+    var homeQuery by rememberSaveable { mutableStateOf("") }
+    val homeFocus = remember { FocusRequester() }
+    LaunchedEffect(homeSearch) {
+        if (homeSearch) homeFocus.requestFocus()
+    }
     var showMe by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val calls by vm.calls.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
     BackHandler(enabled = tab != 0) { tab = 0 }
+    BackHandler(enabled = homeSearch && tab == 0) {
+        homeSearch = false
+        homeQuery = ""
+    }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         Row(
@@ -188,6 +200,20 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
             Spacer(Modifier.width(12.dp))
             BrandTitle()
             Spacer(Modifier.weight(1f))
+            if (tab == 0) {
+                IconCircle(
+                    icon = KIcons.Search,
+                    onClick = {
+                        homeSearch = !homeSearch
+                        if (!homeSearch) homeQuery = ""
+                    },
+                    size = 40.dp,
+                    bg = MaterialTheme.colorScheme.surfaceVariant,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    description = "Որոնել",
+                )
+                Spacer(Modifier.width(10.dp))
+            }
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(22.dp))
@@ -202,30 +228,54 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (tab == 0) {
                 Column(Modifier.fillMaxSize()) {
-                    StoriesRail(
-                        stories = stories,
-                        me = me,
-                        onOpen = { owner -> viewing = owner },
-                        onAdd = { composing = true },
-                    )
-                    if (chats.isEmpty()) {
+                    if (homeSearch) {
+                        OutlinedTextField(
+                            value = homeQuery,
+                            onValueChange = { v -> homeQuery = v },
+                            singleLine = true,
+                            placeholder = { Text("Որոնել զրույցներում…") },
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp).focusRequester(homeFocus),
+                        )
+                    } else {
+                        StoriesRail(
+                            stories = stories,
+                            me = me,
+                            onOpen = { owner -> viewing = owner },
+                            onAdd = { composing = true },
+                        )
+                    }
+                    val shownChats = if (homeSearch && homeQuery.isNotBlank()) {
+                        chats.filter { c ->
+                            c.peerName.contains(homeQuery.trim(), ignoreCase = true) ||
+                                c.peerHandle.contains(homeQuery.trim(), ignoreCase = true) ||
+                                c.lastText.contains(homeQuery.trim(), ignoreCase = true)
+                        }
+                    } else {
+                        chats
+                    }
+                    if (shownChats.isEmpty()) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(36.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Text(text = "Դեռ զրույցներ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Text(
-                                text = "Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            if (chats.isNotEmpty()) {
+                                Text(text = "Ոչինչ չի գտնվել", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text(text = "Դեռ զրույցներ չկան", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = "Սեղմիր «Նոր կոնտակտ» և գրիր ընկերոջդ ID-ն։",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     } else {
                         LazyColumn(
                             contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 100.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(chats, key = { c -> c.id }) { chat ->
+                            items(shownChats, key = { c -> c.id }) { chat ->
                                 ChatRow(chat = chat, myUid = me.uid, onClick = { onOpen(chat.id) })
                             }
                         }
@@ -521,6 +571,17 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val canCall = chat != null && !chat.isGroup && chat.status == "active" && chat.blockedBy.isEmpty()
     val isGroup = chat != null && chat.isGroup
     var showInfo by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var forwardMsg by remember { mutableStateOf<Message?>(null) }
+    val searchFocus = remember { FocusRequester() }
+    BackHandler(enabled = searching) {
+        searching = false
+        query = ""
+    }
+    LaunchedEffect(searching) {
+        if (searching) searchFocus.requestFocus()
+    }
     var moreOpen by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     val ctx = LocalContext.current
@@ -647,6 +708,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         vm.setReply(mm)
                         menuFor = null
                     }) { Text("↩ Պատասխանել") }
+                    TextButton(onClick = {
+                        forwardMsg = mm
+                        menuFor = null
+                    }) { Text("↪ Փոխանցել") }
                     if (mm.kind == "text") {
                         TextButton(onClick = {
                             clip.setText(AnnotatedString(mm.text))
@@ -664,12 +729,47 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         )
     }
 
+    val shown = if (searching && query.isNotBlank()) {
+        messages.filter { m -> !m.deleted && m.kind == "text" && m.text.contains(query.trim(), ignoreCase = true) }
+    } else {
+        messages
+    }
+    val fm = forwardMsg
+    if (fm != null) {
+        ForwardSheet(vm = vm, message = fm, onClose = { forwardMsg = null })
+    }
     if (showInfo && chat != null && chat.isGroup) {
         GroupInfoSheet(vm = vm, me = me, chat = chat, onClose = { showInfo = false }, onLeft = onBack)
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()) {
-        Row(
+        if (searching) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = {
+                    searching = false
+                    query = ""
+                }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Հետ") }
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { v -> query = v },
+                    singleLine = true,
+                    placeholder = { Text("Որոնել նամակներում…") },
+                    shape = RoundedCornerShape(24.dp),
+                    modifier = Modifier.weight(1f).focusRequester(searchFocus),
+                )
+                if (query.isNotBlank()) {
+                    Text(
+                        text = shown.size.toString(),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
+            }
+        } else Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -721,6 +821,13 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     Icon(imageVector = KIcons.More, contentDescription = "Ավելին")
                 }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Որոնել նամակներում") },
+                        onClick = {
+                            moreOpen = false
+                            searching = true
+                        },
+                    )
                     if (isGroup) {
                         DropdownMenuItem(
                             text = { Text("Խմբի տվյալներ") },
@@ -748,7 +855,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            items(messages.asReversed(), key = { m -> m.id }) { m ->
+            items(shown.asReversed(), key = { m -> m.id }) { m ->
                 Bubble(
                     m = m,
                     mine = m.from == me.uid,
@@ -1025,6 +1132,15 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, s
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp,
                     color = senderColor(senderKey),
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
+            if (m.fwd && !m.deleted) {
+                Text(
+                    text = "↪ Փոխանցված",
+                    color = soft,
+                    fontSize = 11.sp,
+                    fontStyle = FontStyle.Italic,
                     modifier = Modifier.padding(bottom = 2.dp),
                 )
             }

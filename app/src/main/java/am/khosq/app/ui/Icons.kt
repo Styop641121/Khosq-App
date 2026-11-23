@@ -59,6 +59,11 @@ object KIcons {
     private const val GROUP =
         "M16,11c1.66,0 2.99,-1.34 2.99,-3S17.66,5 16,5c-1.66,0 -3,1.34 -3,3s1.34,3 3,3zM8,11c1.66,0 2.99,-1.34 2.99,-3S9.66,5 8,5C6.34,5 5,6.34 5,8s1.34,3 3,3zM8,13c-2.33,0 -7,1.17 -7,3.5V19h14v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5zM16,13c-0.29,0 -0.62,0.02 -0.97,0.05 1.16,0.84 1.97,1.97 1.97,3.45V19h6v-2.5c0,-2.33 -4.67,-3.5 -7,-3.5z"
     private const val CHECK = "M9,16.17L4.83,12l-1.42,1.41L9,19 21,7l-1.41,-1.41z"
+    private const val SEARCH =
+        "M15.5,14h-0.79l-0.28,-0.27C15.41,12.59 16,11.11 16,9.5 16,5.91 13.09,3 9.5,3S3,5.91 3,9.5 5.91,16 9.5,16c1.61,0 3.09,-0.59 4.23,-1.57l0.27,0.28v0.79l5,4.99L20.49,19l-4.99,-5zM9.5,14C7.01,14 5,11.99 5,9.5S7.01,5 9.5,5 14,7.01 14,9.5 11.99,14 9.5,14z"
+    private const val FORWARD = "M12,8V4l8,8 -8,8v-4H4V8z"
+    private const val CLOSE =
+        "M19,6.41L17.59,5 12,10.59 6.41,5 5,6.41 10.59,12 5,17.59 6.41,19 12,13.41 17.59,19 19,17.59 13.41,12z"
     private const val CHAT = "M20,2H4c-1.1,0 -2,0.9 -2,2v18l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2z"
 
     val Call: ImageVector by lazy { vec("call", CALL) }
@@ -76,6 +81,9 @@ object KIcons {
     val Chat: ImageVector by lazy { vec("chat", CHAT) }
     val Group: ImageVector by lazy { vec("group", GROUP) }
     val Check: ImageVector by lazy { vec("check", CHECK) }
+    val Search: ImageVector by lazy { vec("search", SEARCH) }
+    val Forward: ImageVector by lazy { vec("forward", FORWARD) }
+    val Close: ImageVector by lazy { vec("close", CLOSE) }
 }
 
 /** A round button with a vector icon inside. */

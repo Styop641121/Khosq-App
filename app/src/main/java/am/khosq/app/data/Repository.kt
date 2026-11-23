@@ -235,6 +235,7 @@ class Repository {
                         replyName = d.getString("replyName") ?: "",
                         deleted = d.getBoolean("deleted") ?: false,
                         reactions = readReactions(d.get("reactions")),
+                        fwd = d.getBoolean("fwd") ?: false,
                     )
                 }
                 trySend(list)
@@ -364,6 +365,39 @@ class Repository {
         )
         batch.commit().addOnSuccessListener {
             pushMsg(chatId, me, groupTitle, preview)
+        }
+    }
+
+    /** Sends a copy of a message into another chat, marked as forwarded. */
+    fun forward(m: Message, target: Chat, me: Profile, others: List<String>) {
+        val chat = db.collection("chats").document(target.id)
+        val msg = chat.collection("messages").document()
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to m.text,
+            "kind" to m.kind,
+            "dur" to m.dur.toLong(),
+            "fwd" to true,
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        val bytes = m.data
+        if (bytes != null) body["data"] = Blob.fromBytes(bytes)
+        val prev = preview(m)
+        val b = db.batch()
+        b.set(msg, body)
+        b.update(
+            chat,
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to prev,
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
+            ),
+        )
+        b.commit().addOnSuccessListener {
+            pushMsg(target.id, me, if (target.isGroup) target.peerName else "", prev)
         }
     }
 

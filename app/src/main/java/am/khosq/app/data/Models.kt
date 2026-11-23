@@ -36,6 +36,7 @@ data class Message(
     val replyName: String = "",
     val deleted: Boolean = false,
     val reactions: Map<String, String> = emptyMap(),
+    val fwd: Boolean = false,
 )
 
 /** One line of the call history, seen from my side. dur = -1 means the call never connected. */

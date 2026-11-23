@@ -1,6 +1,7 @@
 package am.khosq.app.ui
 
 import am.khosq.app.data.Chat
+import am.khosq.app.data.Message
 import am.khosq.app.data.Profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -313,5 +314,50 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
             },
             dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text("Ոչ") } },
         )
+    }
+}
+
+/** Pick one or more chats and send a copy of the message there. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ForwardSheet(vm: AppViewModel, message: Message, onClose: () -> Unit) {
+    val targets = remember { vm.shareTargets() }
+    val picked = remember { mutableStateListOf<String>() }
+    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(text = "Փոխանցել…", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            if (targets.isEmpty()) {
+                Text(text = "Դեռ չկա զրույց, որին կարելի է փոխանցել։", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(300.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    for (c in targets) {
+                        PickRow(chat = c, on = c.id in picked) {
+                            if (c.id in picked) picked.remove(c.id) else picked.add(c.id)
+                        }
+                    }
+                }
+            }
+            GradientButton(
+                text = if (picked.isEmpty()) "Ընտրիր զրույց" else "Ուղարկել (" + picked.size + ")",
+                enabled = picked.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = {
+                    vm.forward(message, targets.filter { c -> c.id in picked })
+                    onClose()
+                },
+            )
+        }
     }
 }

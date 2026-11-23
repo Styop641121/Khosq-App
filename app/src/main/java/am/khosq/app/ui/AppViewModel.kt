@@ -292,6 +292,18 @@ class AppViewModel : ViewModel() {
         repo.send(chat.id, me, listOf(story.owner), "📖 Սթորի՝ " + text.trim())
     }
 
+    /** Chats a message can be forwarded to: accepted, not blocked one-to-one chats and my groups. */
+    fun shareTargets(): List<Chat> =
+        _chats.value.filter { c -> c.isGroup || (c.status == "active" && c.blockedBy.isEmpty()) }
+
+    fun forward(m: Message, targets: List<Chat>) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        for (c in targets) {
+            val others = if (c.isGroup) c.members.filter { x -> x != me.uid } else listOf(c.peerUid)
+            repo.forward(m, c, me, others)
+        }
+    }
+
     /** Contacts I can put in a group: accepted, not blocked, one-to-one chats. */
     fun contacts(): List<Chat> = _chats.value.filter { c -> !c.isGroup && c.status == "active" && c.blockedBy.isEmpty() }
 

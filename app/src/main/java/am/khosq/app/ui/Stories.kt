@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -74,7 +75,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 val StoryBackgrounds: List<Brush> = listOf(
-    Brush.linearGradient(listOf(Color(0xFFFFC84A), Color(0xFFFF6B57))),
+    Brush.linearGradient(listOf(Color(0xFF5B6CFF), Color(0xFF8B5CF6))),
     Brush.linearGradient(listOf(Color(0xFF4F7BFF), Color(0xFF9B4BFF))),
     Brush.linearGradient(listOf(Color(0xFF12C2A3), Color(0xFF2E5BFF))),
     Brush.linearGradient(listOf(Color(0xFFFF5E8A), Color(0xFFFF9A3D))),
@@ -101,8 +102,8 @@ fun StoriesRail(stories: List<Story>, me: Profile, onOpen: (String) -> Unit, onA
 
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Space.l, vertical = Space.m),
+        horizontalArrangement = Arrangement.spacedBy(Space.m),
     ) {
         item {
             StoryTile(
@@ -139,49 +140,53 @@ private fun StoryTile(
     onClick: () -> Unit,
     onPlus: () -> Unit,
 ) {
+    val k = KTheme.colors
     val ringBrush: Brush = when (ring) {
         1 -> Brush.sweepGradient(
-            listOf(Color(0xFFFFCB52), Color(0xFFFF6B57), Color(0xFFB04BFF), Color(0xFF4F7BFF), Color(0xFFFFCB52)),
+            listOf(Color(0xFF5B6CFF), Color(0xFF8B5CF6), Color(0xFFEC5C8E), Color(0xFFF2994A), Color(0xFF5B6CFF)),
         )
-        2 -> Brush.linearGradient(listOf(Color(0x55AAAAAA), Color(0x55AAAAAA)))
+        2 -> Brush.linearGradient(listOf(k.lineStrong, k.lineStrong))
         else -> Brush.linearGradient(listOf(Color(0x00000000), Color(0x00000000)))
     }
     Column(
-        modifier = Modifier.width(76.dp).clickable(onClick = onClick),
+        modifier = Modifier.width(68.dp).pressable(onClick = onClick, pressedScale = 0.94f),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Box(modifier = Modifier.size(70.dp)) {
+        Box(modifier = Modifier.size(64.dp)) {
             Box(
                 modifier = Modifier
-                    .size(70.dp)
+                    .size(64.dp)
                     .clip(CircleShape)
                     .background(ringBrush)
-                    .then(if (ring == 0) Modifier.border(2.dp, MaterialTheme.colorScheme.outline, CircleShape) else Modifier)
-                    .padding(4.dp),
+                    .then(if (ring == 0) Modifier.border(1.5.dp, k.lineStrong, CircleShape) else Modifier)
+                    .padding(3.dp)
+                    .clip(CircleShape)
+                    .background(k.bg)
+                    .padding(2.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Avatar(name = name, seed = seed, size = 62.dp, circle = true)
+                Avatar(name = name, seed = seed, size = 54.dp, circle = true)
             }
             if (plus) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(26.dp)
+                        .size(24.dp)
+                        .border(2.dp, k.bg, CircleShape)
                         .clip(CircleShape)
                         .background(Brush.linearGradient(BrandColors))
-                        .clickable(onClick = onPlus),
+                        .pressable(onClick = onPlus, pressedScale = 0.9f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(text = "+", color = InkOnBrand, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
+                    Icon(imageVector = KIcons.Plus, contentDescription = null, tint = InkOnBrand, modifier = Modifier.size(14.dp))
                 }
             }
         }
         Text(
             text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+            color = k.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -310,7 +315,7 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
                         )
                         Text(text = formatTime(story.ts), color = Color(0xCCFFFFFF), fontSize = 12.sp)
                     }
-                    TextButton(onClick = onClose) { Text(text = "✕", color = Color.White, fontSize = 20.sp) }
+                    KIconButton(icon = KIcons.Close, onClick = onClose, tint = Color.White, description = tr("Փակել"))
                 }
             }
 
@@ -324,12 +329,11 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
             ) {
                 if (isMine) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "👁 " + story.views.size,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = KIcons.Eye, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(Space.s))
+                            Text(text = story.views.size.toString(), color = Color.White, fontWeight = FontWeight.SemiBold)
+                        }
                         TextButton(onClick = {
                             vm.deleteStory(story.id)
                             if (list.size <= 1) onClose()
@@ -369,7 +373,7 @@ fun StoryViewer(ownerId: String, me: Profile, vm: AppViewModel, onClose: () -> U
                                 },
                             contentAlignment = Alignment.Center,
                         ) {
-                            Text(text = "➤", color = InkOnBrand, fontSize = 18.sp)
+                            Icon(imageVector = KIcons.Send, contentDescription = tr("Ուղարկել"), tint = InkOnBrand, modifier = Modifier.size(22.dp))
                         }
                     }
                 }
@@ -406,19 +410,23 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
         }
     }
 
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    val k = KTheme.colors
+    KSheet(onDismiss = onClose) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
-                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
+                .padding(horizontal = Space.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
-            Text(text = tr("Նոր սթորի"), fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth())
+            Text(
+                text = tr("Նոր սթորի"),
+                color = k.text,
+                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             Box(
                 modifier = Modifier
@@ -475,7 +483,7 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                                 .clip(CircleShape)
                                 .background(StoryBackgrounds[i])
                                 .then(
-                                    if (i == bg) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape) else Modifier,
+                                    if (i == bg) Modifier.border(3.dp, k.accent, CircleShape) else Modifier,
                                 )
                                 .clickable { bg = i },
                         )
@@ -487,27 +495,37 @@ fun StoryComposer(vm: AppViewModel, onClose: () -> Unit) {
                     onValueChange = { caption = it.take(120) },
                     label = { Text(tr("Մակագրություն (ըստ ցանկության)")) },
                     singleLine = true,
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(Corner.m),
+                    colors = kFieldColors(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = { mode = "txt" }, modifier = Modifier.weight(1f)) { Text(tr("Aa Տեքստ")) }
-                TextButton(
-                    onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    modifier = Modifier.weight(1f),
-                ) { Text(tr("📷 Նկար")) }
+            Row(horizontalArrangement = Arrangement.spacedBy(Space.s), modifier = Modifier.fillMaxWidth()) {
+                if (mode == "txt") {
+                    GradientButton(text = tr("Aa Տեքստ"), onClick = { mode = "txt" }, modifier = Modifier.weight(1f))
+                } else {
+                    SoftButton(text = tr("Aa Տեքստ"), onClick = { mode = "txt" }, modifier = Modifier.weight(1f))
+                }
+                if (mode == "img") {
+                    GradientButton(
+                        text = tr("Նկար"),
+                        onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    SoftButton(
+                        text = tr("Նկար"),
+                        onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
 
             val e = error
-            if (e != null) Text(text = e, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+            if (e != null) Text(text = e, color = k.danger, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium))
 
-            Text(
-                text = tr("Սթորին 24 ժամ կերևա քո զրույցների մարդկանց։"),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-            )
+            HintText(text = tr("Սթորին 24 ժամ կերևա քո զրույցների մարդկանց։"))
             GradientButton(
                 text = tr("Հրապարակել"),
                 modifier = Modifier.fillMaxWidth(),

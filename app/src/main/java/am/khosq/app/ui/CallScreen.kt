@@ -62,8 +62,8 @@ import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
 
 private val Glass = Color(0x33FFFFFF)
-private val Danger = Color(0xFFE5484D)
-private val Good = Color(0xFF2FB36B)
+private val Danger = Color(0xFFFF5C6C)
+private val Good = Color(0xFF1FAE6B)
 
 @Composable
 private fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, modifier: Modifier) {
@@ -140,7 +140,7 @@ private fun Pulse(active: Boolean, content: @Composable () -> Unit) {
                     Modifier
                         .size(130.dp + 106.dp * q)
                         .graphicsLayer { alpha = (1f - q) * 0.6f }
-                        .border(2.dp, Color(0xFFFFB23F), CircleShape),
+                        .border(2.dp, Color(0xFF8091FF), CircleShape),
                 )
             }
         }
@@ -223,7 +223,7 @@ fun CallPip() {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF1B2570), Color(0xFF090C22), Color(0xFF26124A)))),
+            .background(Brush.verticalGradient(listOf(Color(0xFF1A2160), Color(0xFF0A0C14), Color(0xFF241050)))),
         contentAlignment = Alignment.Center,
     ) {
         if (remoteShown) {
@@ -292,7 +292,7 @@ fun CallOverlay() {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF1B2570), Color(0xFF090C22), Color(0xFF26124A))))
+            .background(Brush.verticalGradient(listOf(Color(0xFF1A2160), Color(0xFF0A0C14), Color(0xFF241050))))
             .clickable(enabled = false) { },
     ) {
         if (remoteShown) {
@@ -311,7 +311,7 @@ fun CallOverlay() {
         ) {
             Text(
                 text = if (s.video) tr("ՏԵՍԱԶԱՆԳ") else tr("ԶԱՆԳ"),
-                color = Color(0xFFFFCB52),
+                color = Color(0xFFB9C2FF),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 3.sp,

@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -96,16 +96,17 @@ fun VoiceBody(m: Message, mine: Boolean, onLong: () -> Unit) {
         }
     }
 
-    val ink = if (mine) InkOnBrand else MaterialTheme.colorScheme.onSurface
-    val played = if (mine) InkOnBrand else MaterialTheme.colorScheme.primary
-    val rest = if (mine) InkOnBrand.copy(alpha = 0.28f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+    val k = KTheme.colors
+    val ink = if (mine) k.onBubbleOut else k.onBubbleIn
+    val played = if (mine) Color.White else k.accent
+    val rest = if (mine) Color.White.copy(alpha = 0.35f) else k.textTertiary.copy(alpha = 0.45f)
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(if (mine) Color(0xFF1B1000) else MaterialTheme.colorScheme.primary)
+                .background(if (mine) Color.White else k.accent)
                 .pointerInput(id) {
                     detectTapGestures(
                         onLongPress = { onLong() },
@@ -117,10 +118,11 @@ fun VoiceBody(m: Message, mine: Boolean, onLong: () -> Unit) {
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = if (playing) "⏸" else "▶",
-                color = if (mine) Color(0xFFFFCB52) else MaterialTheme.colorScheme.onPrimary,
-                fontSize = 16.sp,
+            Icon(
+                imageVector = if (playing) KIcons.Pause else KIcons.Play,
+                contentDescription = null,
+                tint = if (mine) k.bubbleOutA else Color.White,
+                modifier = Modifier.size(22.dp),
             )
         }
         Spacer(Modifier.width(8.dp))

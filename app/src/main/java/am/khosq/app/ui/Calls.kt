@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,8 +48,6 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
-
-private val Answered = Color(0xFF2FB36B)
 
 /** "Այսօր 14:32", "Երեկ 09:10" or "05.11 18:00". */
 private fun callTime(ts: Long): String {
@@ -97,75 +96,59 @@ fun CallsTab(me: Profile, calls: List<CallRecord>, chats: List<Chat>, onOpenChat
     }
 
     if (calls.isEmpty()) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            IconCircle(
-                icon = KIcons.Call,
-                onClick = { },
-                size = 72.dp,
-                bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.size(16.dp))
-            Text(text = tr("Զանգեր դեռ չկան"), fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.size(6.dp))
-            Text(
-                text = tr("Զանգիր ընկերոջդ զրույցի վերևի կոճակով, և պատմությունը կերևա այստեղ։"),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        EmptyState(
+            icon = KIcons.PhoneLine,
+            title = tr("Զանգեր դեռ չկան"),
+            text = tr("Զանգիր ընկերոջդ զրույցի վերևի կոճակով, և պատմությունը կերևա այստեղ։"),
+            modifier = Modifier.fillMaxSize().padding(top = Space.huge),
+        )
         return
     }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(bottom = Space.xxl),
     ) {
         items(calls, key = { r -> r.id }) { rec ->
             val chat = byPeer[rec.peerUid]
             val name = chat?.peerName ?: rec.peerName.ifEmpty { tr("Անհայտ") }
             val canCall = chat != null && chat.status == "active" && chat.blockedBy.isEmpty()
-            CallRow(
-                rec = rec,
-                name = name,
-                canCall = canCall,
-                onOpen = { if (chat != null) onOpenChat(chat.id) },
-                onCall = { if (chat != null) callBack(chat, rec.video) },
-            )
+            Column(Modifier.animateItem()) {
+                CallRow(
+                    rec = rec,
+                    name = name,
+                    canCall = canCall,
+                    onOpen = { if (chat != null) onOpenChat(chat.id) },
+                    onCall = { if (chat != null) callBack(chat, rec.video) },
+                )
+                KDivider(inset = Space.l + 48.dp + Space.m)
+            }
         }
     }
 }
 
 @Composable
 private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () -> Unit, onCall: () -> Unit) {
-    val shape = RoundedCornerShape(22.dp)
+    val k = KTheme.colors
     val tone = when {
-        rec.missed -> MaterialTheme.colorScheme.error
-        rec.answered -> Answered
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+        rec.missed -> k.danger
+        rec.answered -> k.success
+        else -> k.textSecondary
     }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.75f))
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
             .clickable(onClick = onOpen)
-            .padding(12.dp),
+            .padding(horizontal = Space.l, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Avatar(name = name, seed = rec.peerUid, size = 48.dp)
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
+        Spacer(Modifier.width(Space.m))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 text = name,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                color = if (rec.missed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
+                color = if (rec.missed) k.danger else k.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -179,20 +162,18 @@ private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () 
                 Spacer(Modifier.width(4.dp))
                 Text(
                     text = (if (rec.video) tr("Տեսազանգ") + " · " else "") + callLabel(rec) + " · " + callTime(rec.ts),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
+                    color = k.textSecondary,
+                    style = TextStyle(fontSize = 14.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
         if (canCall) {
-            IconCircle(
-                icon = if (rec.video) KIcons.Video else KIcons.Call,
+            KIconButton(
+                icon = if (rec.video) KIcons.VideoLine else KIcons.PhoneLine,
                 onClick = onCall,
-                size = 42.dp,
-                bg = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                tint = MaterialTheme.colorScheme.primary,
+                tint = k.accent,
                 description = if (rec.video) tr("Տեսազանգ") else tr("Զանգ"),
             )
         }

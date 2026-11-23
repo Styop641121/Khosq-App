@@ -15,9 +15,17 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,23 +33,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,17 +59,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Opens the system screen where the person picks the sound, vibration and importance of message notifications. */
 private fun openSoundSettings(ctx: Context) {
@@ -88,58 +99,138 @@ private fun openSoundSettings(ctx: Context) {
     }
 }
 
+
+/** A titled group of rows on one soft card, the way system settings screens are built. */
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    val shape = RoundedCornerShape(22.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.75f))
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(text = title.uppercase(), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-        content()
+private fun SettingsGroup(title: String?, content: @Composable () -> Unit) {
+    val k = KTheme.colors
+    val shape = RoundedCornerShape(Corner.l)
+    Column(Modifier.fillMaxWidth()) {
+        if (title != null) SectionLabel(title)
+        Column(
+            modifier = Modifier
+                .padding(horizontal = Space.l)
+                .fillMaxWidth()
+                .clip(shape)
+                .background(k.surface)
+                .border(1.dp, k.line, shape),
+        ) {
+            content()
+        }
     }
 }
 
+/** One row of a settings card: a tinted icon, a title, an optional second line and something at the end. */
 @Composable
-private fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(18.dp)
-    Box(
+private fun SettingsRow(
+    icon: ImageVector,
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    titleColor: Color = KTheme.colors.text,
+    tone: Color = KTheme.colors.accent,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    val k = KTheme.colors
+    Row(
         modifier = modifier
-            .clip(shape)
-            .background(if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = Space.l, vertical = Space.s),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-        )
+        Box(
+            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(tone.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(imageVector = icon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
+        }
+        Spacer(Modifier.width(Space.m))
+        Column(Modifier.weight(1f)) {
+            Text(text = title, color = titleColor, style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium))
+            if (subtitle != null) {
+                Text(text = subtitle, color = k.textSecondary, style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp))
+            }
+        }
+        if (trailing != null) {
+            Spacer(Modifier.width(Space.s))
+            trailing()
+        } else if (onClick != null) {
+            Icon(imageVector = KIcons.ChevronRight, contentDescription = null, tint = k.textTertiary, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Pick one of a few options. The chosen one rises out of the track. */
+@Composable
+private fun Segmented(
+    options: List<Pair<String, String>>,
+    selected: String,
+    modifier: Modifier = Modifier,
+    weights: List<Float> = emptyList(),
+    onSelect: (String) -> Unit,
+) {
+    val k = KTheme.colors
+    val raised = if (k.dark) k.surfaceHighest else k.surface
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Corner.m))
+            .background(k.surfaceHigh)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        for ((i, o) in options.withIndex()) {
+            val on = o.first == selected
+            val bg by animateColorAsState(if (on) raised else Color.Transparent, tween(Motion.Normal), label = "seg")
+            Box(
+                modifier = Modifier
+                    .weight(if (i < weights.size) weights[i] else 1f)
+                    .clip(RoundedCornerShape(Corner.m - 3.dp))
+                    .background(bg)
+                    .clickable { onSelect(o.first) }
+                    .padding(horizontal = Space.xs, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = o.second,
+                    color = if (on) k.text else k.textSecondary,
+                    style = TextStyle(fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
 /** The language buttons. They are also shown on the very first screen, so the person can switch before registering. */
 @Composable
 fun LanguageChips(modifier: Modifier = Modifier) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((code, label) in Lang.options) {
-            Chip(label = label, selected = Lang.code == code, modifier = Modifier.weight(1f)) { Lang.set(code) }
-        }
-    }
+    Segmented(
+        options = Lang.options.map { o -> o.first to o.second },
+        selected = Lang.code,
+        modifier = modifier,
+    ) { code -> Lang.set(code) }
 }
+
+@Composable
+private fun kSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Color.White,
+    checkedTrackColor = KTheme.colors.accent,
+    checkedBorderColor = Color.Transparent,
+    uncheckedThumbColor = Color.White,
+    uncheckedTrackColor = KTheme.colors.textTertiary.copy(alpha = 0.55f),
+    uncheckedBorderColor = Color.Transparent,
+)
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
 fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
+    val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -163,223 +254,270 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(bottom = Space.xxl),
+        verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {
-        Section(tr("Իմ պրոֆիլը")) {
-            Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(contentAlignment = Alignment.BottomEnd) {
-                    Avatar(
-                        name = me.name,
-                        seed = me.uid,
-                        size = 104.dp,
-                        modifier = Modifier.clickable { pickPhoto() },
+        // ---- who I am
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = Space.s, bottom = Space.s),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(contentAlignment = Alignment.BottomEnd) {
+                Avatar(
+                    name = me.name,
+                    seed = me.uid,
+                    size = 100.dp,
+                    modifier = Modifier.clip(CircleShape).clickable { pickPhoto() },
+                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .border(3.dp, k.bg, CircleShape)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(BrandColors))
+                        .clickable { pickPhoto() },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = KIcons.Camera,
+                        contentDescription = tr("Փոխել նկարը"),
+                        tint = InkOnBrand,
+                        modifier = Modifier.size(18.dp),
                     )
+                }
+            }
+            Spacer(Modifier.height(Space.m))
+            Text(
+                text = me.name,
+                color = k.text,
+                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = Space.xl),
+            )
+            Row(
+                modifier = Modifier
+                    .padding(top = Space.xs)
+                    .clip(RoundedCornerShape(Corner.m))
+                    .clickable {
+                        clipboard.setText(AnnotatedString(me.handle))
+                        copied = true
+                    }
+                    .padding(horizontal = Space.m, vertical = Space.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "@" + me.handle,
+                    color = k.accent,
+                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                )
+                Spacer(Modifier.width(Space.s))
+                Icon(imageVector = if (copied) KIcons.Check else KIcons.Copy, contentDescription = tr("Պատճենել"), tint = k.accent, modifier = Modifier.size(16.dp))
+                if (copied) {
+                    Spacer(Modifier.width(Space.xs))
+                    Text(text = tr("Պատճենվեց"), color = k.textSecondary, style = TextStyle(fontSize = 12.sp))
+                }
+            }
+            if (me.pv > 0L) {
+                Text(
+                    text = tr("Ջնջել նկարը"),
+                    color = k.danger,
+                    style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(Corner.m))
+                        .clickable { vm.setPhoto(null) }
+                        .padding(horizontal = Space.m, vertical = Space.s),
+                )
+            }
+        }
+
+        // ---- edit profile
+        SettingsGroup(tr("Իմ պրոֆիլը")) {
+            Column(Modifier.padding(Space.l), verticalArrangement = Arrangement.spacedBy(Space.m)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { v -> name = v.take(30) },
+                    label = { Text(tr("Քո անունը")) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(Corner.m),
+                    colors = kFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = about,
+                    onValueChange = { v -> about = v.take(140) },
+                    label = { Text(tr("Իմ մասին")) },
+                    placeholder = { Text(tr("Մի քանի բառ քո մասին…")) },
+                    maxLines = 3,
+                    shape = RoundedCornerShape(Corner.m),
+                    colors = kFieldColors(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                AnimatedVisibility(
+                    visible = changed && name.isNotBlank(),
+                    enter = fadeIn(tween(Motion.Normal)) + expandVertically(tween(Motion.Normal)),
+                    exit = fadeOut(tween(Motion.Fast)) + shrinkVertically(tween(Motion.Fast)),
+                ) {
+                    GradientButton(
+                        text = tr("Պահպանել"),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { vm.saveProfile(name, about) },
+                    )
+                }
+            }
+        }
+
+        // ---- chats
+        SettingsGroup(tr("Զրույցներ")) {
+            SettingsRow(
+                icon = KIcons.Star,
+                title = tr("Աստղանշված նամակներ"),
+                subtitle = if (stars.isNotEmpty()) stars.size.toString() else null,
+                tone = k.warning,
+                onClick = onStarred,
+            )
+            KDivider(inset = 62.dp)
+            Column(Modifier.padding(horizontal = Space.l, vertical = Space.m), verticalArrangement = Arrangement.spacedBy(Space.m)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .clickable { pickPhoto() },
+                        modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(k.accent.copy(alpha = 0.14f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(
-                            imageVector = KIcons.Camera,
-                            contentDescription = tr("Փոխել նկարը"),
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        Icon(imageVector = KIcons.Image, contentDescription = null, tint = k.accent, modifier = Modifier.size(20.dp))
                     }
+                    Spacer(Modifier.width(Space.m))
+                    Text(text = tr("Զրույցի ֆոն"), color = k.text, style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Medium))
                 }
-                Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = pickPhoto) { Text(tr("Փոխել նկարը")) }
-                    if (me.pv > 0L) {
-                        TextButton(onClick = { vm.setPhoto(null) }) {
-                            Text(tr("Ջնջել նկարը"), color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-            OutlinedTextField(
-                value = name,
-                onValueChange = { v -> name = v.take(30) },
-                label = { Text(tr("Քո անունը")) },
-                singleLine = true,
-                shape = RoundedCornerShape(17.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = about,
-                onValueChange = { v -> about = v.take(140) },
-                label = { Text(tr("Իմ մասին")) },
-                placeholder = { Text(tr("Մի քանի բառ քո մասին…")) },
-                maxLines = 3,
-                shape = RoundedCornerShape(17.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            GradientButton(
-                text = tr("Պահպանել"),
-                enabled = changed && name.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { vm.saveProfile(name, about) },
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(text = tr("Իմ ID-ն"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(text = "@" + me.handle, fontFamily = FontFamily.Monospace, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-                TextButton(onClick = {
-                    clipboard.setText(AnnotatedString(me.handle))
-                    copied = true
-                }) { Text(if (copied) tr("Պատճենվեց") else tr("Պատճենել")) }
-            }
-        }
-
-        Section(tr("Լեզու")) {
-            LanguageChips()
-        }
-
-        Section(tr("Թեմա")) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip(tr("Ինչպես հեռախոսում"), AppTheme.mode == "system", Modifier.weight(1.4f)) { AppTheme.set("system") }
-                Chip(tr("Լուսավոր"), AppTheme.mode == "light", Modifier.weight(1f)) { AppTheme.set("light") }
-                Chip(tr("Մութ"), AppTheme.mode == "dark", Modifier.weight(1f)) { AppTheme.set("dark") }
-            }
-        }
-
-        Section(tr("Զրույցներ")) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable(onClick = onStarred)
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(text = tr("⭐ Աստղանշված նամակներ"), fontWeight = FontWeight.SemiBold)
-                    if (stars.isNotEmpty()) {
-                        Text(
-                            text = stars.size.toString(),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                Text(text = "›", fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text(text = tr("Զրույցի ֆոն"), fontWeight = FontWeight.SemiBold)
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                for (i in 0 until WALLPAPER_COUNT) {
-                    val on = Wallpaper.index == i
-                    val swatch = Modifier
-                        .size(width = 62.dp, height = 88.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .then(if (i == 0) Modifier.background(backgroundBrush()) else Modifier.wallpaper(i))
-                        .border(
-                            width = if (on) 2.5.dp else 1.dp,
-                            color = if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                            shape = RoundedCornerShape(14.dp),
-                        )
-                        .clickable { Wallpaper.set(i) }
-                    Box(swatch, contentAlignment = Alignment.Center) {
-                        if (on) {
-                            Icon(
-                                imageVector = KIcons.Check,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(22.dp),
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    for (i in 0 until WALLPAPER_COUNT) {
+                        val on = Wallpaper.index == i
+                        val swatch = Modifier
+                            .size(width = 62.dp, height = 88.dp)
+                            .clip(RoundedCornerShape(Corner.m))
+                            .then(if (i == 0) Modifier.background(backgroundBrush()) else Modifier.wallpaper(i))
+                            .border(
+                                width = if (on) 2.5.dp else 1.dp,
+                                color = if (on) k.accent else k.lineStrong,
+                                shape = RoundedCornerShape(Corner.m),
                             )
+                            .clickable { Wallpaper.set(i) }
+                        Box(swatch, contentAlignment = Alignment.Center) {
+                            if (on) {
+                                Icon(
+                                    imageVector = KIcons.Check,
+                                    contentDescription = null,
+                                    tint = k.accent,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        Section(tr("Ծանուցումներ")) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { openSoundSettings(ctx) }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(text = tr("Նամակների ձայնը"), fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = tr("Ընտրիր ձայնը և թրթռոցը"),
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Text(text = "›", fontSize = 24.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        // ---- look and language
+        SettingsGroup(tr("Թեմա")) {
+            Segmented(
+                options = listOf(
+                    "system" to tr("Ինչպես հեռախոսում"),
+                    "light" to tr("Լուսավոր"),
+                    "dark" to tr("Մութ"),
+                ),
+                selected = AppTheme.mode,
+                weights = listOf(1.5f, 1f, 1f),
+                modifier = Modifier.padding(Space.m),
+            ) { m -> AppTheme.set(m) }
+        }
+        SettingsGroup(tr("Լեզու")) {
+            LanguageChips(Modifier.padding(Space.m))
         }
 
-        Section(tr("Գաղտնիություն")) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(text = tr("Ցույց տալ «առցանց»"), fontWeight = FontWeight.SemiBold)
-                    Text(
-                        text = tr("Եթե անջատես, ուրիշները չեն տեսնի՝ երբ ես առցանց, ոչ էլ վերջին այցս։"),
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Switch(checked = !me.hideSeen, onCheckedChange = { on -> vm.setHideSeen(!on) })
-            }
+        // ---- notifications and privacy
+        SettingsGroup(tr("Ծանուցումներ")) {
+            SettingsRow(
+                icon = KIcons.Bell,
+                title = tr("Նամակների ձայնը"),
+                subtitle = tr("Ընտրիր ձայնը և թրթռոցը"),
+                onClick = { openSoundSettings(ctx) },
+            )
+        }
+        SettingsGroup(tr("Գաղտնիություն")) {
+            SettingsRow(
+                icon = KIcons.EyeOff,
+                title = tr("Ցույց տալ «առցանց»"),
+                subtitle = tr("Եթե անջատես, ուրիշները չեն տեսնի՝ երբ ես առցանց, ոչ էլ վերջին այցս։"),
+                trailing = {
+                    Switch(checked = !me.hideSeen, onCheckedChange = { on -> vm.setHideSeen(!on) }, colors = kSwitchColors())
+                },
+            )
         }
         UpdateSection()
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(Space.m))
     }
 }
 
 private fun megabytes(n: Long): String = if (n <= 0L) "" else ((n + 524_288L) / 1_048_576L).toString()
 
+
 /** App version and the "check for a new version" button. */
 @Composable
 private fun UpdateSection() {
+    val k = KTheme.colors
     val ctx = LocalContext.current
     val up by Updater.state.collectAsStateWithLifecycle()
-    Section(tr("Հավելվածը")) {
-        Text(
-            text = "KHOSQ " + Updater.currentName(ctx),
-            fontWeight = FontWeight.SemiBold,
+    SettingsGroup(tr("Հավելվածը")) {
+        SettingsRow(
+            icon = KIcons.Info,
+            title = "KHOSQ " + Updater.currentName(ctx),
+            subtitle = when (val u = up) {
+                is UpState.Checking -> tr("Ստուգվում է…")
+                is UpState.UpToDate -> tr("Ունես վերջին տարբերակը ✓")
+                is UpState.Failed -> tr("Չհաջողվեց ստուգել թարմացումը")
+                is UpState.Available -> trf("Նոր տարբերակ՝ {0}", u.info.name)
+                is UpState.Downloading -> trf("Ներբեռնվում է… {0}%", u.percent.toString())
+                else -> null
+            },
         )
         when (val u = up) {
-            is UpState.Checking -> Text(text = tr("Ստուգվում է…"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is UpState.UpToDate -> Text(text = tr("Ունես վերջին տարբերակը ✓"), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            is UpState.Failed -> Text(text = tr("Չհաջողվեց ստուգել թարմացումը"), color = MaterialTheme.colorScheme.error)
             is UpState.Available -> {
-                Text(text = trf("Նոր տարբերակ՝ {0}", u.info.name), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                GradientButton(
-                    text = tr("Թարմացնել"),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { Updater.startDownload(ctx, u.info) },
-                )
+                Column(Modifier.padding(start = Space.l, end = Space.l, bottom = Space.l)) {
+                    GradientButton(
+                        text = tr("Թարմացնել"),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { Updater.startDownload(ctx, u.info) },
+                    )
+                }
             }
             is UpState.Downloading -> {
-                Text(text = trf("Ներբեռնվում է… {0}%", u.percent.toString()), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                LinearProgressIndicator(progress = { u.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(
+                    progress = { u.percent / 100f },
+                    color = k.accent,
+                    trackColor = k.surfaceHighest,
+                    modifier = Modifier.fillMaxWidth().padding(start = Space.l, end = Space.l, bottom = Space.l),
+                )
             }
             is UpState.Ready -> {
-                GradientButton(
-                    text = tr("Տեղադրել"),
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = { Updater.install(ctx, u.path) },
-                )
+                Column(Modifier.padding(start = Space.l, end = Space.l, bottom = Space.l)) {
+                    GradientButton(
+                        text = tr("Տեղադրել"),
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { Updater.install(ctx, u.path) },
+                    )
+                }
             }
             else -> Unit
         }
         if (up !is UpState.Downloading && up !is UpState.Ready && up !is UpState.Available) {
-            TextButton(onClick = { Updater.checkAsync(ctx, false) }, enabled = up !is UpState.Checking) {
-                Text(tr("Ստուգել թարմացումը"))
-            }
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Download,
+                title = tr("Ստուգել թարմացումը"),
+                onClick = if (up is UpState.Checking) null else ({ Updater.checkAsync(ctx, false) }),
+            )
         }
     }
 }
@@ -432,34 +570,51 @@ fun UpdateDialog() {
 }
 
 /** What another person has told about themselves: photo, name, ID, "about" and when they were last online. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ContactSheet(chat: Chat, about: String, status: String, onClose: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    val k = KTheme.colors
+    KSheet(onDismiss = onClose) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 28.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
-            Avatar(name = chat.peerName, seed = chat.peerUid, size = 120.dp)
-            Spacer(Modifier.height(6.dp))
-            Text(text = chat.peerName, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Avatar(name = chat.peerName, seed = chat.peerUid, size = 112.dp)
+            Spacer(Modifier.height(Space.s))
+            Text(
+                text = chat.peerName,
+                color = k.text,
+                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
             if (chat.peerHandle.isNotEmpty()) {
-                Text(text = "@" + chat.peerHandle, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    text = "@" + chat.peerHandle,
+                    color = k.accent,
+                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                )
             }
             if (status.isNotEmpty()) {
-                Text(text = status, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = status, color = k.textSecondary, style = TextStyle(fontSize = 13.sp))
             }
-            Spacer(Modifier.height(8.dp))
-            Text(text = tr("Նկարագրություն"), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                text = if (about.isBlank()) tr("Դեռ ոչինչ չի գրել") else about,
-                color = if (about.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-            )
+            Spacer(Modifier.height(Space.m))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Corner.l))
+                    .background(k.surfaceHigh)
+                    .padding(Space.l),
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                Text(text = tr("Նկարագրություն"), color = k.textSecondary, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+                Text(
+                    text = if (about.isBlank()) tr("Դեռ ոչինչ չի գրել") else about,
+                    color = if (about.isBlank()) k.textSecondary else k.text,
+                    style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp),
+                )
+            }
         }
     }
 }

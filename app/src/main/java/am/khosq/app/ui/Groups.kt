@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -53,40 +54,44 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** One contact in a picker: avatar, name and a round tick that turns gold when chosen. */
+/** One contact in a picker: avatar, name and a round tick that fills with the accent when chosen. */
 @Composable
 private fun PickRow(chat: Chat, on: Boolean, onToggle: () -> Unit) {
+    val k = KTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(Corner.m))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
+            .padding(horizontal = Space.xs, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (chat.saved) SavedAvatar(40.dp) else Avatar(name = chat.peerName, seed = chat.peerUid, size = 40.dp)
-        Spacer(Modifier.width(12.dp))
+        if (chat.saved) SavedAvatar(44.dp) else Avatar(name = chat.peerName, seed = chat.peerUid, size = 44.dp)
+        Spacer(Modifier.width(Space.m))
         Column(Modifier.weight(1f)) {
-            Text(text = chat.label(), fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = chat.label(),
+                color = k.text,
+                style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (chat.peerHandle.isNotEmpty()) {
-                Text(
-                    text = "@" + chat.peerHandle,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Text(text = "@" + chat.peerHandle, color = k.textSecondary, style = TextStyle(fontSize = 13.sp))
             }
         }
         Box(
             modifier = Modifier
                 .size(26.dp)
                 .clip(CircleShape)
-                .background(if (on) Brush.linearGradient(BrandColors) else Brush.linearGradient(listOf(Color(0x00000000), Color(0x00000000))))
-                .border(1.5.dp, if (on) Color.Transparent else MaterialTheme.colorScheme.outline, CircleShape),
+                .then(if (on) Modifier.background(Brush.linearGradient(BrandColors)) else Modifier.border(1.5.dp, k.lineStrong, CircleShape)),
             contentAlignment = Alignment.Center,
         ) {
             if (on) Icon(imageVector = KIcons.Check, contentDescription = null, tint = InkOnBrand, modifier = Modifier.size(16.dp))
@@ -94,44 +99,50 @@ private fun PickRow(chat: Chat, on: Boolean, onToggle: () -> Unit) {
     }
 }
 
+/** "Cancel" and "Save" side by side, for the small inline editors. */
+@Composable
+private fun CancelSaveRow(saveEnabled: Boolean, onCancel: () -> Unit, onSave: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+        SoftButton(text = tr("Չեղարկել"), onClick = onCancel, modifier = Modifier.weight(1f))
+        GradientButton(text = tr("Պահպանել"), onClick = onSave, enabled = saveEnabled, modifier = Modifier.weight(1f))
+    }
+}
+
 /** Bottom sheet: name the group, tick the people, create. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> Unit) {
+    val k = KTheme.colors
     val contacts = remember { vm.contacts() }
     var title by remember { mutableStateOf("") }
     val picked = remember { mutableStateListOf<String>() }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    KSheet(onDismiss = onClose) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = Space.xl),
+            verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
-            Text(text = tr("Նոր խումբ"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Նոր խումբ"), color = k.text, style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold))
             OutlinedTextField(
                 value = title,
                 onValueChange = { v -> if (v.length <= 40) title = v },
                 label = { Text(tr("Խմբի անունը")) },
                 singleLine = true,
+                shape = RoundedCornerShape(Corner.m),
+                colors = kFieldColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
             if (contacts.isEmpty()) {
-                Text(
-                    text = tr("Խումբ ստեղծելու համար նախ պետք է ունենաս առնվազն մեկ ընդունված կոնտակտ։"),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                HintText(text = tr("Խումբ ստեղծելու համար նախ պետք է ունենաս առնվազն մեկ ընդունված կոնտակտ։"))
             } else {
                 Text(
                     text = trf("Ընտրիր անդամներին ({0})", picked.size.toString()),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
+                    color = k.textSecondary,
+                    style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
                 )
                 Column(
                     modifier = Modifier
@@ -147,7 +158,7 @@ fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> 
                 }
             }
             val err = error
-            if (err != null) Text(text = err, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+            if (err != null) Text(text = err, color = k.danger, style = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium))
             GradientButton(
                 text = if (busy) tr("Ստեղծվում է…") else tr("Ստեղծել խումբը"),
                 enabled = !busy && title.isNotBlank() && picked.isNotEmpty(),
@@ -171,9 +182,9 @@ fun CreateGroupSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (String) -> 
 }
 
 /** Members, rename, add and remove (admin only), leave. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Unit, onLeft: () -> Unit) {
+    val k = KTheme.colors
     val iAmAdmin = me.uid in chat.admins
     var renaming by remember { mutableStateOf(false) }
     var newTitle by remember { mutableStateOf(chat.peerName) }
@@ -195,170 +206,190 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
     }
     val hasPhoto = ProfileStore.photos[chat.id] != null
 
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    KSheet(onDismiss = onClose) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Avatar(name = chat.peerName, seed = chat.id, size = 56.dp)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = chat.peerName,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = membersText(chat.members.size),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                    )
-                }
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.xl),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Space.xs),
+            ) {
+                Avatar(name = chat.peerName, seed = chat.id, size = 92.dp)
+                Spacer(Modifier.height(Space.xs))
+                Text(
+                    text = chat.peerName,
+                    color = k.text,
+                    style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(text = membersText(chat.members.size), color = k.textSecondary, style = TextStyle(fontSize = 14.sp))
             }
 
             if (chat.desc.isNotEmpty() && !editingDesc) {
-                Text(text = tr("Նկարագրություն"), fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(text = chat.desc, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = Space.l, vertical = Space.s)
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Corner.l))
+                        .background(k.surfaceHigh)
+                        .padding(Space.l),
+                    verticalArrangement = Arrangement.spacedBy(Space.xs),
+                ) {
+                    Text(text = tr("Նկարագրություն"), color = k.textSecondary, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+                    Text(text = chat.desc, color = k.text, style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp))
+                }
             }
 
             if (iAmAdmin) {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    TextButton(onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                        Text(tr("Փոխել նկարը"))
-                    }
-                    if (hasPhoto) {
-                        TextButton(onClick = { vm.setGroupPhoto(chat.id, null) }) {
-                            Text(tr("Ջնջել նկարը"), color = MaterialTheme.colorScheme.error)
-                        }
-                    }
+                SheetRow(
+                    icon = KIcons.Camera,
+                    label = tr("Փոխել նկարը"),
+                    onClick = { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                )
+                if (hasPhoto) {
+                    SheetRow(icon = KIcons.Trash, label = tr("Ջնջել նկարը"), danger = true, onClick = { vm.setGroupPhoto(chat.id, null) })
                 }
                 if (editingDesc) {
-                    OutlinedTextField(
-                        value = newDesc,
-                        onValueChange = { v -> if (v.length <= 200) newDesc = v },
-                        label = { Text(tr("Նկարագրություն")) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            editingDesc = false
-                            newDesc = chat.desc
-                        }) { Text(tr("Չեղարկել")) }
-                        TextButton(
-                            enabled = newDesc.trim() != chat.desc,
-                            onClick = {
+                    Column(Modifier.padding(horizontal = Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                        OutlinedTextField(
+                            value = newDesc,
+                            onValueChange = { v -> if (v.length <= 200) newDesc = v },
+                            label = { Text(tr("Նկարագրություն")) },
+                            shape = RoundedCornerShape(Corner.m),
+                            colors = kFieldColors(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        CancelSaveRow(
+                            saveEnabled = newDesc.trim() != chat.desc,
+                            onCancel = {
+                                editingDesc = false
+                                newDesc = chat.desc
+                            },
+                            onSave = {
                                 vm.setGroupDesc(chat.id, newDesc)
                                 editingDesc = false
                             },
-                        ) { Text(tr("Պահպանել")) }
+                        )
                     }
                 } else {
-                    TextButton(onClick = { editingDesc = true }) { Text(tr("✎  Փոխել նկարագրությունը")) }
+                    SheetRow(icon = KIcons.Edit, label = tr("Փոխել նկարագրությունը"), onClick = { editingDesc = true })
                 }
                 if (renaming) {
-                    OutlinedTextField(
-                        value = newTitle,
-                        onValueChange = { v -> if (v.length <= 40) newTitle = v },
-                        label = { Text(tr("Խմբի նոր անունը")) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { renaming = false }) { Text(tr("Չեղարկել")) }
-                        TextButton(
-                            enabled = newTitle.isNotBlank() && newTitle.trim() != chat.peerName,
-                            onClick = {
+                    Column(Modifier.padding(horizontal = Space.l), verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                        OutlinedTextField(
+                            value = newTitle,
+                            onValueChange = { v -> if (v.length <= 40) newTitle = v },
+                            label = { Text(tr("Խմբի նոր անունը")) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(Corner.m),
+                            colors = kFieldColors(),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        CancelSaveRow(
+                            saveEnabled = newTitle.isNotBlank() && newTitle.trim() != chat.peerName,
+                            onCancel = { renaming = false },
+                            onSave = {
                                 vm.renameGroup(chat.id, newTitle)
                                 renaming = false
                             },
-                        ) { Text(tr("Պահպանել")) }
+                        )
                     }
                 } else {
-                    TextButton(onClick = { renaming = true }) { Text(tr("✎  Փոխել անունը")) }
+                    SheetRow(icon = KIcons.Edit, label = tr("Փոխել անունը"), onClick = { renaming = true })
                 }
             }
 
-            Text(text = tr("Անդամներ"), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            SectionLabel(tr("Անդամներ"))
             for (uid in chat.members) {
                 val name = if (uid == me.uid) tr("Դու") else (chat.memberNames[uid] ?: "?")
                 val handle = chat.memberHandles[uid] ?: ""
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(name = name, seed = uid, size = 40.dp)
-                    Spacer(Modifier.width(12.dp))
+                    Avatar(name = name, seed = uid, size = 44.dp)
+                    Spacer(Modifier.width(Space.m))
                     Column(Modifier.weight(1f)) {
-                        Text(text = name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            text = name,
+                            color = k.text,
+                            style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                         if (handle.isNotEmpty()) {
-                            Text(text = "@" + handle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(text = "@" + handle, color = k.textSecondary, style = TextStyle(fontSize = 13.sp))
                         }
                     }
                     if (uid in chat.admins) {
                         Text(
                             text = tr("ադմին"),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            color = k.accent,
+                            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp),
+                                .clip(RoundedCornerShape(Corner.s))
+                                .background(k.accentSoft)
+                                .padding(horizontal = Space.s, vertical = 3.dp),
                         )
                     }
                     if (iAmAdmin && uid != me.uid) {
-                        TextButton(onClick = { vm.removeMember(chat.id, uid, chat.memberNames[uid] ?: "") }) {
-                            Text("✕", color = MaterialTheme.colorScheme.error)
-                        }
+                        KIconButton(
+                            icon = KIcons.Close,
+                            onClick = { vm.removeMember(chat.id, uid, chat.memberNames[uid] ?: "") },
+                            tint = k.danger,
+                            size = 40.dp,
+                            iconSize = 20.dp,
+                        )
                     }
                 }
             }
 
             if (iAmAdmin) {
                 if (adding) {
-                    if (candidates.isEmpty()) {
-                        Text(
-                            text = tr("Բոլոր կոնտակտներդ արդեն խմբում են։"),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp,
-                        )
-                    } else {
-                        for (c in candidates) {
-                            PickRow(chat = c, on = c.peerUid in picked) {
-                                if (c.peerUid in picked) picked.remove(c.peerUid) else picked.add(c.peerUid)
+                    Column(Modifier.padding(horizontal = Space.l), verticalArrangement = Arrangement.spacedBy(Space.xs)) {
+                        if (candidates.isEmpty()) {
+                            HintText(text = tr("Բոլոր կոնտակտներդ արդեն խմբում են։"))
+                        } else {
+                            for (c in candidates) {
+                                PickRow(chat = c, on = c.peerUid in picked) {
+                                    if (c.peerUid in picked) picked.remove(c.peerUid) else picked.add(c.peerUid)
+                                }
                             }
                         }
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = {
-                            adding = false
-                            picked.clear()
-                        }) { Text(tr("Չեղարկել")) }
-                        TextButton(
-                            enabled = picked.isNotEmpty(),
-                            onClick = {
-                                vm.addMembers(chat.id, candidates.filter { c -> c.peerUid in picked })
-                                picked.clear()
-                                adding = false
-                            },
-                        ) { Text(trf("Ավելացնել ({0})", picked.size.toString())) }
+                        Spacer(Modifier.height(Space.xs))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                            SoftButton(
+                                text = tr("Չեղարկել"),
+                                onClick = {
+                                    adding = false
+                                    picked.clear()
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                            GradientButton(
+                                text = trf("Ավելացնել ({0})", picked.size.toString()),
+                                enabled = picked.isNotEmpty(),
+                                onClick = {
+                                    vm.addMembers(chat.id, candidates.filter { c -> c.peerUid in picked })
+                                    picked.clear()
+                                    adding = false
+                                },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                     }
                 } else {
-                    TextButton(onClick = { adding = true }) { Text(tr("+  Ավելացնել անդամ")) }
+                    SheetRow(icon = KIcons.PersonAdd, label = tr("Ավելացնել անդամ"), onClick = { adding = true })
                 }
             }
 
-            TextButton(onClick = { confirmLeave = true }) {
-                Text(tr("Լքել խումբը"), color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
-            }
+            SheetRow(icon = KIcons.Close, label = tr("Լքել խումբը"), danger = true, onClick = { confirmLeave = true })
         }
     }
 
@@ -373,7 +404,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                     vm.leaveGroup(chat)
                     onClose()
                     onLeft()
-                }) { Text(tr("Լքել"), color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("Լքել"), color = k.danger) }
             },
             dismissButton = { TextButton(onClick = { confirmLeave = false }) { Text(tr("Ոչ")) } },
         )
@@ -381,23 +412,19 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
 }
 
 /** Pick one or more chats and send a copy of the message there. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ForwardSheet(vm: AppViewModel, message: Message, onClose: () -> Unit) {
+    val k = KTheme.colors
     val targets = remember { vm.shareTargets() }
     val picked = remember { mutableStateListOf<String>() }
-    ModalBottomSheet(onDismissRequest = onClose, containerColor = MaterialTheme.colorScheme.surface) {
+    KSheet(onDismiss = onClose) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.xl),
+            verticalArrangement = Arrangement.spacedBy(Space.m),
         ) {
-            Text(text = tr("Փոխանցել…"), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(text = tr("Փոխանցել…"), color = k.text, style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold))
             if (targets.isEmpty()) {
-                Text(text = tr("Դեռ չկա զրույց, որին կարելի է փոխանցել։"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                HintText(text = tr("Դեռ չկա զրույց, որին կարելի է փոխանցել։"))
             } else {
                 Column(
                     modifier = Modifier

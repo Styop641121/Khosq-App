@@ -13,6 +13,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.Dp
@@ -88,19 +89,141 @@ object KIcons {
     val ArrowIn: ImageVector by lazy { vec("arrowIn", ARROW_IN) }
     val ArrowOut: ImageVector by lazy { vec("arrowOut", ARROW_OUT) }
     val More: ImageVector by lazy { vec("more", MORE) }
-    val Chat: ImageVector by lazy { vec("chat", CHAT) }
-    val Group: ImageVector by lazy { vec("group", GROUP) }
-    val Check: ImageVector by lazy { vec("check", CHECK) }
-    val Search: ImageVector by lazy { vec("search", SEARCH) }
-    val Forward: ImageVector by lazy { vec("forward", FORWARD) }
-    val Close: ImageVector by lazy { vec("close", CLOSE) }
-    val Bookmark: ImageVector by lazy { vec("bookmark", BOOKMARK) }
-    val Down: ImageVector by lazy { vec("down", DOWN) }
-    val Person: ImageVector by lazy { vec("person", PERSON) }
-    val Edit: ImageVector by lazy { vec("edit", EDIT) }
-    val Camera: ImageVector by lazy { vec("camera", CAMERA) }
-    val Reply: ImageVector by lazy { vec("reply", REPLY) }
-    val Star: ImageVector by lazy { vec("star", STAR) }
+
+    /** Outline icons: one visual weight (1.8 stroke, round ends) for everything in the chrome of the app. */
+    private fun line(name: String, strokes: List<String>, fill: String? = null): ImageVector {
+        val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
+        if (fill != null) {
+            // a faint fill under the outline: the "selected" look of the navigation icons
+            b.addPath(addPathNodes(fill), fill = SolidColor(Color.Black), fillAlpha = 0.22f)
+        }
+        for (d in strokes) {
+            b.addPath(
+                addPathNodes(d),
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.8f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            )
+        }
+        return b.build()
+    }
+
+    private const val C_CHAT =
+        "M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"
+    private const val C_PHONE =
+        "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+    private const val C_GEAR =
+        "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+    private const val C_CIRCLE = "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"
+    private const val C_BELL = "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
+    private const val C_STAR = "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+    private const val C_BOOKMARK = "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"
+    private const val C_USER_BODY = "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"
+    private const val C_USER_HEAD = "M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"
+
+    // navigation: a plain outline, and the same shape with the faint fill when selected
+    val ChatLine: ImageVector by lazy { line("chatLine", listOf(C_CHAT)) }
+    val ChatFill: ImageVector by lazy { line("chatFill", listOf(C_CHAT), C_CHAT) }
+    val PhoneLine: ImageVector by lazy { line("phoneLine", listOf(C_PHONE)) }
+    val PhoneFill: ImageVector by lazy { line("phoneFill", listOf(C_PHONE), C_PHONE) }
+    val CircleLine: ImageVector by lazy { line("circleLine", listOf(C_CIRCLE, "M12 8v8", "M8 12h8")) }
+    val CircleFill: ImageVector by lazy { line("circleFill", listOf(C_CIRCLE, "M12 8v8", "M8 12h8"), C_CIRCLE) }
+    val GearLine: ImageVector by lazy { line("gearLine", listOf(C_GEAR, "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z")) }
+    val GearFill: ImageVector by lazy { line("gearFill", listOf(C_GEAR, "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"), C_GEAR) }
+
+    // actions
+    val Chat: ImageVector by lazy { line("chat", listOf(C_CHAT)) }
+    val Back: ImageVector by lazy { line("back", listOf("M19 12H5", "M12 19l-7-7 7-7")) }
+    val ChevronRight: ImageVector by lazy { line("chevronRight", listOf("M9 18l6-6-6-6")) }
+    val Down: ImageVector by lazy { line("down", listOf("M6 9l6 6 6-6")) }
+    val Plus: ImageVector by lazy { line("plus", listOf("M12 5v14", "M5 12h14")) }
+    val Close: ImageVector by lazy { line("close", listOf("M18 6L6 18", "M6 6l12 12")) }
+    val Check: ImageVector by lazy { line("check", listOf("M20 6L9 17l-5-5")) }
+    val DoubleCheck: ImageVector by lazy { line("doubleCheck", listOf("M18 6L7 17l-5-5", "M22 10l-7.5 7.5L13 16")) }
+    val Clock: ImageVector by lazy { line("clock", listOf(C_CIRCLE, "M12 7v5l3 2")) }
+    val Search: ImageVector by lazy { line("search", listOf("M11 3a8 8 0 1 0 0 16 8 8 0 0 0 0-16z", "M21 21l-4.35-4.35")) }
+    val Send: ImageVector by lazy { line("send", listOf("M22 2L11 13", "M22 2l-7 20-4-9-9-4 20-7z")) }
+    val Attach: ImageVector by lazy {
+        line(
+            "attach",
+            listOf("M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"),
+        )
+    }
+    val MicLine: ImageVector by lazy {
+        line("micLine", listOf("M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z", "M19 10v2a7 7 0 0 1-14 0v-2", "M12 19v3"))
+    }
+    val Forward: ImageVector by lazy { line("forward", listOf("M15 14l5-5-5-5", "M4 20v-7a4 4 0 0 1 4-4h12")) }
+    val Reply: ImageVector by lazy { line("reply", listOf("M9 14L4 9l5-5", "M20 20v-7a4 4 0 0 0-4-4H4")) }
+    val Edit: ImageVector by lazy { line("edit", listOf("M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z")) }
+    val Trash: ImageVector by lazy {
+        line("trash", listOf("M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"))
+    }
+    val Copy: ImageVector by lazy {
+        line("copy", listOf("M11 9h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-9a2 2 0 0 1 2-2z", "M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"))
+    }
+    val Pin: ImageVector by lazy {
+        line(
+            "pin",
+            listOf(
+                "M12 17v5",
+                "M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z",
+            ),
+        )
+    }
+    val Image: ImageVector by lazy {
+        line("image", listOf("M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M8.5 7a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z", "M21 15l-5-5L5 21"))
+    }
+    val Camera: ImageVector by lazy {
+        line("camera", listOf("M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z", "M12 9a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"))
+    }
+    val Download: ImageVector by lazy { line("download", listOf("M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3")) }
+
+    val VideoLine: ImageVector by lazy {
+        line("videoLine", listOf("M23 7l-7 5 7 5V7z", "M3 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"))
+    }
+    val Eye: ImageVector by lazy {
+        line("eye", listOf("M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"))
+    }
+    val Play: ImageVector by lazy { vec("play", "M8,5v14l11,-7z") }
+    val Pause: ImageVector by lazy { vec("pause", "M6,5h4v14H6z M14,5h4v14h-4z") }
+
+    // people
+    val Person: ImageVector by lazy { line("person", listOf(C_USER_BODY, C_USER_HEAD)) }
+    val PersonAdd: ImageVector by lazy {
+        line("personAdd", listOf("M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M8.5 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", "M20 8v6", "M23 11h-6"))
+    }
+    val Group: ImageVector by lazy {
+        line("group", listOf("M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z", "M23 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75"))
+    }
+    val Bookmark: ImageVector by lazy { line("bookmark", listOf(C_BOOKMARK)) }
+    val BookmarkFill: ImageVector by lazy { line("bookmarkFill", listOf(C_BOOKMARK), C_BOOKMARK) }
+    val Star: ImageVector by lazy { line("star", listOf(C_STAR)) }
+    val StarFill: ImageVector by lazy { line("starFill", listOf(C_STAR), C_STAR) }
+
+    // settings
+    val Bell: ImageVector by lazy { line("bell", listOf(C_BELL, "M13.73 21a2 2 0 0 1-3.46 0")) }
+    val BellOff: ImageVector by lazy {
+        line(
+            "bellOff",
+            listOf("M13.73 21a2 2 0 0 1-3.46 0", "M18.63 13A17.89 17.89 0 0 1 18 8", "M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14", "M18 8a6 6 0 0 0-9.33-5", "M2 2l20 20"),
+        )
+    }
+    val Lock: ImageVector by lazy { line("lock", listOf("M5 11h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z", "M7 11V7a5 5 0 0 1 10 0v4")) }
+    val Globe: ImageVector by lazy {
+        line("globe", listOf("M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M2 12h20", "M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"))
+    }
+    val Moon: ImageVector by lazy { line("moon", listOf("M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z")) }
+    val Info: ImageVector by lazy { line("info", listOf(C_CIRCLE, "M12 16v-4", "M12 8h.01")) }
+    val EyeOff: ImageVector by lazy {
+        line(
+            "eyeOff",
+            listOf("M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94", "M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19", "M14.12 14.12a3 3 0 1 1-4.24-4.24", "M2 2l20 20"),
+        )
+    }
+    val Shield: ImageVector by lazy { line("shield", listOf("M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z")) }
+    val Sparkle: ImageVector by lazy { line("sparkle", listOf("M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z", "M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7L19 16z")) }
+
 }
 
 /** A round button with a vector icon inside. */

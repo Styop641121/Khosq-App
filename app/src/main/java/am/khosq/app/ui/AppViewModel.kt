@@ -162,7 +162,7 @@ class AppViewModel : ViewModel() {
         _replyTo.value = null
         _peerSeen.value = 0L
         seenJob?.cancel()
-        val peer = id.split("_").firstOrNull { p -> p != uid }
+        val peer = if (id.contains("_")) id.split("_").firstOrNull { p -> p != uid } else null
         if (peer != null) {
             seenJob = viewModelScope.launch {
                 repo.userSeen(peer).catch { }.collect { t -> _peerSeen.value = t }
@@ -187,16 +187,29 @@ class AppViewModel : ViewModel() {
         _messages.value = emptyList()
     }
 
+    /** Everyone who should get the "unread" counter: the other person, or all other group members. */
+    private fun recipients(chatId: String, fallback: String): List<String> {
+        val c = _chats.value.firstOrNull { x -> x.id == chatId }
+        return if (c != null && c.isGroup) c.members.filter { m -> m != uid } else listOf(c?.peerUid ?: fallback)
+    }
+
+    private fun groupTitle(chatId: String): String {
+        val c = _chats.value.firstOrNull { x -> x.id == chatId }
+        return if (c != null && c.isGroup) c.peerName else ""
+    }
+
     fun send(chatId: String, peerUid: String, text: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         if (text.isBlank()) return
         val r = _replyTo.value
+        val chat = _chats.value.firstOrNull { c -> c.id == chatId }
         val rn = when {
             r == null -> ""
             r.from == me.uid -> "Դու"
-            else -> _chats.value.firstOrNull { c -> c.id == chatId }?.peerName ?: ""
+            chat != null && chat.isGroup -> chat.memberNames[r.from] ?: ""
+            else -> chat?.peerName ?: ""
         }
-        repo.send(chatId, me, peerUid, text, r, rn)
+        repo.send(chatId, me, recipients(chatId, peerUid), text, r, rn, groupTitle(chatId))
         _replyTo.value = null
         lastTypingSent = 0L
         repo.setTyping(chatId, me.uid, false)
@@ -232,17 +245,17 @@ class AppViewModel : ViewModel() {
 
     fun sendImage(chatId: String, peerUid: String, bytes: ByteArray) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        repo.sendMedia(chatId, me, peerUid, "img", bytes, 0)
+        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "img", bytes, 0, groupTitle(chatId))
     }
 
     fun sendVoice(chatId: String, peerUid: String, bytes: ByteArray, seconds: Int) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        repo.sendMedia(chatId, me, peerUid, "voice", bytes, seconds)
+        repo.sendMedia(chatId, me, recipients(chatId, peerUid), "voice", bytes, seconds, groupTitle(chatId))
     }
 
     fun postStory(kind: String, text: String, bg: Int, bytes: ByteArray?) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        val audience = _chats.value.filter { c -> c.status == "active" && c.blockedBy.isEmpty() }.map { c -> c.peerUid }
+        val audience = _chats.value.filter { c -> !c.isGroup && c.status == "active" && c.blockedBy.isEmpty() }.map { c -> c.peerUid }
         repo.postStory(me, audience, kind, text, bg, bytes)
     }
 
@@ -257,9 +270,43 @@ class AppViewModel : ViewModel() {
 
     fun replyToStory(story: Story, text: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        val chat = _chats.value.firstOrNull { c -> c.peerUid == story.owner } ?: return
+        val chat = _chats.value.firstOrNull { c -> !c.isGroup && c.peerUid == story.owner } ?: return
         if (text.isBlank()) return
-        repo.send(chat.id, me, story.owner, "📖 Սթորի՝ " + text.trim())
+        repo.send(chat.id, me, listOf(story.owner), "📖 Սթորի՝ " + text.trim())
+    }
+
+    /** Contacts I can put in a group: accepted, not blocked, one-to-one chats. */
+    fun contacts(): List<Chat> = _chats.value.filter { c -> !c.isGroup && c.status == "active" && c.blockedBy.isEmpty() }
+
+    fun createGroup(title: String, picks: List<Chat>, onDone: (String?, String?) -> Unit) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        viewModelScope.launch {
+            try {
+                onDone(repo.createGroup(me, title.trim(), picks), null)
+            } catch (e: Exception) {
+                onDone(null, describe(e))
+            }
+        }
+    }
+
+    fun addMembers(chatId: String, picks: List<Chat>) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.addMembers(chatId, me, picks)
+    }
+
+    fun removeMember(chatId: String, uid: String, name: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.removeMember(chatId, me, uid, name)
+    }
+
+    fun renameGroup(chatId: String, title: String) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        if (title.isNotBlank()) repo.renameGroup(chatId, me, title.trim())
+    }
+
+    fun leaveGroup(chat: Chat) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.leaveGroup(chat, me)
     }
 
     fun clearNotice() {

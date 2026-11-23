@@ -12,6 +12,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.graphics.asImageBitmap
@@ -171,6 +172,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
     var viewing by remember { mutableStateOf<String?>(null) }
     var composing by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
+    var showGroup by remember { mutableStateOf(false) }
     var showMe by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val calls by vm.calls.collectAsStateWithLifecycle()
@@ -230,18 +232,39 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
                     }
                 }
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(20.dp)
-                        .shadow(10.dp, RoundedCornerShape(29.dp))
-                        .height(58.dp)
-                        .clip(RoundedCornerShape(29.dp))
-                        .background(Brush.linearGradient(BrandColors))
-                        .clickable { showAdd = true }
-                        .padding(horizontal = 24.dp),
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(text = "+  Նոր կոնտակտ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
+                    Box(
+                        modifier = Modifier
+                            .shadow(10.dp, CircleShape)
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                            .clickable { showGroup = true },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = KIcons.Group,
+                            contentDescription = "Նոր խումբ",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .shadow(10.dp, RoundedCornerShape(29.dp))
+                            .height(58.dp)
+                            .clip(RoundedCornerShape(29.dp))
+                            .background(Brush.linearGradient(BrandColors))
+                            .clickable { showAdd = true }
+                            .padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(text = "+  Նոր կոնտակտ", color = InkOnBrand, fontWeight = FontWeight.ExtraBold)
+                    }
                 }
             } else {
                 CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
@@ -257,6 +280,9 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit) {
 
     if (showAdd) {
         AddContactSheet(vm = vm, onClose = { showAdd = false }, onOpen = onOpen)
+    }
+    if (showGroup) {
+        CreateGroupSheet(vm = vm, onClose = { showGroup = false }, onOpen = onOpen)
     }
     if (composing) {
         StoryComposer(vm = vm, onClose = { composing = false })
@@ -352,19 +378,35 @@ private fun ChatRow(chat: Chat, myUid: String, onClick: () -> Unit) {
         Avatar(name = chat.peerName, seed = chat.peerUid)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = chat.peerName,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val prefix = if (chat.lastFrom == myUid) "Դու՝ " else ""
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (chat.isGroup) {
+                    Icon(
+                        imageVector = KIcons.Group,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(
+                    text = chat.peerName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val prefix = when {
+                chat.lastFrom == myUid -> "Դու՝ "
+                chat.isGroup -> (chat.memberNames[chat.lastFrom] ?: "").let { n -> if (n.isEmpty()) "" else "$n՝ " }
+                else -> ""
+            }
             Text(
                 text = when {
                     chat.blockedBy.isNotEmpty() -> "🚫 Արգելափակված"
                     chat.status == "pending" && chat.requester != myUid -> "🔔 Նոր հարցում"
                     chat.status == "pending" -> "⏳ Սպասում է հաստատման"
+                    chat.lastText.isEmpty() && chat.isGroup -> chat.members.size.toString() + " անդամ"
                     chat.lastText.isEmpty() -> "@" + chat.peerHandle
                     else -> prefix + chat.lastText
                 },
@@ -476,7 +518,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val pendingForMe = chat != null && chat.status == "pending" && chat.requester != me.uid
     val waiting = chat != null && chat.status == "pending" && chat.requester == me.uid
     val iBlocked = chat != null && me.uid in chat.blockedBy
-    val canCall = chat != null && chat.status == "active" && chat.blockedBy.isEmpty()
+    val canCall = chat != null && !chat.isGroup && chat.status == "active" && chat.blockedBy.isEmpty()
+    val isGroup = chat != null && chat.isGroup
+    var showInfo by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     val ctx = LocalContext.current
@@ -511,6 +555,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
     }
     val statusText = when {
+        chat != null && chat.isGroup -> if (typingNow) "գրում են…" else chat.members.size.toString() + " անդամ"
         typingNow -> "գրում է…"
         peerSeen > 0L && clock - peerSeen < 100_000L -> "առցանց"
         peerSeen > 0L -> "վերջին անգամ՝ " + formatSeen(peerSeen)
@@ -619,6 +664,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         )
     }
 
+    if (showInfo && chat != null && chat.isGroup) {
+        GroupInfoSheet(vm = vm, me = me, chat = chat, onClose = { showInfo = false }, onLeft = onBack)
+    }
+
     Column(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
@@ -629,7 +678,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
             Avatar(name = chat?.peerName ?: "?", seed = peerUid, size = 42.dp)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
+            Column(Modifier.weight(1f).clickable(enabled = isGroup) { showInfo = true }) {
                 Text(
                     text = chat?.peerName ?: "…",
                     fontWeight = FontWeight.Bold,
@@ -672,13 +721,23 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     Icon(imageVector = KIcons.More, contentDescription = "Ավելին")
                 }
                 DropdownMenu(expanded = moreOpen, onDismissRequest = { moreOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text(if (iBlocked) "Ապաարգելափակել" else "Արգելափակել") },
-                        onClick = {
-                            moreOpen = false
-                            vm.setBlocked(chatId, !iBlocked)
-                        },
-                    )
+                    if (isGroup) {
+                        DropdownMenuItem(
+                            text = { Text("Խմբի տվյալներ") },
+                            onClick = {
+                                moreOpen = false
+                                showInfo = true
+                            },
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text(if (iBlocked) "Ապաարգելափակել" else "Արգելափակել") },
+                            onClick = {
+                                moreOpen = false
+                                vm.setBlocked(chatId, !iBlocked)
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -694,7 +753,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     m = m,
                     mine = m.from == me.uid,
                     peerRead = chat?.peerRead ?: 0L,
-                    onLong = { if (!m.deleted && !m.pending && m.kind != "call") menuFor = m },
+                    sender = if (chat != null && chat.isGroup && m.from != me.uid) (chat.memberNames[m.from] ?: "?") else null,
+                    senderKey = m.from,
+                    onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                 )
             }
         }
@@ -712,7 +773,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = if (rt.from == me.uid) "Դու" else (chat?.peerName ?: ""),
+                        text = if (rt.from == me.uid) "Դու" else if (chat != null && chat.isGroup) (chat.memberNames[rt.from] ?: "") else (chat?.peerName ?: ""),
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
@@ -906,10 +967,24 @@ private fun VoiceBody(m: Message, mine: Boolean) {
     }
 }
 
+/** A steady colour per person, so the same sender always looks the same in a group. */
+@Composable
+private fun senderColor(key: String): Color {
+    var h = 0
+    for (c in key) h = (h * 31 + c.code) and 0x7fffffff
+    val dark = isSystemInDarkTheme()
+    val palette = if (dark) {
+        listOf(Color(0xFFFFB23F), Color(0xFF8FA6FF), Color(0xFFFF8A80), Color(0xFF7BE0B0), Color(0xFFD7A6FF), Color(0xFF7FD6F5))
+    } else {
+        listOf(Color(0xFFB45F00), Color(0xFF3C3FD6), Color(0xFFC2362B), Color(0xFF12805A), Color(0xFF8A3FC9), Color(0xFF0B7DA8))
+    }
+    return palette[h % palette.size]
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Bubble(m: Message, mine: Boolean, peerRead: Long, onLong: () -> Unit) {
-    if (m.kind == "call") {
+private fun Bubble(m: Message, mine: Boolean, peerRead: Long, sender: String?, senderKey: String, onLong: () -> Unit) {
+    if (m.kind == "call" || m.kind == "sys") {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             Text(
                 text = m.text + "  " + formatTime(m.ts),
@@ -944,6 +1019,15 @@ private fun Bubble(m: Message, mine: Boolean, peerRead: Long, onLong: () -> Unit
                 .combinedClickable(onClick = {}, onLongClick = onLong)
                 .padding(horizontal = 13.dp, vertical = 8.dp),
         ) {
+            if (sender != null) {
+                Text(
+                    text = sender,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = senderColor(senderKey),
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
             if (m.deleted) {
                 Text(text = "🚫 Նամակը ջնջված է", color = soft, fontSize = 15.sp, fontStyle = FontStyle.Italic)
             } else {

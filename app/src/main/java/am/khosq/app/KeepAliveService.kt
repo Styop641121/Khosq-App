@@ -146,10 +146,19 @@ class KeepAliveService : Service() {
 
     private fun showMessage(d: DocumentSnapshot, me: String) {
         val members = d.get("members") as? List<*> ?: return
-        val peer = members.firstOrNull { it != me } as? String ?: return
         val names = d.get("names") as? Map<*, *>
-        val name = (names?.get(peer) as? String) ?: "KHOSQ"
-        val text = d.getString("lastText") ?: return
+        val last = d.getString("lastText") ?: return
+        val name: String
+        val text: String
+        if (d.getBoolean("group") == true) {
+            val from = (names?.get(d.getString("lastFrom") ?: "") as? String) ?: ""
+            name = d.getString("title") ?: "KHOSQ"
+            text = if (from.isEmpty()) last else "$from: $last"
+        } else {
+            val peer = members.firstOrNull { it != me } as? String ?: return
+            name = (names?.get(peer) as? String) ?: "KHOSQ"
+            text = last
+        }
         val tap = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra("chat", d.id)

@@ -16,6 +16,11 @@ data class Chat(
     val status: String = "active",
     val requester: String = "",
     val blockedBy: List<String> = emptyList(),
+    val isGroup: Boolean = false,
+    val members: List<String> = emptyList(),
+    val memberNames: Map<String, String> = emptyMap(),
+    val memberHandles: Map<String, String> = emptyMap(),
+    val admins: List<String> = emptyList(),
 )
 
 data class Message(

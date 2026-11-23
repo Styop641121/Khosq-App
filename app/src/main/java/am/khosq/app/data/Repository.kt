@@ -101,7 +101,43 @@ class Repository {
         awaitClose { reg.remove() }
     }
 
+    private fun stringMap(raw: Any?): Map<String, String> {
+        val out = HashMap<String, String>()
+        val m = raw as? Map<*, *> ?: return out
+        for ((k, v) in m) {
+            if (k is String && v is String) out[k] = v
+        }
+        return out
+    }
+
+    private fun toGroup(d: DocumentSnapshot, me: String): Chat? {
+        val members = (d.get("members") as? List<*>)?.filterIsInstance<String>() ?: return null
+        if (me !in members) return null
+        val others = members.filter { m -> m != me }
+        val reads = d.get("read") as? Map<*, *>
+        val typing = d.get("typing") as? Map<*, *>
+        val unread = d.get("unread") as? Map<*, *>
+        return Chat(
+            id = d.id,
+            peerUid = d.id,
+            peerName = d.getString("title") ?: "Խումբ",
+            peerHandle = "",
+            lastText = d.getString("lastText") ?: "",
+            lastTs = d.getLong("lastTs") ?: 0L,
+            lastFrom = d.getString("lastFrom") ?: "",
+            unread = (unread?.get(me) as? Number)?.toLong() ?: 0L,
+            peerRead = if (others.isEmpty()) 0L else others.minOf { o -> (reads?.get(o) as? Number)?.toLong() ?: 0L },
+            peerTyping = others.maxOfOrNull { o -> (typing?.get(o) as? Number)?.toLong() ?: 0L } ?: 0L,
+            isGroup = true,
+            members = members,
+            memberNames = stringMap(d.get("names")),
+            memberHandles = stringMap(d.get("handles")),
+            admins = (d.get("admins") as? List<*>)?.filterIsInstance<String>() ?: emptyList(),
+        )
+    }
+
     private fun toChat(d: DocumentSnapshot, me: String): Chat? {
+        if (d.getBoolean("group") == true) return toGroup(d, me)
         val members = d.get("members") as? List<*> ?: return null
         val peer = members.firstOrNull { it != me } as? String ?: return null
         val names = d.get("names") as? Map<*, *>
@@ -246,7 +282,20 @@ class Repository {
         )
     }
 
-    fun send(chatId: String, me: Profile, peerUid: String, text: String, reply: Message? = null, replyName: String = "") {
+    private fun bump(base: HashMap<String, Any>, others: List<String>): HashMap<String, Any> {
+        for (o in others) base["unread." + o] = FieldValue.increment(1L)
+        return base
+    }
+
+    fun send(
+        chatId: String,
+        me: Profile,
+        others: List<String>,
+        text: String,
+        reply: Message? = null,
+        replyName: String = "",
+        groupTitle: String = "",
+    ) {
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
         val batch = db.batch()
@@ -258,20 +307,27 @@ class Repository {
         batch.set(msg, body)
         batch.update(
             chat,
-            hashMapOf<String, Any>(
-                "lastText" to text,
-                "lastTs" to System.currentTimeMillis(),
-                "lastFrom" to me.uid,
-                "unread." + peerUid to FieldValue.increment(1L),
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to text,
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
             ),
         )
         batch.commit().addOnSuccessListener {
-            am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, text)
+            pushMsg(chatId, me, groupTitle, text)
         }
     }
 
+    private fun pushMsg(chatId: String, me: Profile, groupTitle: String, text: String) {
+        if (groupTitle.isEmpty()) am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, text)
+        else am.khosq.app.push.PushClient.notify(chatId, "msg", groupTitle, me.name + ": " + text)
+    }
+
     /** Photos and voice notes are small (compressed on the phone) and live inside the message itself. */
-    fun sendMedia(chatId: String, me: Profile, peerUid: String, kind: String, bytes: ByteArray, dur: Int) {
+    fun sendMedia(chatId: String, me: Profile, others: List<String>, kind: String, bytes: ByteArray, dur: Int, groupTitle: String = "") {
         val preview = if (kind == "img") "📷 Նկար" else "🎤 Ձայնային նամակ"
         val chat = db.collection("chats").document(chatId)
         val msg = chat.collection("messages").document()
@@ -289,16 +345,97 @@ class Repository {
         )
         batch.update(
             chat,
-            hashMapOf<String, Any>(
-                "lastText" to preview,
-                "lastTs" to System.currentTimeMillis(),
-                "lastFrom" to me.uid,
-                "unread." + peerUid to FieldValue.increment(1L),
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to preview,
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
             ),
         )
         batch.commit().addOnSuccessListener {
-            am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, preview)
+            pushMsg(chatId, me, groupTitle, preview)
         }
+    }
+
+    /* ---------- groups ---------- */
+
+    private fun sysLine(chatId: String, from: String, text: String): Map<String, Any> =
+        hashMapOf<String, Any>("from" to from, "text" to text, "kind" to "sys", "ts" to FieldValue.serverTimestamp())
+
+    /** Makes a new group chat. Members are my accepted contacts; I become its admin. */
+    suspend fun createGroup(me: Profile, title: String, picks: List<Chat>): String {
+        val ref = db.collection("chats").document()
+        val names = hashMapOf<String, Any>(me.uid to me.name)
+        val handles = hashMapOf<String, Any>(me.uid to me.handle)
+        for (c in picks) {
+            names[c.peerUid] = c.peerName
+            handles[c.peerUid] = c.peerHandle
+        }
+        val data = hashMapOf<String, Any>(
+            "group" to true,
+            "title" to title,
+            "members" to (listOf(me.uid) + picks.map { c -> c.peerUid }),
+            "admins" to listOf(me.uid),
+            "names" to names,
+            "handles" to handles,
+            "status" to "active",
+            "lastText" to "",
+            "lastTs" to System.currentTimeMillis(),
+            "lastFrom" to me.uid,
+        )
+        ref.set(data).await()
+        ref.collection("messages").add(sysLine(ref.id, me.uid, me.name + " ստեղծեց խումբը")).await()
+        return ref.id
+    }
+
+    fun addMembers(chatId: String, me: Profile, picks: List<Chat>) {
+        if (picks.isEmpty()) return
+        val ref = db.collection("chats").document(chatId)
+        val upd = hashMapOf<String, Any>(
+            "members" to FieldValue.arrayUnion(*picks.map { c -> c.peerUid }.toTypedArray()),
+        )
+        for (c in picks) {
+            upd["names." + c.peerUid] = c.peerName
+            upd["handles." + c.peerUid] = c.peerHandle
+        }
+        val b = db.batch()
+        b.update(ref, upd)
+        b.set(
+            ref.collection("messages").document(),
+            sysLine(chatId, me.uid, me.name + " ավելացրեց՝ " + picks.joinToString(", ") { c -> c.peerName }),
+        )
+        b.commit()
+    }
+
+    fun removeMember(chatId: String, me: Profile, uid: String, name: String) {
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "members", FieldValue.arrayRemove(uid), "admins", FieldValue.arrayRemove(uid))
+        b.set(ref.collection("messages").document(), sysLine(chatId, me.uid, me.name + " հեռացրեց՝ " + name))
+        b.commit()
+    }
+
+    fun renameGroup(chatId: String, me: Profile, title: String) {
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "title", title)
+        b.set(ref.collection("messages").document(), sysLine(chatId, me.uid, me.name + " փոխեց խմբի անունը՝ «" + title + "»"))
+        b.commit()
+    }
+
+    fun leaveGroup(chat: Chat, me: Profile) {
+        val ref = db.collection("chats").document(chat.id)
+        val rest = chat.members.filter { m -> m != me.uid }
+        val upd = hashMapOf<String, Any>("members" to FieldValue.arrayRemove(me.uid))
+        if (me.uid in chat.admins) {
+            upd["admins"] = chat.admins.filter { a -> a != me.uid }.ifEmpty { rest.take(1) }
+        }
+        val b = db.batch()
+        b.set(ref.collection("messages").document(), sysLine(chat.id, me.uid, me.name + " լքեց խումբը"))
+        b.update(ref, upd)
+        b.commit()
     }
 
     /* ---------- stories: 24-hour posts for the people in my chats ---------- */

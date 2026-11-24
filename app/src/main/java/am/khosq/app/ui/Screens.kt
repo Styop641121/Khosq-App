@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppState
 import am.khosq.app.tr
 import am.khosq.app.trf
 import am.khosq.app.membersText
@@ -708,6 +709,30 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             set
         }
         val rev = remember(shown) { shown.asReversed() }
+        // a message to show (from a search result, a task or a star): scroll to it and flash it
+        val jump by AppState.jump.collectAsStateWithLifecycle()
+        var flashId by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(jump, shown) {
+            val j = jump
+            if (j != null && j.chatId == chatId) {
+                if (System.currentTimeMillis() - j.at > 15_000L) {
+                    AppState.jump.value = null
+                } else if (!searching && shown.isNotEmpty()) {
+                    AppState.jump.value = null
+                    val at = shown.indexOfFirst { x -> x.id == j.msgId }
+                    if (at >= 0) {
+                        flashId = j.msgId
+                        listState.animateScrollToItem(shown.size - 1 - at + (if (typingNow) 1 else 0))
+                    }
+                }
+            }
+        }
+        LaunchedEffect(flashId) {
+            if (flashId != null) {
+                delay(1800L)
+                flashId = null
+            }
+        }
         Box(Modifier.weight(1f).fillMaxWidth().chatWallpaper()) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -723,7 +748,12 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 itemsIndexed(rev, key = { _, m -> m.id }) { i, m ->
                     val joined = sameRun(rev.getOrNull(i + 1), m)
                     val isHead = m.id in dateHeads
-                    Column(Modifier.animateItem().padding(top = if (isHead) 0.dp else if (joined) 2.dp else Space.s)) {
+                    Column(
+                        Modifier
+                            .animateItem()
+                            .padding(top = if (isHead) 0.dp else if (joined) 2.dp else Space.s)
+                            .then(if (m.id == flashId) Modifier.clip(RoundedCornerShape(Corner.m)).background(k.accent.copy(alpha = 0.18f)) else Modifier),
+                    ) {
                         if (isHead) DateChip(dayLabel(m.ts))
                         Bubble(
                             m = m,

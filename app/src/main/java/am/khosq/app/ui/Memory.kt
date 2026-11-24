@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppState
 import am.khosq.app.data.Chat
 import am.khosq.app.data.MemoryHit
 import am.khosq.app.data.MemoryLogic
@@ -353,6 +354,7 @@ private fun MemoryItemSheet(
                 label = tr("Բացել զրույցը"),
                 onClick = {
                     onClose()
+                    AppState.jumpTo(hit.chatId, hit.msgId)
                     onOpenChat(hit.chatId)
                 },
             )

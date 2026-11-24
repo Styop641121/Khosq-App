@@ -57,4 +57,5 @@ Native Android messenger: Kotlin, Jetpack Compose (Material 3), Firebase (Auth +
 - What the person can do: search (Memory screen, or the chat-list search which now also shows "Messages in Memory"), open a saved message, edit the saved copy (the real message does not change), take one out (it is not saved again), switch a chat off (deletes its saved texts), delete everything.
 - Search: every word of the query must be in the text, any order, case-insensitive; "ё" = "е" and the Armenian "և" = "եվ" (`MemoryLogic.fold`). Newest first, at most 80 results.
 - Nothing is sent to Firebase or the Worker; `firestore.rules`, the Worker and the signing key did not change.
-- Not in 4b: jumping to the found message inside the chat (a result opens the chat), photos/voice, history older than what the chat has loaded, the assistant screen that will use this search (4c).
+- Jump to a message: a search result (chat-list search, or "Open the chat" in the Memory sheet), a task made from a message, and a starred message open their chat scrolled to that message, which flashes for about 2 seconds (`AppState.jump`, taken by `ChatScreen`; a request older than 15 seconds is ignored; a message that is no longer in the chat just opens the chat).
+- Not in 4b: photos/voice, history older than what the chat has loaded, the assistant screen that will use this search (4c).

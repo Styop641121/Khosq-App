@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppState
 import am.khosq.app.membersText
 import am.khosq.app.previewOf
 import am.khosq.app.tr
@@ -357,7 +358,14 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                     if (memHits.isNotEmpty()) {
                                         item(key = "mem-head") { SectionLabel(tr("Նամակներ հիշողության մեջ")) }
                                         items(memHits, key = { h -> h.chatId + "/" + h.msgId }) { h ->
-                                            MemoryHitRow(hit = h, query = q, onClick = { onOpen(h.chatId) })
+                                            MemoryHitRow(
+                                                hit = h,
+                                                query = q,
+                                                onClick = {
+                                                    AppState.jumpTo(h.chatId, h.msgId)
+                                                    onOpen(h.chatId)
+                                                },
+                                            )
                                             KDivider(inset = Space.l)
                                         }
                                     }

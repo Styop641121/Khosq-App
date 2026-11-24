@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppState
 import am.khosq.app.data.Task
 import am.khosq.app.data.TaskGroup
 import am.khosq.app.data.TaskLogic
@@ -524,6 +525,7 @@ fun TaskEditSheet(
                     subtitle = tr("Բացել զրույցը"),
                     onClick = {
                         onClose()
+                        AppState.jumpTo(start.chatId, start.msgId)
                         onOpenChat(start.chatId)
                     },
                 )

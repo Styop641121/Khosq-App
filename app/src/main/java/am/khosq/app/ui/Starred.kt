@@ -1,5 +1,6 @@
 package am.khosq.app.ui
 
+import am.khosq.app.AppState
 import am.khosq.app.data.Star
 import am.khosq.app.previewOf
 import am.khosq.app.tr
@@ -73,7 +74,14 @@ fun StarredScreen(vm: AppViewModel, onBack: () -> Unit, onOpen: (String) -> Unit
             ) {
                 items(stars, key = { s -> s.key }) { s ->
                     Column(Modifier.animateItem()) {
-                        StarRow(s, onClick = { onOpen(s.chatId) }, onRemove = { vm.removeStar(s.key) })
+                        StarRow(
+                            s,
+                            onClick = {
+                                AppState.jumpTo(s.chatId, s.key.substringAfter("~"))
+                                onOpen(s.chatId)
+                            },
+                            onRemove = { vm.removeStar(s.key) },
+                        )
                         KDivider(inset = Space.l)
                     }
                 }

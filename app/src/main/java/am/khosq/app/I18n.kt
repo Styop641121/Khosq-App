@@ -106,6 +106,7 @@ fun membersText(n: Int): String = when (Lang.code) {
 fun previewOf(kind: String, text: String): String = when (kind) {
     "img" -> "📷 " + tr("Նկար")
     "voice" -> "🎤 " + tr("Ձայնային նամակ")
+    "loc" -> "📍 " + tr("Տեղադրություն")
     "call_missed" -> "📵 " + tr("Բաց թողնված զանգ")
     // older messages stored the Armenian preview itself
     else -> if (text == "📷 Նկար" || text == "🎤 Ձայնային նամակ" || text == "📵 Բաց թողնված զանգ") tr(text) else text
@@ -114,10 +115,12 @@ fun previewOf(kind: String, text: String): String = when (kind) {
 /** Marks a reply to a photo / voice message, so each reader sees it in their own language. */
 const val REPLY_IMG = "\uE000img"
 const val REPLY_VOICE = "\uE000voice"
+const val REPLY_LOC = "\uE000loc"
 
 fun replyText(reply: String): String = when (reply) {
     REPLY_IMG -> previewOf("img", "")
     REPLY_VOICE -> previewOf("voice", "")
+    REPLY_LOC -> previewOf("loc", "")
     else -> previewOf("", reply)
 }
 

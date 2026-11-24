@@ -232,6 +232,7 @@ class Repository {
             gpv = d.getLong("gpv") ?: 0L,
             lastEnc = d.getBoolean("lastEnc") == true,
             lastW = stringMap(d.get("lastW")),
+            pinId = d.getString("pin") ?: "",
         )
     }
 
@@ -264,6 +265,7 @@ class Repository {
             dlv = longMap(d.get("dlv")),
             peerDelivered = longMap(d.get("dlv"))[peer] ?: 0L,
             lastEnc = d.getBoolean("lastEnc") == true,
+            pinId = d.getString("pin") ?: "",
         )
     }
 
@@ -277,12 +279,19 @@ class Repository {
                 close(err)
                 return@addSnapshotListener
             }
-            trySend(UserPrefs(pins = strSet(d?.get("pins")), muted = strSet(d?.get("muted"))))
+            trySend(
+                UserPrefs(
+                    pins = strSet(d?.get("pins")),
+                    muted = strSet(d?.get("muted")),
+                    archived = strSet(d?.get("archived")),
+                    marked = strSet(d?.get("marked")),
+                ),
+            )
         }
         awaitClose { reg.remove() }
     }
 
-    /** field is "pins" or "muted". */
+    /** field is "pins", "muted", "archived" or "marked". */
     fun setPref(uid: String, field: String, chatId: String, on: Boolean) {
         val change: Any = if (on) FieldValue.arrayUnion(chatId) else FieldValue.arrayRemove(chatId)
         db.collection("prefs").document(uid).set(hashMapOf<String, Any>(field to change), SetOptions.merge())
@@ -525,6 +534,7 @@ class Repository {
     private fun replyOf(m: Message): String = when (m.kind) {
         "img" -> am.khosq.app.REPLY_IMG
         "voice" -> am.khosq.app.REPLY_VOICE
+        "loc" -> am.khosq.app.REPLY_LOC
         else -> m.text.take(80)
     }
 
@@ -532,7 +542,51 @@ class Repository {
     private fun lastOf(kind: String, text: String): String = when (kind) {
         "img" -> "📷"
         "voice" -> "🎤"
+        "loc" -> "📍"
         else -> text.take(80)
+    }
+
+    /** Pins one message at the top of the chat for everybody (msgId = null takes the pin off). Only the id is stored. */
+    fun setPinned(chatId: String, msgId: String?) {
+        db.collection("chats").document(chatId).update("pin", msgId ?: FieldValue.delete())
+    }
+
+    /**
+     * A location sent once: the coordinates travel as the text of the message (sealed like any text), and nothing
+     * follows afterwards. The chat list only gets the pin emoji.
+     */
+    fun sendLocation(chatId: String, me: Profile, others: List<String>, coords: String, groupTitle: String = "") {
+        val chat = db.collection("chats").document(chatId)
+        val msg = chat.collection("messages").document()
+        val batch = db.batch()
+        val seal = E2E.begin(chatId, msg.id, me.uid, others)
+        val key = seal?.key
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to (if (key != null) E2E.sealText(key, chatId, me.uid, "t", coords) else coords),
+            "kind" to "loc",
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        if (seal != null) markSealed(body, seal)
+        batch.set(msg, body)
+        val preview = lastOf("loc", "")
+        batch.update(
+            chat,
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to preview,
+                    "lastEnc" to false,
+                    "lastW" to FieldValue.delete(),
+                    "lastKind" to "loc",
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
+            ),
+        )
+        batch.commit().addOnSuccessListener {
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
+        }
     }
 
     fun setTyping(chatId: String, uid: String, on: Boolean) {
@@ -722,7 +776,7 @@ class Repository {
         if (bytes != null) body["data"] = Blob.fromBytes(if (key != null) E2E.sealBytes(key, target.id, me.uid, "d", bytes) else bytes)
         if (m.wave.isNotEmpty()) body["wave"] = m.wave
         val prev = lastOf(m.kind, m.text)
-        val prevIsText = m.kind != "img" && m.kind != "voice"
+        val prevIsText = m.kind != "img" && m.kind != "voice" && m.kind != "loc"
         val sealedPrev = key != null && prevIsText && prev.isNotEmpty()
         val b = db.batch()
         b.set(msg, body)
@@ -733,7 +787,7 @@ class Repository {
                     "lastText" to (if (sealedPrev) E2E.sealText(key!!, target.id, me.uid, "l", prev) else prev),
                     "lastEnc" to sealedPrev,
                     "lastW" to (if (sealedPrev) (seal?.wraps ?: FieldValue.delete()) else FieldValue.delete()),
-                    "lastKind" to (if (m.kind == "img" || m.kind == "voice") m.kind else "text"),
+                    "lastKind" to (if (m.kind == "img" || m.kind == "voice" || m.kind == "loc") m.kind else "text"),
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),

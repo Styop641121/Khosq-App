@@ -461,6 +461,7 @@ internal fun Bubble(
                     when (m.kind) {
                         "img" -> ImageBody(m)
                         "voice" -> VoiceBody(m, mine, onLong)
+                        "loc" -> LocationBody(m, mine, ink, soft, onLong)
                         else -> {
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
                             val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }

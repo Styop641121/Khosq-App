@@ -19,6 +19,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -197,9 +198,12 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
     val clipboard = LocalClipboardManager.current
     val calls by vm.calls.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
+    // 0 = all, 1 = personal, 2 = groups, 3 = archive
+    var cat by rememberSaveable { mutableStateOf(0) }
     val prefs by vm.prefs.collectAsStateWithLifecycle()
     var menuChat by remember { mutableStateOf<Chat?>(null) }
     BackHandler(enabled = tab != 0) { tab = 0 }
+    BackHandler(enabled = tab == 0 && !homeSearch && cat != 0) { cat = 0 }
     BackHandler(enabled = homeSearch && tab == 0) {
         homeSearch = false
         homeQuery = ""
@@ -280,21 +284,41 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                     onOpen = { owner -> viewing = owner },
                                     onAdd = { composing = true },
                                 )
+                                CategoryChips(
+                                    cat = cat,
+                                    archivedUnread = chats.count { c -> c.id in prefs.archived && c.unread > 0L && c.id !in prefs.muted },
+                                    onCat = { v -> cat = v },
+                                )
                                 KDivider()
                             }
                             val q = homeQuery.trim()
-                            val shownChats = if (homeSearch && q.isNotEmpty()) {
-                                chats.filter { c ->
-                                    c.label().contains(q, ignoreCase = true) ||
-                                        c.peerHandle.contains(q, ignoreCase = true) ||
-                                        previewOf(c.lastKind, c.lastText).contains(q, ignoreCase = true)
+                            // while searching, every chat is looked at, archived ones too; otherwise the chosen category decides
+                            val base = if (homeSearch) {
+                                if (q.isEmpty()) {
+                                    chats
+                                } else {
+                                    chats.filter { c ->
+                                        c.label().contains(q, ignoreCase = true) ||
+                                            c.peerHandle.contains(q, ignoreCase = true) ||
+                                            previewOf(c.lastKind, c.lastText).contains(q, ignoreCase = true)
+                                    }
                                 }
                             } else {
-                                chats
-                            }.sortedByDescending { c -> c.id in prefs.pins }
+                                chats.filter { c -> inCategory(c, cat, prefs.archived) }
+                            }
+                            val shownChats = base.sortedByDescending { c -> c.id in prefs.pins }
                             if (shownChats.isEmpty()) {
-                                if (chats.isNotEmpty()) {
+                                if (homeSearch && q.isNotEmpty()) {
                                     EmptyState(icon = KIcons.Search, title = tr("Ոչինչ չի գտնվել"), modifier = Modifier.padding(top = Space.huge))
+                                } else if (chats.isNotEmpty() && cat == 3) {
+                                    EmptyState(
+                                        icon = KIcons.Archive,
+                                        title = tr("Արխիվը դատարկ է"),
+                                        text = tr("Արխիվացրած զրույցները կերևան այստեղ։"),
+                                        modifier = Modifier.padding(top = Space.huge),
+                                    )
+                                } else if (chats.isNotEmpty()) {
+                                    EmptyState(icon = KIcons.ChatLine, title = tr("Այս բաժնում զրույցներ չկան"), modifier = Modifier.padding(top = Space.huge))
                                 } else {
                                     EmptyState(
                                         icon = KIcons.ChatLine,
@@ -319,6 +343,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                                 myUid = me.uid,
                                                 pinned = chat.id in prefs.pins,
                                                 muted = chat.id in prefs.muted,
+                                                marked = chat.id in prefs.marked,
                                                 onClick = { onOpen(chat.id) },
                                                 onLong = { menuChat = chat },
                                             )
@@ -386,6 +411,41 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                 ),
             )
         }
+        val markedNow = mc.id in prefs.marked
+        if (mc.unread > 0L) {
+            actions.add(
+                SheetAction(
+                    icon = KIcons.Check,
+                    label = tr("Նշել կարդացված"),
+                    onClick = {
+                        vm.markChatRead(mc.id)
+                        menuChat = null
+                    },
+                ),
+            )
+        } else {
+            actions.add(
+                SheetAction(
+                    icon = KIcons.ChatLine,
+                    label = if (markedNow) tr("Հանել չկարդացված նշումը") else tr("Նշել չկարդացված"),
+                    onClick = {
+                        vm.toggleMarkUnread(mc.id)
+                        menuChat = null
+                    },
+                ),
+            )
+        }
+        val archivedNow = mc.id in prefs.archived
+        actions.add(
+            SheetAction(
+                icon = KIcons.Archive,
+                label = if (archivedNow) tr("Հանել արխիվից") else tr("Արխիվացնել"),
+                onClick = {
+                    vm.toggleArchive(mc.id)
+                    menuChat = null
+                },
+            ),
+        )
         ActionSheet(title = mc.label(), actions = actions, onDismiss = { menuChat = null })
     }
     if (showNew) {
@@ -560,11 +620,65 @@ private fun TabItem(
     }
 }
 
+/* ---------------- categories of the chat list ---------------- */
+
+/** Which category a chat belongs to: archived chats only show in "Archive"; "Saved messages" counts as personal. */
+private fun inCategory(c: Chat, cat: Int, archived: Set<String>): Boolean {
+    val arch = c.id in archived
+    return when (cat) {
+        1 -> !arch && (!c.isGroup || c.saved)
+        2 -> !arch && c.isGroup && !c.saved
+        3 -> arch
+        else -> !arch
+    }
+}
+
+/** The row of small tabs above the chat list: All, Personal, Groups, Archive. */
+@Composable
+private fun CategoryChips(cat: Int, archivedUnread: Int, onCat: (Int) -> Unit) {
+    val k = KTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = Space.l, vertical = Space.s),
+        horizontalArrangement = Arrangement.spacedBy(Space.s),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val labels = listOf(tr("Բոլորը"), tr("Անձնական"), tr("Խմբեր"), tr("Արխիվ"))
+        for (i in labels.indices) {
+            val on = cat == i
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Corner.l))
+                    .background(if (on) k.accentSoft else k.surfaceHigh)
+                    .semantics(mergeDescendants = true) {
+                        role = Role.Tab
+                        this.selected = on
+                    }
+                    .pressable(onClick = { onCat(i) }, pressedScale = 0.95f)
+                    .padding(horizontal = Space.l, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = labels[i],
+                    color = if (on) k.accent else k.textSecondary,
+                    style = TextStyle(fontSize = 14.sp, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium),
+                    maxLines = 1,
+                )
+                if (i == 3 && archivedUnread > 0) {
+                    Box(Modifier.padding(start = 6.dp).size(8.dp).clip(CircleShape).background(k.accent))
+                }
+            }
+        }
+    }
+}
+
 /* ---------------- one row of the chat list ---------------- */
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
+private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, marked: Boolean, onClick: () -> Unit, onLong: () -> Unit) {
     val k = KTheme.colors
     val hasUnread = chat.unread > 0L
     Row(
@@ -656,6 +770,9 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
                 }
                 if (hasUnread) {
                     CountBadge(count = chat.unread.toInt(), muted = muted, modifier = Modifier.padding(start = Space.s))
+                } else if (marked) {
+                    // "mark as unread": a plain dot until I open the chat
+                    Box(Modifier.padding(start = Space.s).size(12.dp).clip(CircleShape).background(if (muted) k.textTertiary else k.accent))
                 } else if (pinned) {
                     Icon(
                         imageVector = KIcons.Pin,

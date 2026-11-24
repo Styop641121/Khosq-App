@@ -353,6 +353,8 @@ class AppViewModel : ViewModel() {
             }
         }
         repo.markRead(id, uid)
+        // opening a chat takes off the "unread" mark I put on it by hand
+        if (id in _prefs.value.marked) setPrefFlag("marked", id, false)
         messagesJob = viewModelScope.launch {
             repo.messages(id)
                 .resilient(tr("Նամակներ"))
@@ -432,11 +434,43 @@ class AppViewModel : ViewModel() {
         if (uid.isNotEmpty()) repo.setPref(uid, "muted", chatId, on)
     }
 
+    /** Puts a chat into my archive, or takes it out again. Private: the other side never sees it. */
+    fun toggleArchive(chatId: String) {
+        setPrefFlag("archived", chatId, chatId !in _prefs.value.archived)
+    }
+
+    /** "Mark as unread": a private dot on the chat row until I open the chat. */
+    fun toggleMarkUnread(chatId: String) {
+        setPrefFlag("marked", chatId, chatId !in _prefs.value.marked)
+    }
+
+    /** "Mark as read" from the chat list: clears the counter and any hand-made mark. */
+    fun markChatRead(chatId: String) {
+        if (uid.isEmpty()) return
+        repo.markRead(chatId, uid)
+        if (chatId in _prefs.value.marked) setPrefFlag("marked", chatId, false)
+    }
+
+    /** Changes one of my private lists ("archived" or "marked") on the screen at once and in my space in Firestore. */
+    private fun setPrefFlag(field: String, chatId: String, on: Boolean) {
+        val p = _prefs.value
+        _prefs.value = when (field) {
+            "archived" -> p.copy(archived = if (on) p.archived + chatId else p.archived - chatId)
+            else -> p.copy(marked = if (on) p.marked + chatId else p.marked - chatId)
+        }
+        if (uid.isNotEmpty()) repo.setPref(uid, field, chatId, on)
+    }
+
+    /** Pins a message at the top of the open chat (or takes the pin off when [msgId] is null). */
+    fun setPinned(chatId: String, msgId: String?) {
+        repo.setPinned(chatId, msgId)
+    }
+
     /** Changes the text of one of my own messages. */
     fun editMessage(chatId: String, m: Message, text: String) {
         val t = text.trim()
         if (m.from != uid || m.kind != "text" || t.isEmpty() || t == m.text) return
-        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" }
+        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" || x.kind == "loc" }
         repo.editMessage(chatId, m.id, t, lastReal?.id == m.id, m.enc)
     }
 
@@ -456,6 +490,15 @@ class AppViewModel : ViewModel() {
         val to = recipients(chatId, peerUid)
         val title = groupTitle(chatId)
         withKey(chatId) { repo.sendMedia(chatId, me, to, "voice", bytes, seconds, title, wave) }
+    }
+
+    /** Sends my place once. [lat] and [lng] are written with 5 decimals (about a metre), always with a dot. */
+    fun sendLocation(chatId: String, peerUid: String, lat: Double, lng: Double) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        val coords = String.format(java.util.Locale.US, "%.5f,%.5f", lat, lng)
+        withKey(chatId) { repo.sendLocation(chatId, me, to, coords, title) }
     }
 
     /** Puts a message on my starred list, or takes it off again. */

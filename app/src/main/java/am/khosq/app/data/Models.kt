@@ -43,10 +43,20 @@ data class Chat(
     val lastEnc: Boolean = false,
     /** For a group: the key of the last message, wrapped for every member. Only needed to open [lastText]. */
     val lastW: Map<String, String> = emptyMap(),
+    /** Id of the message pinned at the top of this chat ("" = none). Only the id is stored: the text stays sealed in the message. */
+    val pinId: String = "",
 )
 
-/** My private choices: chats pinned to the top and chats whose notifications are off. */
-data class UserPrefs(val pins: Set<String> = emptySet(), val muted: Set<String> = emptySet())
+/**
+ * My private choices, kept in my own space: chats pinned to the top, chats whose notifications are off,
+ * archived chats and chats I marked as unread.
+ */
+data class UserPrefs(
+    val pins: Set<String> = emptySet(),
+    val muted: Set<String> = emptySet(),
+    val archived: Set<String> = emptySet(),
+    val marked: Set<String> = emptySet(),
+)
 
 data class Message(
     val id: String,

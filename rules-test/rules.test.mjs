@@ -113,3 +113,23 @@ test("calls: strangers, forged callers, blocked and pending chats are refused", 
   await seed((d) => setDoc(doc(d, "chats/A_B"), { members: ["A", "B"], status: "pending", requester: "A" }));
   await assertFails(setDoc(doc(db("A"), "calls/c7"), call()));
 });
+
+// ---------------------------------------------------------------- phase 3a: pinned message, private lists, location message
+test("pin: a member may pin and unpin a message id; an outsider may not", async () => {
+  await assertSucceeds(updateDoc(doc(db("B"), "chats/A_B"), { pin: "m1" }));
+  await assertSucceeds(updateDoc(doc(db("A"), "chats/A_B"), { pin: deleteField() }));
+  await assertFails(updateDoc(doc(db("C"), "chats/A_B"), { pin: "m1" }));
+});
+test("pin: it does not open the door to protected fields", async () => {
+  await assertFails(updateDoc(doc(db("B"), "chats/A_B"), { pin: "m1", status: "pending" }));
+  await assertFails(updateDoc(doc(db("B"), "chats/A_B"), { pin: "m1", members: ["B"] }));
+});
+test("prefs: archive and unread marks are private to their owner", async () => {
+  await assertSucceeds(setDoc(doc(db("A"), "prefs/A"), { archived: ["A_B"], marked: ["A_B"] }, { merge: true }));
+  await assertFails(setDoc(doc(db("B"), "prefs/A"), { archived: [] }, { merge: true }));
+  await assertFails(getDoc(doc(db("B"), "prefs/A")));
+});
+test("location message: a member can send one, the sender must be me", async () => {
+  await assertSucceeds(setDoc(doc(db("B"), "chats/A_B/messages/m3"), { from: "B", kind: "loc", text: "40.18111,44.51361" }));
+  await assertFails(setDoc(doc(db("B"), "chats/A_B/messages/m4"), { from: "A", kind: "loc", text: "40.18111,44.51361" }));
+});

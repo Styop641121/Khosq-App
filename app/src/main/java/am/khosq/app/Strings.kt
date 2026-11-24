@@ -244,10 +244,44 @@ object Strings {
         map["Այս խումբը դեռ գաղտնագրված չէ. հավելվածը դեռ չեն թարմացրել՝ {0}"] = arrayOf("This group is not encrypted yet. These people have not updated the app: {0}", "Эта группа пока не зашифрована. Приложение ещё не обновили: {0}")
     }
 
+    /** Phase 3a: categories, archive, "unread" mark, pinned message, one-time location, media, contact card. */
+    private fun part4() {
+        map["Բոլորը"] = arrayOf("All", "Все")
+        map["Անձնական"] = arrayOf("Personal", "Личные")
+        map["Խմբեր"] = arrayOf("Groups", "Группы")
+        map["Արխիվ"] = arrayOf("Archive", "Архив")
+        map["Արխիվացնել"] = arrayOf("Archive", "Архивировать")
+        map["Հանել արխիվից"] = arrayOf("Unarchive", "Достать из архива")
+        map["Նշել չկարդացված"] = arrayOf("Mark as unread", "Отметить непрочитанным")
+        map["Հանել չկարդացված նշումը"] = arrayOf("Remove the unread mark", "Снять отметку «непрочитано»")
+        map["Նշել կարդացված"] = arrayOf("Mark as read", "Отметить прочитанным")
+        map["Արխիվը դատարկ է"] = arrayOf("The archive is empty", "Архив пуст")
+        map["Արխիվացրած զրույցները կերևան այստեղ։"] = arrayOf("Archived chats will appear here.", "Здесь появятся архивированные чаты.")
+        map["Այս բաժնում զրույցներ չկան"] = arrayOf("No chats in this section", "В этом разделе нет чатов")
+        map["Ամրացված նամակ"] = arrayOf("Pinned message", "Закреплённое сообщение")
+        map["Ամրացնել նամակը"] = arrayOf("Pin message", "Закрепить сообщение")
+        map["Ապաամրացնել նամակը"] = arrayOf("Unpin message", "Открепить сообщение")
+        map["Տեղադրություն"] = arrayOf("Location", "Геопозиция")
+        map["Ուղարկել տեղադրությունը"] = arrayOf("Send location", "Отправить геопозицию")
+        map["Քո ընթացիկ տեղադրությունը՝ մեկ անգամ"] = arrayOf("Your current location, once", "Ваша текущая геопозиция, один раз")
+        map["Ուղարկե՞լ քո տեղադրությունը"] = arrayOf("Send your location?", "Отправить вашу геопозицию?")
+        map["Կուղարկվի միայն քո ներկա կետը՝ {0}։ Հետագա տեղաշարժը չի հետևվում։"] = arrayOf("Only your current point will be sent: {0}. Your movements are not tracked afterwards.", "Будет отправлена только ваша текущая точка: {0}. За вашими перемещениями потом никто не следит.")
+        map["Բացել քարտեզում"] = arrayOf("Open in maps", "Открыть на карте")
+        map["Տեղադրությունը չհաջողվեց որոշել։ Ստուգիր, որ տեղադրությունը (GPS) միացված է հեռախոսում։"] = arrayOf("Could not get your location. Check that location (GPS) is turned on.", "Не удалось определить геопозицию. Проверьте, что геолокация (GPS) включена.")
+        map["Առանց թույլտվության տեղադրությունը չի ուղարկվի։"] = arrayOf("Without permission the location cannot be sent.", "Без разрешения геопозицию отправить нельзя.")
+        map["Տեղադրությունը որոշվում է…"] = arrayOf("Getting your location…", "Определяем геопозицию…")
+        map["Քարտեզի ծրագիր չի գտնվել"] = arrayOf("No maps app found", "Приложение с картами не найдено")
+        map["Մեդիա"] = arrayOf("Media", "Медиа")
+        map["Նկարներ՝ {0}"] = arrayOf("Photos: {0}", "Фото: {0}")
+        map["Նկարներ դեռ չկան"] = arrayOf("No photos yet", "Фото пока нет")
+        map["Ընդհանուր խմբեր"] = arrayOf("Groups in common", "Общие группы")
+    }
+
     init {
         part0()
         part1()
         part2()
         part3()
+        part4()
     }
 }

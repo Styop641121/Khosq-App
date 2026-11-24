@@ -178,6 +178,10 @@ object KIcons {
         line("camera", listOf("M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z", "M12 9a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"))
     }
     val Download: ImageVector by lazy { line("download", listOf("M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3")) }
+    val Archive: ImageVector by lazy { line("archive", listOf("M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4")) }
+    val Location: ImageVector by lazy {
+        line("location", listOf("M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z", "M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"))
+    }
 
     val VideoLine: ImageVector by lazy {
         line("videoLine", listOf("M23 7l-7 5 7 5V7z", "M3 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"))

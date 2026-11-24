@@ -11,6 +11,7 @@ import am.khosq.app.call.CallPermissions
 import am.khosq.app.data.Chat
 import android.Manifest
 import android.content.pm.PackageManager
+import android.widget.Toast
 import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -176,6 +177,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var recording by remember { mutableStateOf(false) }
     var recSec by remember { mutableStateOf(0) }
     var menuFor by remember { mutableStateOf<Message?>(null) }
+    var attachOpen by remember { mutableStateOf(false) }
+    var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var showMedia by remember { mutableStateOf(false) }
     var typingNow by remember { mutableStateOf(false) }
     var baseTyping by remember { mutableStateOf(-1L) }
     var clock by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -240,6 +244,36 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 val bytes = MediaUtil.compressImage(ctx, uri)
                 if (bytes != null) vm.sendImage(chatId, peerUid, bytes)
             }
+        }
+    }
+
+    // one-time location: ask once for the position, then show it and send only after "Send"
+    fun fetchLocation() {
+        Toast.makeText(ctx, tr("Տեղադրությունը որոշվում է…"), Toast.LENGTH_SHORT).show()
+        OneShotLocation.request(ctx) { loc ->
+            if (loc != null) {
+                locAsk = loc.latitude to loc.longitude
+            } else {
+                Toast.makeText(
+                    ctx,
+                    tr("Տեղադրությունը չհաջողվեց որոշել։ Ստուգիր, որ տեղադրությունը (GPS) միացված է հեռախոսում։"),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+    val locPerms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        if (OneShotLocation.hasPermission(ctx)) {
+            fetchLocation()
+        } else {
+            Toast.makeText(ctx, tr("Առանց թույլտվության տեղադրությունը չի ուղարկվի։"), Toast.LENGTH_LONG).show()
+        }
+    }
+    fun askForLocation() {
+        if (OneShotLocation.hasPermission(ctx)) {
+            fetchLocation()
+        } else {
+            locPerms.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
         }
     }
 
@@ -320,6 +354,15 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     menuFor = null
                 },
             )
+            val pinnedHere = chat?.pinId == mm.id
+            SheetRow(
+                icon = KIcons.Pin,
+                label = if (pinnedHere) tr("Ապաամրացնել նամակը") else tr("Ամրացնել նամակը"),
+                onClick = {
+                    vm.setPinned(chatId, if (pinnedHere) null else mm.id)
+                    menuFor = null
+                },
+            )
             if (mm.kind == "text") {
                 SheetRow(icon = KIcons.Copy, label = tr("Պատճենել"), onClick = {
                     clip.setText(AnnotatedString(mm.text))
@@ -348,18 +391,83 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     } else {
         messages
     }
+    // the message pinned at the top of this chat: only its id is stored, the text comes from the opened messages
+    val pinnedMsg = if (chat != null && chat.pinId.isNotEmpty()) messages.firstOrNull { x -> x.id == chat.pinId && !x.deleted } else null
     val fm = forwardMsg
     if (fm != null) {
         ForwardSheet(vm = vm, message = fm, onClose = { forwardMsg = null })
     }
     if (showContact && chat != null && !chat.isGroup) {
-        ContactSheet(chat = chat, about = peerInfo.about, status = statusText, onClose = { showContact = false })
+        val common = chats.filter { g -> g.isGroup && !g.saved && chat.peerUid in g.members }.map { g -> g.peerName }
+        ContactSheet(
+            chat = chat,
+            about = peerInfo.about,
+            status = statusText,
+            commonGroups = common,
+            photoCount = messages.count { x -> x.kind == "img" && !x.deleted && x.data != null },
+            iBlocked = iBlocked,
+            onMedia = {
+                showContact = false
+                showMedia = true
+            },
+            onBlock = { vm.setBlocked(chatId, !iBlocked) },
+            onClose = { showContact = false },
+        )
+    }
+    if (showMedia) {
+        MediaGallery(messages = messages, onClose = { showMedia = false })
+    }
+    if (attachOpen) {
+        KSheet(onDismiss = { attachOpen = false }) {
+            SheetRow(
+                icon = KIcons.Image,
+                label = tr("Նկար"),
+                onClick = {
+                    attachOpen = false
+                    pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                },
+            )
+            SheetRow(
+                icon = KIcons.Location,
+                label = tr("Ուղարկել տեղադրությունը"),
+                subtitle = tr("Քո ընթացիկ տեղադրությունը՝ մեկ անգամ"),
+                onClick = {
+                    attachOpen = false
+                    askForLocation()
+                },
+            )
+        }
+    }
+    val la = locAsk
+    if (la != null) {
+        AlertDialog(
+            onDismissRequest = { locAsk = null },
+            title = { Text(tr("Ուղարկե՞լ քո տեղադրությունը")) },
+            text = {
+                Text(
+                    trf(
+                        "Կուղարկվի միայն քո ներկա կետը՝ {0}։ Հետագա տեղաշարժը չի հետևվում։",
+                        String.format(java.util.Locale.US, "%.5f, %.5f", la.first, la.second),
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.sendLocation(chatId, peerUid, la.first, la.second)
+                        locAsk = null
+                    },
+                ) { Text(tr("Ուղարկել")) }
+            },
+            dismissButton = { TextButton(onClick = { locAsk = null }) { Text(tr("Չեղարկել")) } },
+        )
     }
     if (showInfo && chat != null && chat.isGroup) {
         GroupInfoSheet(vm = vm, me = me, chat = chat, onClose = { showInfo = false }, onLeft = onBack)
     }
 
 
+    val listState = rememberLazyListState()
     Column(Modifier.fillMaxSize().imePadding()) {
         // ---------------- top bar ----------------
         Column(Modifier.fillMaxWidth().background(k.bar).statusBarsPadding()) {
@@ -458,6 +566,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                                 moreOpen = false
                                 searching = true
                             }
+                            MenuEntry(KIcons.Image, tr("Մեդիա")) {
+                                moreOpen = false
+                                showMedia = true
+                            }
                             MenuEntry(KIcons.Pin, if (chatId in prefs.pins) tr("Ապաամրացնել") else tr("Ամրացնել")) {
                                 moreOpen = false
                                 vm.togglePin(chatId)
@@ -492,10 +604,21 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 }
             }
             KDivider()
+            if (!searching && pinnedMsg != null) {
+                PinnedBar(
+                    text = previewOf(pinnedMsg.kind, pinnedMsg.text),
+                    onClick = {
+                        val at = shown.indexOfFirst { x -> x.id == pinnedMsg.id }
+                        // the list is upside down (newest first), and a "typing" bubble takes the first place while it shows
+                        if (at >= 0) scope.launch { listState.animateScrollToItem(shown.size - 1 - at + (if (typingNow) 1 else 0)) }
+                    },
+                    onClose = { vm.setPinned(chatId, null) },
+                )
+                KDivider()
+            }
         }
 
         // ---------------- messages ----------------
-        val listState = rememberLazyListState()
         val showDown by remember { derivedStateOf { listState.firstVisibleItemIndex > 2 } }
         val dateHeads = remember(shown) {
             val set = HashSet<String>()
@@ -696,8 +819,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 } else {
                     KIconButton(
                         icon = KIcons.Attach,
-                        onClick = { pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                        description = tr("Նկար"),
+                        onClick = { attachOpen = true },
+                        description = tr("Ավելին"),
                         tint = k.textSecondary,
                         size = Dim.composerField,
                     )
@@ -821,6 +944,38 @@ private fun ComposerBanner(icon: ImageVector, title: String, text: String, onClo
                 style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = text,
+                color = k.textSecondary,
+                style = TextStyle(fontSize = 14.sp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        KIconButton(icon = KIcons.Close, onClick = onClose, size = 40.dp, iconSize = 20.dp, tint = k.textSecondary)
+    }
+}
+
+/** The strip under the top bar of a chat: the pinned message. Tap it to jump to the message, the cross takes the pin off. */
+@Composable
+private fun PinnedBar(text: String, onClick: () -> Unit, onClose: () -> Unit) {
+    val k = KTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(start = Space.l, top = 4.dp, bottom = 4.dp, end = Space.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(imageVector = KIcons.Pin, contentDescription = null, tint = k.accent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(Space.m))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = tr("Ամրացված նամակ"),
+                color = k.accent,
+                style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
             )
             Text(
                 text = text,

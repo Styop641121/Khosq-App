@@ -628,13 +628,26 @@ fun UpdateDialog() {
     }
 }
 
-/** What another person has told about themselves: photo, name, ID, "about" and when they were last online. */
+/**
+ * The contact card: what another person has told about themselves (photo, name, ID, "about", last seen),
+ * the groups we are both in, the photos of this chat, the safety number and the block button.
+ */
 @Composable
-fun ContactSheet(chat: Chat, about: String, status: String, onClose: () -> Unit) {
+fun ContactSheet(
+    chat: Chat,
+    about: String,
+    status: String,
+    commonGroups: List<String>,
+    photoCount: Int,
+    iBlocked: Boolean,
+    onMedia: () -> Unit,
+    onBlock: () -> Unit,
+    onClose: () -> Unit,
+) {
     val k = KTheme.colors
     KSheet(onDismiss = onClose) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.xl),
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Space.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -673,6 +686,47 @@ fun ContactSheet(chat: Chat, about: String, status: String, onClose: () -> Unit)
                     color = if (about.isBlank()) k.textSecondary else k.text,
                     style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp),
                 )
+            }
+
+            Spacer(Modifier.height(Space.s))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Corner.l))
+                    .background(k.surfaceHigh),
+            ) {
+                SheetRow(
+                    icon = KIcons.Image,
+                    label = tr("Մեդիա"),
+                    subtitle = trf("Նկարներ՝ {0}", photoCount.toString()),
+                    onClick = onMedia,
+                )
+            }
+            if (commonGroups.isNotEmpty()) {
+                Spacer(Modifier.height(Space.s))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Corner.l))
+                        .background(k.surfaceHigh)
+                        .padding(Space.l),
+                    verticalArrangement = Arrangement.spacedBy(Space.s),
+                ) {
+                    Text(text = tr("Ընդհանուր խմբեր"), color = k.textSecondary, style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.SemiBold))
+                    for (g in commonGroups.take(10)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(imageVector = KIcons.Group, contentDescription = null, tint = k.textSecondary, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(Space.s))
+                            Text(
+                                text = g,
+                                color = k.text,
+                                style = TextStyle(fontSize = 16.sp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
             }
 
             // the safety number: the same on both phones as long as nobody stands between them
@@ -732,6 +786,17 @@ fun ContactSheet(chat: Chat, about: String, status: String, onClose: () -> Unit)
                     }
                 }
             }
+            Spacer(Modifier.height(Space.m))
+            SoftButton(
+                text = if (iBlocked) tr("Ապաարգելափակել") else tr("Արգելափակել"),
+                onClick = {
+                    onBlock()
+                    onClose()
+                },
+                modifier = Modifier.fillMaxWidth(),
+                danger = !iBlocked,
+            )
+            Spacer(Modifier.height(Space.s))
         }
     }
 }

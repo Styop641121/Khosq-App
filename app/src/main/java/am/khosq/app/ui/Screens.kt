@@ -41,6 +41,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import am.khosq.app.data.Message
+import am.khosq.app.data.Task
+import am.khosq.app.data.TaskLogic
 import am.khosq.app.data.Profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -183,6 +185,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var attachOpen by remember { mutableStateOf(false) }
     var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var pollOpen by remember { mutableStateOf(false) }
+    // a message I am turning into a task: the form opens with its text
+    var taskSeed by remember { mutableStateOf<Task?>(null) }
     var showMedia by remember { mutableStateOf(false) }
     var typingNow by remember { mutableStateOf(false) }
     var baseTyping by remember { mutableStateOf(-1L) }
@@ -376,6 +380,18 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     menuFor = null
                 })
             }
+            if (mm.kind == "text" && !mm.deleted && mm.text.isNotBlank()) {
+                SheetRow(
+                    icon = KIcons.Tasks,
+                    label = tr("Ավելացնել առաջադրանքներին"),
+                    subtitle = tr("Միայն քո հեռախոսում"),
+                    onClick = {
+                        val (tt, nn) = TaskLogic.fromMessage(mm.text)
+                        taskSeed = Task(title = tt, note = nn, chatId = chatId, chatName = chat?.label() ?: "", msgId = mm.id)
+                        menuFor = null
+                    },
+                )
+            }
             if (mm.from == me.uid && mm.kind == "text" && System.currentTimeMillis() - mm.ts < 15L * 60_000L) {
                 SheetRow(icon = KIcons.Edit, label = tr("Խմբագրել"), onClick = {
                     vm.setReply(null)
@@ -453,6 +469,14 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 },
             )
         }
+    }
+    val seed = taskSeed
+    if (seed != null) {
+        TaskEditSheet(
+            start = seed,
+            onClose = { taskSeed = null },
+            onSave = { t -> vm.saveTask(t, announce = true) },
+        )
     }
     if (pollOpen) {
         CreatePollSheet(

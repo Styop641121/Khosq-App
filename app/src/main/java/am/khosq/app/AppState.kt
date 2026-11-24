@@ -13,6 +13,9 @@ object AppState {
     /** The token of a group invite link the phone was asked to open; the app asks before joining. */
     val pendingInvite = MutableStateFlow<String?>(null)
 
+    /** A tap on a reminder asked to show the task list. */
+    val openTasks = MutableStateFlow(false)
+
     /** True while the activity is shown as the small floating window (picture-in-picture). */
     val inPip = MutableStateFlow(false)
 

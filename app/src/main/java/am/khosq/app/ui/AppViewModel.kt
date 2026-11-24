@@ -9,6 +9,9 @@ import am.khosq.app.data.Message
 import am.khosq.app.data.PollCodec
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Star
+import am.khosq.app.data.Task
+import am.khosq.app.data.TaskStore
+import am.khosq.app.Reminders
 import am.khosq.app.data.ProfileStore
 import am.khosq.app.data.Delivery
 import am.khosq.app.data.UserInfo
@@ -20,6 +23,7 @@ import am.khosq.app.AppState
 import am.khosq.app.crypto.E2E
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -707,6 +711,43 @@ class AppViewModel : ViewModel() {
     fun clearNotice() {
         _notice.value = null
     }
+
+    /** A short message that goes away by itself. */
+    private fun flash(text: String) {
+        _notice.value = text
+        viewModelScope.launch {
+            delay(2500)
+            if (_notice.value == text) _notice.value = null
+        }
+    }
+
+    // ---- tasks and reminders: kept on this phone only
+
+    val tasks: StateFlow<List<Task>> = TaskStore.tasks
+
+    private fun taskWork(block: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                block()
+            } catch (e: Exception) {
+                flash(tr("Առաջադրանքը չհաջողվեց պահպանել"))
+            }
+        }
+    }
+
+    /** Saves a new task (number 0) or a changed one. [announce] says "added" when it is done. */
+    fun saveTask(t: Task, announce: Boolean = false) {
+        taskWork {
+            if (!Reminders.save(t)) flash(tr("Առաջադրանքը չհաջողվեց պահպանել"))
+            else if (announce) flash(tr("Ավելացվեց առաջադրանքներին"))
+        }
+    }
+
+    fun setTaskDone(id: Long, done: Boolean) = taskWork { Reminders.setDone(id, done) }
+
+    fun deleteTask(id: Long) = taskWork { Reminders.delete(id) }
+
+    fun clearDoneTasks() = taskWork { Reminders.clearDone() }
 
     private fun isTaken(e: Throwable?): Boolean {
         var t = e

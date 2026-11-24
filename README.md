@@ -36,3 +36,14 @@ Native Android messenger: Kotlin, Jetpack Compose (Material 3), Firebase (Auth +
 - A member who joins later (by a link, or added by an admin) has no key for the older sealed messages. Those are now left out of the list (`withoutOlderThanMe` in `Repository.kt`), instead of a line of "could not open" for each.
 - Known limits: anyone with the link can join (the app has no phone verification), and a removed member can join again until the link is reset. Approval by an admin is not in this phase.
 
+
+## Phase 4a (tasks and reminders)
+
+- A personal list of tasks with an optional date, time and reminder. Settings -> "Assistant" -> "Tasks and reminders". A quick line at the bottom adds a task in one go; the plus opens the full form (title, note, date, time, "Remind me"). Sections: Overdue, Today, Upcoming, No date, Done (collapsed; "Clear finished tasks").
+- A chat message can become a task: long-press a text message -> "Add to my tasks" (the form opens with the message text; the task remembers which chat it came from and can open it).
+- Storage: only on the phone. A small SQLite database (`tasks.db`, framework `SQLiteOpenHelper`, no Room/KSP) in the app's private folder; `allowBackup` is off, so it is not in any backup. Nothing is sent to Firebase or the Worker. The text of a task made from a message is stored as plain text in that private database (the person chose to copy it).
+- Reminders: `AlarmManager.setExactAndAllowWhileIdle` (`Reminders.kt`). The alarm wakes `ReminderReceiver`, which shows a notification (channel `reminders`, high importance) with "Done" and "Snooze 10 min" buttons; a tap opens the task list. Snooze moves only the next ring (`remind_at`), not the date.
+- Restart and update clear all alarms, so `BootReceiver` (BOOT_COMPLETED and MY_PACKAGE_REPLACED) and `KhosqApp.onCreate` set them again; a reminder whose time passed meanwhile rings at once, exactly once (`TaskStore.claimFire` is the one place that decides). "Force stop" in Android settings cancels alarms until the app is opened again.
+- Permissions: `USE_EXACT_ALARM` (granted at install on Android 13+; Google Play restricts it to alarm/calendar apps, which does not matter for this APK) and `SCHEDULE_EXACT_ALARM` (Android 12-12L, granted by default). If exact alarms are ever switched off, reminders fall back to inexact ones (a few minutes late). Notifications need the `POST_NOTIFICATIONS` permission the app already asks for.
+- The rules (due dates, reminder times, groups, sorting) are in `data/Tasks.kt` with no Android code in it, so they can be checked on any computer.
+- Not in 4a: repeating tasks, group tasks/events, creating tasks by voice or by the assistant (phase 4c).

@@ -24,6 +24,7 @@ import am.khosq.app.ui.InviteJoinHost
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.StarredScreen
+import am.khosq.app.ui.TasksScreen
 import am.khosq.app.ui.UpdateDialog
 import am.khosq.app.update.Updater
 import am.khosq.app.ui.backgroundBrush
@@ -137,6 +138,8 @@ class MainActivity : ComponentActivity() {
         }
         val id = i?.getStringExtra("chat")
         if (id != null) AppState.pendingChat.value = id
+        // a tap on a task reminder
+        if (i?.getBooleanExtra(Reminders.EXTRA_OPEN_TASKS, false) == true) AppState.openTasks.value = true
         // a group invite link (khosq://join/TOKEN, or the https page of the Worker)
         val invite = am.khosq.app.push.InviteClient.tokenFrom(i?.data)
         if (invite != null) AppState.pendingInvite.value = invite
@@ -351,6 +354,14 @@ private fun Root(vm: AppViewModel = viewModel()) {
 private fun MainNav(vm: AppViewModel, me: Profile) {
     val nav = rememberNavController()
     val pending by AppState.pendingChat.collectAsStateWithLifecycle()
+    val openTasks by AppState.openTasks.collectAsStateWithLifecycle()
+
+    LaunchedEffect(openTasks) {
+        if (openTasks) {
+            nav.navigate("tasks") { launchSingleTop = true }
+            AppState.openTasks.value = false
+        }
+    }
 
     LaunchedEffect(pending) {
         val id = pending
@@ -380,7 +391,16 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
         },
     ) {
         composable("home") {
-            HomeScreen(vm = vm, me = me, onOpen = { id -> nav.navigate("chat/$id") }, onStarred = { nav.navigate("starred") })
+            HomeScreen(
+                vm = vm,
+                me = me,
+                onOpen = { id -> nav.navigate("chat/$id") },
+                onStarred = { nav.navigate("starred") },
+                onTasks = { nav.navigate("tasks") { launchSingleTop = true } },
+            )
+        }
+        composable("tasks") {
+            TasksScreen(vm = vm, onBack = { nav.popBackStack() }, onOpenChat = { id -> nav.navigate("chat/$id") })
         }
         composable("starred") {
             StarredScreen(vm = vm, onBack = { nav.popBackStack() }, onOpen = { id -> nav.navigate("chat/$id") })

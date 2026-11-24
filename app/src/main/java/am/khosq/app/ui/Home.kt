@@ -179,7 +179,7 @@ fun SetupScreen(vm: AppViewModel) {
 /* ---------------- chat list ---------------- */
 
 @Composable
-fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarred: () -> Unit) {
+fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarred: () -> Unit, onTasks: () -> Unit) {
     val k = KTheme.colors
     val chats by vm.chats.collectAsStateWithLifecycle()
     val stories by vm.stories.collectAsStateWithLifecycle()
@@ -364,7 +364,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                         }
                     }
                     1 -> CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
-                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred)
+                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred, onTasks = onTasks)
                 }
             }
         }

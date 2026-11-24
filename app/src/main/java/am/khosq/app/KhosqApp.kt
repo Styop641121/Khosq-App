@@ -10,6 +10,15 @@ class KhosqApp : Application() {
         Prefs.init(this)
         ProfileStore.init(this)
         am.khosq.app.update.Updater.cleanup(this)
+        // task reminders: the phone forgets alarms on restart/update, so they are set again whenever the app starts
+        Reminders.init(this)
+        Thread {
+            try {
+                Reminders.rescheduleAll()
+            } catch (e: Exception) {
+                // tried again at the next start
+            }
+        }.start()
         // the phone's encryption keys are made or loaded in the background, so the first message does not wait for them
         Thread {
             try {

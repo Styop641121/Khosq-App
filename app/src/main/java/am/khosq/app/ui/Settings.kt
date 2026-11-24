@@ -256,7 +256,7 @@ fun LanguageChips(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun kSwitchColors() = SwitchDefaults.colors(
+internal fun kSwitchColors() = SwitchDefaults.colors(
     checkedThumbColor = Color.White,
     checkedTrackColor = KTheme.colors.accent,
     checkedBorderColor = Color.Transparent,
@@ -267,9 +267,10 @@ private fun kSwitchColors() = SwitchDefaults.colors(
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit) {
     val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
+    val myTasks by vm.tasks.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -412,6 +413,17 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit) {
                     )
                 }
             }
+        }
+
+        // ---- my tasks
+        SettingsGroup(tr("Օգնական")) {
+            val open = myTasks.count { x -> !x.done }
+            SettingsRow(
+                icon = KIcons.Tasks,
+                title = tr("Առաջադրանքներ և հիշեցումներ"),
+                subtitle = if (open > 0) trf("Բաց՝ {0}", open.toString()) else tr("Միայն քո հեռախոսում"),
+                onClick = onTasks,
+            )
         }
 
         // ---- chats

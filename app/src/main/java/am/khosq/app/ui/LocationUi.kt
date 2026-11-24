@@ -7,8 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
@@ -39,7 +42,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.location.LocationManagerCompat
 
 /**
  * One position, asked for once. Nothing keeps listening afterwards: the request ends as soon as there is an answer
@@ -53,6 +55,7 @@ object OneShotLocation {
         granted(ctx, Manifest.permission.ACCESS_FINE_LOCATION) || granted(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
 
     /** Calls [onDone] on the main thread with the position, or null when there is none (no permission, GPS off, no fix). */
+    @Suppress("DEPRECATION")
     @SuppressLint("MissingPermission")
     fun request(ctx: Context, onDone: (Location?) -> Unit) {
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
@@ -72,10 +75,21 @@ object OneShotLocation {
         }
         val handler = Handler(Looper.getMainLooper())
         var finished = false
+        var cancel: android.os.CancellationSignal? = null
+        var listener: LocationListener? = null
         fun finish(loc: Location?) {
             if (finished) return
             finished = true
             handler.removeCallbacksAndMessages(null)
+            cancel?.cancel()
+            val l = listener
+            if (l != null) {
+                try {
+                    lm.removeUpdates(l)
+                } catch (e: SecurityException) {
+                    // nothing more to stop
+                }
+            }
             // a recent position the phone already knows is better than none
             val fallback = if (loc == null) {
                 try {
@@ -90,7 +104,32 @@ object OneShotLocation {
         }
         handler.postDelayed({ finish(null) }, 20_000L)
         try {
-            LocationManagerCompat.getCurrentLocation(lm, provider, null, ContextCompat.getMainExecutor(ctx)) { loc -> finish(loc) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11 and newer: one fix, asked for directly
+                val c = android.os.CancellationSignal()
+                cancel = c
+                lm.getCurrentLocation(
+                    provider,
+                    c,
+                    ContextCompat.getMainExecutor(ctx),
+                    java.util.function.Consumer<Location?> { loc -> finish(loc) },
+                )
+            } else {
+                // older Android: a single update, which ends itself after the first answer
+                val l = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        finish(location)
+                    }
+
+                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+
+                    override fun onProviderEnabled(provider: String) {}
+
+                    override fun onProviderDisabled(provider: String) {}
+                }
+                listener = l
+                lm.requestSingleUpdate(provider, l, Looper.getMainLooper())
+            }
         } catch (e: SecurityException) {
             finish(null)
         }

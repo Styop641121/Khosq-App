@@ -216,6 +216,7 @@ private fun systemLine(m: Message, actor: String): String {
         "grp_desc" -> trf("{0} փոխեց խմբի նկարագրությունը", actor)
         "grp_mode_admins" -> trf("{0} միացրեց «միայն ադմինները գրեն» ռեժիմը", actor)
         "grp_mode_all" -> trf("{0} անջատեց «միայն ադմինները գրեն» ռեժիմը", actor)
+        "grp_joined" -> trf("{0} միացավ հրավերի հղումով", actor)
         "grp_admin_on" -> trf("{0} ադմին նշանակեց՝ {1}", actor, m.arg)
         "grp_admin_off" -> trf("{0} հանեց ադմինությունը՝ {1}", actor, m.arg)
         else -> m.text

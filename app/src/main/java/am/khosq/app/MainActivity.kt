@@ -20,6 +20,7 @@ import am.khosq.app.ui.Space
 import am.khosq.app.ui.SplashScreen
 import am.khosq.app.ui.GradientButton
 import am.khosq.app.ui.HomeScreen
+import am.khosq.app.ui.InviteJoinHost
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.StarredScreen
@@ -136,6 +137,9 @@ class MainActivity : ComponentActivity() {
         }
         val id = i?.getStringExtra("chat")
         if (id != null) AppState.pendingChat.value = id
+        // a group invite link (khosq://join/TOKEN, or the https page of the Worker)
+        val invite = am.khosq.app.push.InviteClient.tokenFrom(i?.data)
+        if (invite != null) AppState.pendingInvite.value = invite
     }
 
     override fun onStart() {
@@ -355,6 +359,9 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
             AppState.pendingChat.value = null
         }
     }
+
+    // a group invite link was opened: ask, then join
+    InviteJoinHost(onOpen = { id -> nav.navigate("chat/$id") })
 
     // screens glide in a short way and fade; with "remove animations" on, they only fade
     val calm = LocalReduceMotion.current

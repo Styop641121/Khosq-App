@@ -45,6 +45,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- a group invite link: the app asks before joining anything -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="khosq" android:host="join" />
+            </intent-filter>
+            <!-- the same invite from the Worker's web page (the host must match PushConfig.WORKER_URL); not verified, so Android may ask which app to use -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="khosq-push.styoptev.workers.dev" android:pathPrefix="/j/" />
+            </intent-filter>
         </activity>
 
         <!-- opens by itself on an incoming call; may show above the lock screen, shows nothing but the call -->

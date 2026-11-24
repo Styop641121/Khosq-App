@@ -2,6 +2,7 @@ package am.khosq.app.ui
 
 import am.khosq.app.tr
 import am.khosq.app.trf
+import am.khosq.app.push.InviteClient
 import am.khosq.app.membersText
 
 import am.khosq.app.data.Chat
@@ -12,7 +13,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import android.content.Intent
+import android.widget.Toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.background
@@ -192,11 +198,28 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
     val picked = remember { mutableStateListOf<String>() }
     var confirmLeave by remember { mutableStateOf(false) }
     var actionFor by remember { mutableStateOf<String?>(null) }
+    var inviteLink by remember { mutableStateOf<String?>(null) }
+    var inviteBusy by remember { mutableStateOf(false) }
     var editingDesc by remember { mutableStateOf(false) }
     var newDesc by remember(chat.desc) { mutableStateOf(chat.desc) }
     val candidates = remember(chat.members) { vm.contacts().filter { c -> c.peerUid !in chat.members } }
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
+    val clip = LocalClipboardManager.current
+    // asks the Worker for the link (reset = true makes every older link stop working)
+    val getLink: (Boolean) -> Unit = { reset ->
+        if (!inviteBusy) {
+            inviteBusy = true
+            scope.launch {
+                try {
+                    inviteLink = InviteClient.link(chat.id, reset)
+                } catch (e: Exception) {
+                    Toast.makeText(ctx, InviteClient.explain(e, true), Toast.LENGTH_LONG).show()
+                }
+                inviteBusy = false
+            }
+        }
+    }
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
             scope.launch(Dispatchers.Default) {
@@ -310,6 +333,12 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                     subtitle = if (chat.adminOnly) tr("Միացված է. մյուսները միայն կարդում են") else tr("Անջատված է. բոլորը կարող են գրել"),
                     onClick = { vm.setAdminOnly(chat.id, !chat.adminOnly) },
                 )
+                SheetRow(
+                    icon = KIcons.Link,
+                    label = tr("Հրավերի հղում"),
+                    subtitle = if (inviteBusy) tr("Ստանում եմ…") else tr("Հղումով կարելի է միանալ խմբին"),
+                    onClick = { getLink(false) },
+                )
             }
 
             SectionLabel(tr("Անդամներ"))
@@ -401,6 +430,55 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
 
             SheetRow(icon = KIcons.Close, label = tr("Լքել խումբը"), danger = true, onClick = { confirmLeave = true })
         }
+    }
+
+    val link = inviteLink
+    if (link != null) {
+        AlertDialog(
+            onDismissRequest = { inviteLink = null },
+            title = { Text(tr("Հրավերի հղում")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(Space.s)) {
+                    Text(text = link, color = k.text, style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp, lineHeight = 18.sp))
+                    Text(
+                        text = tr("Հղումը ունեցողը կարող է միանալ խմբին։ Պահիր այն գաղտնի. եթե այն հայտնվի սխալ մարդկանց ձեռքում, վերականգնիր։ Նոր անդամը տեսնում է միայն միանալուց հետո եկած նամակները։"),
+                        color = k.textSecondary,
+                        style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.s)) {
+                        SoftButton(
+                            text = tr("Պատճենել"),
+                            onClick = {
+                                clip.setText(AnnotatedString(link))
+                                Toast.makeText(ctx, tr("Պատճենվեց"), Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SoftButton(
+                            text = tr("Վերականգնել"),
+                            onClick = { getLink(true) },
+                            enabled = !inviteBusy,
+                            danger = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, trf("Միացիր «{0}» խմբին KHOSQ-ում՝ {1}", chat.peerName, link))
+                    }
+                    try {
+                        ctx.startActivity(Intent.createChooser(send, null))
+                    } catch (e: Exception) {
+                        // no app can take the text
+                    }
+                }) { Text(tr("Ուղարկել")) }
+            },
+            dismissButton = { TextButton(onClick = { inviteLink = null }) { Text(tr("Փակել")) } },
+        )
     }
 
     val target = actionFor

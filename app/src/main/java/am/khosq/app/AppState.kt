@@ -10,6 +10,9 @@ object AppState {
     /** A chat the user asked to open from a notification. */
     val pendingChat = MutableStateFlow<String?>(null)
 
+    /** The token of a group invite link the phone was asked to open; the app asks before joining. */
+    val pendingInvite = MutableStateFlow<String?>(null)
+
     /** True while the activity is shown as the small floating window (picture-in-picture). */
     val inPip = MutableStateFlow(false)
 

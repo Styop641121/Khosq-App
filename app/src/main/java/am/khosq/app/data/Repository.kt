@@ -449,7 +449,8 @@ class Repository {
         } catch (e: Exception) {
             null
         }
-        return list.map { m ->
+        val source = if (group) withoutOlderThanMe(list, me) else list
+        return source.map { m ->
             if (!m.enc) {
                 m
             } else {
@@ -465,6 +466,18 @@ class Repository {
                 openOne(chatId, key, m)
             }
         }
+    }
+
+    /**
+     * Someone who joined a group later (by a link, or added by an admin) has no key for the older sealed messages.
+     * Those are left out, instead of a line of "could not open" for every one of them. A sealed message counts as older
+     * than me when it comes before the first sealed message that has a key for me (or that I wrote myself).
+     */
+    private fun withoutOlderThanMe(list: List<Message>, me: String): List<Message> {
+        val first = list.indexOfFirst { m -> m.enc && (m.from == me || me in m.wraps) }
+        if (first == 0) return list
+        val cut = if (first < 0) list.size else first
+        return list.filterIndexed { i, m -> i >= cut || !m.enc }
     }
 
     private fun openOne(chatId: String, key: ByteArray?, m: Message): Message {

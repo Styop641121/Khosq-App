@@ -23,3 +23,16 @@ Native Android messenger: Kotlin, Jetpack Compose (Material 3), Firebase (Auth +
 - Votes: `votes.{uid}` in the message document, one field per voter, each sealed with the message's own key (field tag `v`, the voter's uid in the AAD). The server sees that someone voted, never for what. Tapping the option you already chose takes the vote back. A poll keeps its wrapped keys in memory (`Message.wraps`) because a vote needs them.
 - `firestore.rules` changed: `sendMode` in `canSend()` and in the protected fields, `votes` (own key only) allowed in message updates, and a direct-chat request can no longer be created with `admins`, `sendMode`, `group` or `blocked` (closes a way for a requester to make themselves admin of a direct chat). `rules-test/` covers all of it.
 - Not in 3b-a: invite link (needs the Worker, 3b-b); group tasks and events (need the task storage of phase 4a); "only admins pin" is hidden in the screen but not enforced by the rules (pinning only stores a message id).
+
+## Phase 3b-b (group invite links)
+
+- An admin opens the group card -> "Invite link" and gets `https://<worker>/j/<chatId>.<version>.<signature>`. They can send it anywhere (the share sheet), copy it, or "Reset" it (every older link stops working).
+- Opening the link: the web page of the Worker has one button that opens the app (`intent://join/...` -> `khosq://join/...`). The app looks at the group (preview, no joining), asks "Join <group>?", and only then joins. A new member sees only messages written after joining (older message keys are not wrapped for them).
+- All the logic is in the Worker (`worker/worker.js`, routes `POST /group/invite`, `POST /group/join`, `GET /j/<token>`); the app holds no secret. A link is signed with an HMAC (secret `INVITE_KEY`, a Cloudflare Secret). The link version lives in `invites/{chatId}` (no client access under the rules). Joining adds the caller to `members`, `names`, `handles` and writes a system line, through the Firestore REST API with the service account.
+- Limits: a group takes 50 members through links; 20 invite/join calls per minute per user (per Worker instance); only an admin of a real group (not "saved messages") gets a link; a "reset" link version, a forged or altered token, and a full group are refused.
+- Cloudflare: add the Secret `INVITE_KEY` (any long random text) and paste the new `worker.js`. Without `INVITE_KEY` the invite routes answer 501 and everything else works as before.
+- `firestore.rules` did not change. `worker/invite.test.mjs` has 13 tests (run by `node --test` in the "Rules and Worker tests" workflow).
+- The manifest has two new intent filters on `MainActivity` (`khosq://join` and the Worker host `/j/`). If `PushConfig.WORKER_URL` ever changes, change the host in the manifest too.
+- A member who joins later (by a link, or added by an admin) has no key for the older sealed messages. Those are now left out of the list (`withoutOlderThanMe` in `Repository.kt`), instead of a line of "could not open" for each.
+- Known limits: anyone with the link can join (the app has no phone verification), and a removed member can join again until the link is reset. Approval by an admin is not in this phase.
+

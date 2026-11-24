@@ -302,6 +302,34 @@ object Strings {
         map["{0} հանեց ադմինությունը՝ {1}"] = arrayOf("{0} removed {1} as admin", "{0} снял(а) с админов: {1}")
     }
 
+    /** Phase 3b-b: group invite links. */
+    private fun part6() {
+        map["Հրավերի հղում"] = arrayOf("Invite link", "Ссылка-приглашение")
+        map["Հղումով կարելի է միանալ խմբին"] = arrayOf("Anyone with the link can join the group", "По ссылке можно вступить в группу")
+        map["Ստանում եմ…"] = arrayOf("Getting it…", "Получаю…")
+        map["Հղումը ունեցողը կարող է միանալ խմբին։ Պահիր այն գաղտնի. եթե այն հայտնվի սխալ մարդկանց ձեռքում, վերականգնիր։ Նոր անդամը տեսնում է միայն միանալուց հետո եկած նամակները։"] = arrayOf("Anyone who has the link can join the group. Keep it private; if it reaches the wrong people, reset it. A new member sees only the messages sent after joining.", "Любой, у кого есть ссылка, может вступить в группу. Храните её в тайне; если она попала не к тем людям, сбросьте её. Новый участник видит только сообщения, написанные после вступления.")
+        map["Վերականգնել"] = arrayOf("Reset", "Сбросить")
+        map["Միացիր «{0}» խմբին KHOSQ-ում՝ {1}"] = arrayOf("Join the group “{0}” in KHOSQ: {1}", "Вступай в группу «{0}» в KHOSQ: {1}")
+        map["Խմբի հրավեր"] = arrayOf("Group invite", "Приглашение в группу")
+        map["Ստուգում եմ հղումը…"] = arrayOf("Checking the link…", "Проверяю ссылку…")
+        map["Միանում եմ…"] = arrayOf("Joining…", "Вступаю…")
+        map["Միանա՞լ «{0}» խմբին"] = arrayOf("Join the group “{0}”?", "Вступить в группу «{0}»?")
+        map["Խմբում {0} անդամ կա։ Կտեսնես միայն այն նամակները, որոնք կգրվեն միանալուց հետո։"] = arrayOf("The group has {0} members. You will see only the messages written after you join.", "В группе {0} участников. Вы увидите только сообщения, написанные после вступления.")
+        map["Դու արդեն այս խմբում ես։"] = arrayOf("You are already in this group.", "Вы уже в этой группе.")
+        map["Բացել"] = arrayOf("Open", "Открыть")
+        map["Միանալ"] = arrayOf("Join", "Вступить")
+        map["Հղում կարող է ստանալ միայն խմբի ադմինը"] = arrayOf("Only a group admin can get a link", "Ссылку может получить только админ группы")
+        map["Հրավերի հղումը անվավեր է"] = arrayOf("The invite link is not valid", "Ссылка-приглашение недействительна")
+        map["Խումբը չի գտնվել"] = arrayOf("The group was not found", "Группа не найдена")
+        map["Այս հղումը չեղարկված է։ Խնդրիր նոր հղում։"] = arrayOf("This link was reset. Ask for a new one.", "Эта ссылка сброшена. Попросите новую.")
+        map["Խումբը լցված է (առավելագույնը 50 անդամ)"] = arrayOf("The group is full (50 members at most)", "Группа заполнена (максимум 50 участников)")
+        map["Չափազանց շատ հարցումներ. փորձիր քիչ հետո"] = arrayOf("Too many requests, try again in a bit", "Слишком много запросов, попробуйте чуть позже")
+        map["Հրավերների ծառայությունը դեռ միացված չէ"] = arrayOf("The invite service is not turned on yet", "Сервис приглашений ещё не включён")
+        map["Մուտք չի կատարված"] = arrayOf("Not signed in", "Вход не выполнен")
+        map["Կապ չկա կամ սերվերը չի պատասխանում"] = arrayOf("No connection, or the server is not answering", "Нет связи или сервер не отвечает")
+        map["{0} միացավ հրավերի հղումով"] = arrayOf("{0} joined with the invite link", "{0} вступил(а) по ссылке-приглашению")
+    }
+
     init {
         part0()
         part1()
@@ -309,5 +337,6 @@ object Strings {
         part3()
         part4()
         part5()
+        part6()
     }
 }

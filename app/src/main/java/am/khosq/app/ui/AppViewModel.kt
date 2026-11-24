@@ -9,9 +9,15 @@ import am.khosq.app.data.Message
 import am.khosq.app.data.PollCodec
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Star
+import am.khosq.app.data.MemChat
+import am.khosq.app.data.MemEntry
+import am.khosq.app.data.MemoryHit
+import am.khosq.app.data.MemoryLogic
+import am.khosq.app.data.MemoryStore
 import am.khosq.app.data.Task
 import am.khosq.app.data.TaskStore
 import am.khosq.app.Reminders
+import am.khosq.app.Strings
 import am.khosq.app.data.ProfileStore
 import am.khosq.app.data.Delivery
 import am.khosq.app.data.UserInfo
@@ -36,6 +42,8 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 sealed class Boot {
     data object Loading : Boot()
@@ -180,6 +188,7 @@ class AppViewModel : ViewModel() {
                     _chats.value = list
                     syncPeople(list)
                     prepareKeys(list)
+                    memoryCatchUp(list)
                 }
         }
         callsJob?.cancel()
@@ -365,6 +374,7 @@ class AppViewModel : ViewModel() {
                 .resilient(tr("Նամակներ"))
                 .collect { list ->
                     _messages.value = list
+                    memorySync(id, list)
                     val last = list.lastOrNull()
                     if (last != null && last.from != uid && !last.pending) repo.markRead(id, uid)
                 }
@@ -718,6 +728,145 @@ class AppViewModel : ViewModel() {
         viewModelScope.launch {
             delay(2500)
             if (_notice.value == text) _notice.value = null
+        }
+    }
+
+    // ---- KHOSQ Memory: the texts of the chats I switched Memory on for, kept only on this phone (sealed)
+
+    val memoryChats: StateFlow<Map<String, MemChat>> = MemoryStore.chats
+
+    private val _memoryHits = MutableStateFlow<List<MemoryHit>>(emptyList())
+    val memoryHits: StateFlow<List<MemoryHit>> = _memoryHits.asStateFlow()
+    private var memorySearchJob: Job? = null
+    private var memoryQuery = ""
+    private var pullJob: Job? = null
+    private val pullQueue = LinkedHashSet<String>()
+    private val pulledAt = HashMap<String, Long>()
+
+    /** The "could not be opened" line in every language: it must never be saved as if it were a message. */
+    private fun failedMarkers(): Set<String> {
+        val hy = "Նամակը չհաջողվեց բացել"
+        val t = Strings.map[hy]
+        return if (t == null) setOf(hy) else setOf(hy, t[0], t[1])
+    }
+
+    /** Gives what a chat shows to the Memory. Does nothing unless Memory is on for that chat. */
+    private fun memorySync(chatId: String, list: List<Message>) {
+        if (!MemoryStore.isOn(chatId)) return
+        val chat = _chats.value.firstOrNull { x -> x.id == chatId }
+        val name = chat?.label() ?: ""
+        val me = uid
+        val you = tr("Դու")
+        val failed = failedMarkers()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entries = list.map { m ->
+                    val who = if (m.from == me) you else (chat?.memberNames?.get(m.from)?.takeIf { n -> n.isNotEmpty() } ?: chat?.peerName ?: "")
+                    val question = if (m.kind == "poll") PollCodec.decode(m.text)?.question else null
+                    MemEntry(m.id, m.ts, m.from == me, who, MemoryLogic.indexText(m.kind, m.text, m.deleted, failed, question), m.deleted)
+                }
+                MemoryStore.sync(chatId, name, entries)
+            } catch (e: Exception) {
+                // saving is best effort: the chat itself is not affected
+            }
+        }
+    }
+
+    /** Reads a chat that is not open for a few seconds, so what arrived meanwhile is saved too. One chat at a time. */
+    private fun memoryPull(chatId: String) {
+        pullQueue.add(chatId)
+        if (pullJob?.isActive == true) return
+        pullJob = viewModelScope.launch {
+            while (pullQueue.isNotEmpty()) {
+                val id = pullQueue.first()
+                pullQueue.remove(id)
+                pulledAt[id] = System.currentTimeMillis()
+                if (!MemoryStore.isOn(id)) continue
+                try {
+                    withTimeoutOrNull(8_000L) {
+                        repo.messages(id).collect { list -> memorySync(id, list) }
+                    }
+                } catch (e: Exception) {
+                    // the next chat list update tries again
+                }
+            }
+        }
+    }
+
+    /** A chat with Memory on got something new while it was not open: read it. */
+    private fun memoryCatchUp(list: List<Chat>) {
+        val on = MemoryStore.chats.value
+        if (on.isEmpty()) return
+        val now = System.currentTimeMillis()
+        for (c in list) {
+            val m = on[c.id] ?: continue
+            if (c.lastTs <= m.synced) continue
+            if (openId == c.id && messagesJob?.isActive == true) continue
+            if (now - (pulledAt[c.id] ?: 0L) < 120_000L) continue
+            memoryPull(c.id)
+        }
+    }
+
+    fun memoryEnable(chatId: String, name: String) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    MemoryStore.enable(chatId, name)
+                    true
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            if (!ok) {
+                flash(tr("Հիշողությունը չհաջողվեց միացնել"))
+                return@launch
+            }
+            if (openId == chatId && messagesJob?.isActive == true) memorySync(chatId, _messages.value) else memoryPull(chatId)
+        }
+    }
+
+    private fun memoryWork(block: () -> Unit) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    block()
+                } catch (e: Exception) {
+                    flash(tr("Հիշողությունը չհաջողվեց փոխել"))
+                }
+            }
+            searchMemory(memoryQuery)
+        }
+    }
+
+    fun memoryDisable(chatId: String) = memoryWork { MemoryStore.disable(chatId) }
+
+    fun memoryDisableAll() = memoryWork { MemoryStore.disableAll() }
+
+    fun memoryEdit(h: MemoryHit, text: String) = memoryWork {
+        if (!MemoryStore.edit(h.chatId, h.msgId, text)) flash(tr("Հիշողությունը չհաջողվեց փոխել"))
+    }
+
+    fun memoryRemove(h: MemoryHit) = memoryWork { MemoryStore.remove(h.chatId, h.msgId) }
+
+    /** Looks for the words in everything saved. Waits a moment for the person to stop typing. */
+    fun searchMemory(q: String) {
+        memorySearchJob?.cancel()
+        memoryQuery = q.trim()
+        val query = memoryQuery
+        if (query.isEmpty()) {
+            _memoryHits.value = emptyList()
+            return
+        }
+        memorySearchJob = viewModelScope.launch {
+            delay(200)
+            val found = withContext(Dispatchers.IO) {
+                try {
+                    MemoryStore.search(query)
+                } catch (e: Exception) {
+                    emptyList<MemoryHit>()
+                }
+            }
+            _memoryHits.value = found
         }
     }
 

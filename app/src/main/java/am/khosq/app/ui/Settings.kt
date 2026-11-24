@@ -267,10 +267,11 @@ internal fun kSwitchColors() = SwitchDefaults.colors(
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit) {
     val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
+    val memChats by vm.memoryChats.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -423,6 +424,13 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                 title = tr("Առաջադրանքներ և հիշեցումներ"),
                 subtitle = if (open > 0) trf("Բաց՝ {0}", open.toString()) else tr("Միայն քո հեռախոսում"),
                 onClick = onTasks,
+            )
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Memory,
+                title = "KHOSQ Memory",
+                subtitle = if (memChats.isNotEmpty()) trf("Միացված է՝ {0} զրույցում", memChats.size.toString()) else tr("Անջատված է"),
+                onClick = onMemory,
             )
         }
 

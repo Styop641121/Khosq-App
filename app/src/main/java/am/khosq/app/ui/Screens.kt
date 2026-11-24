@@ -187,6 +187,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var pollOpen by remember { mutableStateOf(false) }
     // a message I am turning into a task: the form opens with its text
     var taskSeed by remember { mutableStateOf<Task?>(null) }
+    // KHOSQ Memory for this chat: 1 = asking to switch it on, 2 = asking to switch it off
+    var memAsk by remember { mutableStateOf(0) }
+    val memChats by vm.memoryChats.collectAsStateWithLifecycle()
     var showMedia by remember { mutableStateOf(false) }
     var typingNow by remember { mutableStateOf(false) }
     var baseTyping by remember { mutableStateOf(-1L) }
@@ -470,6 +473,26 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             )
         }
     }
+    if (memAsk == 1) {
+        MemoryEnableDialog(
+            name = chat?.label() ?: "",
+            onConfirm = {
+                vm.memoryEnable(chatId, chat?.label() ?: "")
+                memAsk = 0
+            },
+            onDismiss = { memAsk = 0 },
+        )
+    }
+    if (memAsk == 2) {
+        MemoryDisableDialog(
+            name = chat?.label() ?: "",
+            onConfirm = {
+                vm.memoryDisable(chatId)
+                memAsk = 0
+            },
+            onDismiss = { memAsk = 0 },
+        )
+    }
     val seed = taskSeed
     if (seed != null) {
         TaskEditSheet(
@@ -615,6 +638,13 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             MenuEntry(KIcons.Image, tr("Մեդիա")) {
                                 moreOpen = false
                                 showMedia = true
+                            }
+                            MenuEntry(
+                                KIcons.Memory,
+                                if (chatId in memChats) tr("Անջատել Հիշողությունը") else tr("Միացնել Հիշողությունը"),
+                            ) {
+                                moreOpen = false
+                                memAsk = if (chatId in memChats) 2 else 1
                             }
                             MenuEntry(KIcons.Pin, if (chatId in prefs.pins) tr("Ապաամրացնել") else tr("Ամրացնել")) {
                                 moreOpen = false

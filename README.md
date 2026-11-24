@@ -47,3 +47,14 @@ Native Android messenger: Kotlin, Jetpack Compose (Material 3), Firebase (Auth +
 - Permissions: `USE_EXACT_ALARM` (granted at install on Android 13+; Google Play restricts it to alarm/calendar apps, which does not matter for this APK) and `SCHEDULE_EXACT_ALARM` (Android 12-12L, granted by default). If exact alarms are ever switched off, reminders fall back to inexact ones (a few minutes late). Notifications need the `POST_NOTIFICATIONS` permission the app already asks for.
 - The rules (due dates, reminder times, groups, sorting) are in `data/Tasks.kt` with no Android code in it, so they can be checked on any computer.
 - Not in 4a: repeating tasks, group tasks/events, creating tasks by voice or by the assistant (phase 4c).
+
+## Phase 4b (KHOSQ Memory)
+
+- Settings -> "Assistant" -> "KHOSQ Memory", and the chat menu ("Switch Memory on/off"). The person switches Memory on **per chat** (or "Switch on for all chats"), after a dialog that says what is saved. A chat with Memory off has no rows at all.
+- What is saved: the text of text messages and the question of polls (`MemoryLogic.indexText`). Not saved: photos, voice, places, system lines, deleted messages, and the "could not open" marker.
+- Where: only on the phone, `memory.db` (framework SQLite, `data/MemoryStore.kt`). Each text is sealed with AES-256-GCM (`MemorySeal`, fresh nonce, the chat and message numbers are signed with it). The key is 32 random bytes, kept sealed by an Android Keystore key (`khosq_memory_wrap`) and held in memory while the app runs, so a search over 20 000 messages takes about 0.2 s. If the phone loses the Keystore key, the saved texts cannot be opened: they are dropped and a new key is made. `allowBackup` is off.
+- How it fills: a chat's messages are already fully opened in memory while the chat is open, so `AppViewModel.openChat` hands every emission to `memorySync` (no extra Firestore reads). For a chat with Memory on that is not open, the chat-list update triggers a short read (`memoryPull`, 8 s, one chat at a time, at most once per 2 minutes per chat). A message deleted for everyone is dropped from Memory too.
+- What the person can do: search (Memory screen, or the chat-list search which now also shows "Messages in Memory"), open a saved message, edit the saved copy (the real message does not change), take one out (it is not saved again), switch a chat off (deletes its saved texts), delete everything.
+- Search: every word of the query must be in the text, any order, case-insensitive; "ё" = "е" and the Armenian "և" = "եվ" (`MemoryLogic.fold`). Newest first, at most 80 results.
+- Nothing is sent to Firebase or the Worker; `firestore.rules`, the Worker and the signing key did not change.
+- Not in 4b: jumping to the found message inside the chat (a result opens the chat), photos/voice, history older than what the chat has loaded, the assistant screen that will use this search (4c).

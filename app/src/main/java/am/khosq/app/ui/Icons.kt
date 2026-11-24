@@ -183,6 +183,16 @@ object KIcons {
         line("link", listOf("M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"))
     }
     val Tasks: ImageVector by lazy { line("tasks", listOf("M9 11l3 3L22 4", "M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11")) }
+    val Memory: ImageVector by lazy {
+        line(
+            "memory",
+            listOf(
+                "M12 8c4.97 0 9-1.34 9-3s-4.03-3-9-3-9 1.34-9 3 4.03 3 9 3z",
+                "M21 12c0 1.66-4 3-9 3s-9-1.34-9-3",
+                "M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5",
+            ),
+        )
+    }
     val Poll: ImageVector by lazy { line("poll", listOf("M18 20V10", "M12 20V4", "M6 20v-6")) }
     val Location: ImageVector by lazy {
         line("location", listOf("M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z", "M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"))

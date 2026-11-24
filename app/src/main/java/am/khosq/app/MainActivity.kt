@@ -21,6 +21,7 @@ import am.khosq.app.ui.SplashScreen
 import am.khosq.app.ui.GradientButton
 import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.InviteJoinHost
+import am.khosq.app.ui.MemoryScreen
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.StarredScreen
@@ -397,7 +398,11 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
                 onOpen = { id -> nav.navigate("chat/$id") },
                 onStarred = { nav.navigate("starred") },
                 onTasks = { nav.navigate("tasks") { launchSingleTop = true } },
+                onMemory = { nav.navigate("memory") { launchSingleTop = true } },
             )
+        }
+        composable("memory") {
+            MemoryScreen(vm = vm, onBack = { nav.popBackStack() }, onOpenChat = { id -> nav.navigate("chat/$id") })
         }
         composable("tasks") {
             TasksScreen(vm = vm, onBack = { nav.popBackStack() }, onOpenChat = { id -> nav.navigate("chat/$id") })

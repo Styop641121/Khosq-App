@@ -179,10 +179,11 @@ fun SetupScreen(vm: AppViewModel) {
 /* ---------------- chat list ---------------- */
 
 @Composable
-fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarred: () -> Unit, onTasks: () -> Unit) {
+fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit) {
     val k = KTheme.colors
     val chats by vm.chats.collectAsStateWithLifecycle()
     val stories by vm.stories.collectAsStateWithLifecycle()
+    val memoryHits by vm.memoryHits.collectAsStateWithLifecycle()
     var viewing by remember { mutableStateOf<String?>(null) }
     var composing by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
@@ -307,7 +308,10 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                 chats.filter { c -> inCategory(c, cat, prefs.archived) }
                             }
                             val shownChats = base.sortedByDescending { c -> c.id in prefs.pins }
-                            if (shownChats.isEmpty()) {
+                            // messages found in KHOSQ Memory (only chats whose Memory is on); empty when not searching
+                            LaunchedEffect(homeSearch, homeQuery) { vm.searchMemory(if (homeSearch) homeQuery else "") }
+                            val memHits = if (homeSearch && q.isNotEmpty()) memoryHits else emptyList()
+                            if (shownChats.isEmpty() && memHits.isEmpty()) {
                                 if (homeSearch && q.isNotEmpty()) {
                                     EmptyState(icon = KIcons.Search, title = tr("Ոչինչ չի գտնվել"), modifier = Modifier.padding(top = Space.huge))
                                 } else if (chats.isNotEmpty() && cat == 3) {
@@ -350,6 +354,13 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                             KDivider(inset = Space.l + Dim.avatarRow + Space.m)
                                         }
                                     }
+                                    if (memHits.isNotEmpty()) {
+                                        item(key = "mem-head") { SectionLabel(tr("Նամակներ հիշողության մեջ")) }
+                                        items(memHits, key = { h -> h.chatId + "/" + h.msgId }) { h ->
+                                            MemoryHitRow(hit = h, query = q, onClick = { onOpen(h.chatId) })
+                                            KDivider(inset = Space.l)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -364,7 +375,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                         }
                     }
                     1 -> CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
-                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred, onTasks = onTasks)
+                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred, onTasks = onTasks, onMemory = onMemory)
                 }
             }
         }

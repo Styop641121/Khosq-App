@@ -10,6 +10,8 @@ class KhosqApp : Application() {
         Prefs.init(this)
         ProfileStore.init(this)
         am.khosq.app.update.Updater.cleanup(this)
+        // KHOSQ Memory: the database of saved texts opens lazily; the list of chats with Memory on is read in the background
+        am.khosq.app.data.MemoryStore.init(this)
         // task reminders: the phone forgets alarms on restart/update, so they are set again whenever the app starts
         Reminders.init(this)
         Thread {

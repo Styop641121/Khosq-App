@@ -371,6 +371,34 @@ object Strings {
         map["Ավելացնել առաջադրանքներին"] = arrayOf("Add to my tasks", "Добавить в задачи")
     }
 
+    private fun part8() {
+        map["Հիշողությունը չհաջողվեց միացնել"] = arrayOf("Memory could not be switched on", "Не удалось включить Память")
+        map["Հիշողությունը չհաջողվեց փոխել"] = arrayOf("Memory could not be changed", "Не удалось изменить Память")
+        map["Որոնել հիշողության մեջ…"] = arrayOf("Search in Memory…", "Искать в Памяти…")
+        map["Որոնում է միայն այն զրույցներում, որտեղ Հիշողությունը միացված է։"] = arrayOf("It searches only the chats where Memory is on.", "Поиск идёт только по чатам, где Память включена.")
+        map["Հիշողությունը պահում է միացրած զրույցների տեքստային նամակները միայն քո հեռախոսում՝ գաղտնագրված։ Ոչինչ չի ուղարկվում սերվեր։ Զրույցում Հիշողությունն անջատելիս այդ զրույցից պահվածը ջնջվում է։"] = arrayOf("Memory keeps the text messages of the chats you switch it on for, only on your phone and encrypted. Nothing is sent to a server. When you switch Memory off in a chat, what was saved from it is deleted.", "Память хранит текстовые сообщения чатов, для которых вы её включили, только на вашем телефоне и в зашифрованном виде. Ничего не отправляется на сервер. Когда вы выключаете Память в чате, сохранённое из него удаляется.")
+        map["Միացնել բոլոր զրույցների համար"] = arrayOf("Switch on for all chats", "Включить для всех чатов")
+        map["Ջնջել ամբողջ հիշողությունը"] = arrayOf("Delete all of Memory", "Удалить всю Память")
+        map["Ջնջե՞լ ամբողջ հիշողությունը"] = arrayOf("Delete all of Memory?", "Удалить всю Память?")
+        map["Բոլոր պահված նամակները կջնջվեն այս հեռախոսից, և Հիշողությունը կանջատվի բոլոր զրույցներում։ Զրույցներն իրենք չեն փոխվի։"] = arrayOf("All saved messages will be deleted from this phone, and Memory will be switched off in every chat. The chats themselves do not change.", "Все сохранённые сообщения будут удалены с этого телефона, а Память выключится во всех чатах. Сами чаты не изменятся.")
+        map["Պահված է՝ {0}"] = arrayOf("Saved: {0}", "Сохранено: {0}")
+        map["Անջատված է"] = arrayOf("Off", "Выключено")
+        map["Փոփոխված պատճեն"] = arrayOf("Edited copy", "Изменённая копия")
+        map["Սա միայն հիշողության պատճենն է. զրույցի նամակը չի փոխվում։"] = arrayOf("This is only the copy in Memory; the message in the chat does not change.", "Это только копия в Памяти; сообщение в чате не меняется.")
+        map["Հանել հիշողությունից"] = arrayOf("Remove from Memory", "Убрать из Памяти")
+        map["Միացնե՞լ Հիշողությունը բոլոր զրույցներում"] = arrayOf("Switch Memory on in all chats?", "Включить Память во всех чатах?")
+        map["Միացնե՞լ Հիշողությունը «{0}» զրույցում"] = arrayOf("Switch Memory on in “{0}”?", "Включить Память в чате «{0}»?")
+        map["Տեքստային նամակները կպահվեն միայն այս հեռախոսում՝ գաղտնագրված հեռախոսի պաշտպանված բանալիով, որպեսզի կարողանաս դրանք որոնել։ Ոչինչ չի ուղարկվում սերվեր։ Նկարները, ձայնագրությունները և տեղադրությունները չեն պահվում։ Ցանկացած պահի կարող ես անջատել՝ պահվածը կջնջվի։"] = arrayOf("Text messages will be kept only on this phone, encrypted with a key of the phone’s secure hardware, so that you can search them. Nothing is sent to a server. Photos, voice messages and locations are not kept. You can switch it off at any time; what was saved will be deleted.", "Текстовые сообщения будут храниться только на этом телефоне, зашифрованные ключом защищённого хранилища телефона, чтобы вы могли их искать. Ничего не отправляется на сервер. Фото, голосовые сообщения и местоположения не сохраняются. Вы можете выключить это в любой момент; сохранённое будет удалено.")
+        map["Միացնել"] = arrayOf("Switch on", "Включить")
+        map["Անջատե՞լ Հիշողությունը «{0}» զրույցում"] = arrayOf("Switch Memory off in “{0}”?", "Выключить Память в чате «{0}»?")
+        map["Այս զրույցից պահված բոլոր նամակները կջնջվեն այս հեռախոսից։ Զրույցն ինքը չի փոխվի։"] = arrayOf("Everything saved from this chat will be deleted from this phone. The chat itself does not change.", "Всё сохранённое из этого чата будет удалено с этого телефона. Сам чат не изменится.")
+        map["Անջատել և ջնջել"] = arrayOf("Switch off and delete", "Выключить и удалить")
+        map["Միացված է՝ {0} զրույցում"] = arrayOf("On in {0} chats", "Включена в чатах: {0}")
+        map["Նամակներ հիշողության մեջ"] = arrayOf("Messages in Memory", "Сообщения в Памяти")
+        map["Անջատել Հիշողությունը"] = arrayOf("Switch Memory off", "Выключить Память")
+        map["Միացնել Հիշողությունը"] = arrayOf("Switch Memory on", "Включить Память")
+    }
+
     init {
         part0()
         part1()
@@ -380,5 +408,6 @@ object Strings {
         part5()
         part6()
         part7()
+        part8()
     }
 }

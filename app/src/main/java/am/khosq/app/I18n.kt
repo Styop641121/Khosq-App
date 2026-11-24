@@ -1,5 +1,6 @@
 package am.khosq.app
 
+import am.khosq.app.data.PollCodec
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
@@ -107,6 +108,8 @@ fun previewOf(kind: String, text: String): String = when (kind) {
     "img" -> "📷 " + tr("Նկար")
     "voice" -> "🎤 " + tr("Ձայնային նամակ")
     "loc" -> "📍 " + tr("Տեղադրություն")
+    // a poll shows its question when the message is open, otherwise just the word
+    "poll" -> "📊 " + (PollCodec.decode(text)?.question ?: tr("Հարցում"))
     "call_missed" -> "📵 " + tr("Բաց թողնված զանգ")
     // older messages stored the Armenian preview itself
     else -> if (text == "📷 Նկար" || text == "🎤 Ձայնային նամակ" || text == "📵 Բաց թողնված զանգ") tr(text) else text

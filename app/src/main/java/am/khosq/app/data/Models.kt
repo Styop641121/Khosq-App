@@ -45,6 +45,8 @@ data class Chat(
     val lastW: Map<String, String> = emptyMap(),
     /** Id of the message pinned at the top of this chat ("" = none). Only the id is stored: the text stays sealed in the message. */
     val pinId: String = "",
+    /** Group only: true when just the admins may write (an announcement group). */
+    val adminOnly: Boolean = false,
 )
 
 /**
@@ -82,6 +84,8 @@ data class Message(
     val enc: Boolean = false,
     /** For a group: the message key wrapped for every member. The repository uses it to open the message and then drops it. */
     val wraps: Map<String, String> = emptyMap(),
+    /** Poll only: who chose which option (voter uid to option number). Opened by the repository, like the text. */
+    val votes: Map<String, String> = emptyMap(),
 )
 
 /** A starred message: a small private copy kept in my own space, so the list never has to open the chats. */

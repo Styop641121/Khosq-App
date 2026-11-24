@@ -102,6 +102,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -152,6 +153,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val pendingForMe = chat != null && chat.status == "pending" && chat.requester != me.uid
     val waiting = chat != null && chat.status == "pending" && chat.requester == me.uid
     val iBlocked = chat != null && me.uid in chat.blockedBy
+    // an announcement group: the rules let only the admins write, so the others get a note instead of the input
+    val adminOnlyBlocked = chat != null && chat.isGroup && chat.adminOnly && me.uid !in chat.admins
     val canCall = chat != null && !chat.isGroup && chat.status == "active" && chat.blockedBy.isEmpty()
     val isSaved = chat?.saved == true
     val isGroup = chat != null && chat.isGroup && !isSaved
@@ -179,6 +182,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var menuFor by remember { mutableStateOf<Message?>(null) }
     var attachOpen by remember { mutableStateOf(false) }
     var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var pollOpen by remember { mutableStateOf(false) }
     var showMedia by remember { mutableStateOf(false) }
     var typingNow by remember { mutableStateOf(false) }
     var baseTyping by remember { mutableStateOf(-1L) }
@@ -355,14 +359,17 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 },
             )
             val pinnedHere = chat?.pinId == mm.id
-            SheetRow(
-                icon = KIcons.Pin,
-                label = if (pinnedHere) tr("Ապաամրացնել նամակը") else tr("Ամրացնել նամակը"),
-                onClick = {
-                    vm.setPinned(chatId, if (pinnedHere) null else mm.id)
-                    menuFor = null
-                },
-            )
+            // in an announcement group only the admins pin
+            if (!adminOnlyBlocked) {
+                SheetRow(
+                    icon = KIcons.Pin,
+                    label = if (pinnedHere) tr("Ապաամրացնել նամակը") else tr("Ամրացնել նամակը"),
+                    onClick = {
+                        vm.setPinned(chatId, if (pinnedHere) null else mm.id)
+                        menuFor = null
+                    },
+                )
+            }
             if (mm.kind == "text") {
                 SheetRow(icon = KIcons.Copy, label = tr("Պատճենել"), onClick = {
                     clip.setText(AnnotatedString(mm.text))
@@ -436,7 +443,22 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     askForLocation()
                 },
             )
+            SheetRow(
+                icon = KIcons.Poll,
+                label = tr("Հարցում"),
+                subtitle = tr("Հարց և 2–6 տարբերակ, բոլորը կարող են ձայն տալ"),
+                onClick = {
+                    attachOpen = false
+                    pollOpen = true
+                },
+            )
         }
+    }
+    if (pollOpen) {
+        CreatePollSheet(
+            onClose = { pollOpen = false },
+            onCreate = { q, o -> vm.sendPoll(chatId, peerUid, q, o) },
+        )
     }
     val la = locAsk
     if (la != null) {
@@ -612,7 +634,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         // the list is upside down (newest first), and a "typing" bubble takes the first place while it shows
                         if (at >= 0) scope.launch { listState.animateScrollToItem(shown.size - 1 - at + (if (typingNow) 1 else 0)) }
                     },
-                    onClose = { vm.setPinned(chatId, null) },
+                    // in an announcement group only the admins can take the pin off
+                    onClose = if (adminOnlyBlocked) null else ({ vm.setPinned(chatId, null) }),
                 )
                 KDivider()
             }
@@ -663,6 +686,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             joinedOlder = joined,
                             onSwipe = { vm.setReply(m) },
                             onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
+                            onVote = { i -> if (!m.deleted) vm.vote(chatId, m, i) },
                         )
                     }
                 }
@@ -785,6 +809,14 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     text = tr("Դու արգելափակել ես այս մարդուն"),
                     primary = tr("Ապաարգելափակել"),
                     onPrimary = { vm.setBlocked(chatId, false) },
+                )
+            } else if (adminOnlyBlocked) {
+                Text(
+                    text = tr("Միայն ադմինները կարող են գրել այս խմբում"),
+                    color = k.textSecondary,
+                    style = TextStyle(fontSize = 14.sp),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.l),
                 )
             } else Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.s),
@@ -959,7 +991,7 @@ private fun ComposerBanner(icon: ImageVector, title: String, text: String, onClo
 
 /** The strip under the top bar of a chat: the pinned message. Tap it to jump to the message, the cross takes the pin off. */
 @Composable
-private fun PinnedBar(text: String, onClick: () -> Unit, onClose: () -> Unit) {
+private fun PinnedBar(text: String, onClick: () -> Unit, onClose: (() -> Unit)?) {
     val k = KTheme.colors
     Row(
         modifier = Modifier
@@ -985,7 +1017,9 @@ private fun PinnedBar(text: String, onClick: () -> Unit, onClose: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        KIconButton(icon = KIcons.Close, onClick = onClose, size = 40.dp, iconSize = 20.dp, tint = k.textSecondary)
+        if (onClose != null) {
+            KIconButton(icon = KIcons.Close, onClick = onClose, size = 40.dp, iconSize = 20.dp, tint = k.textSecondary)
+        }
     }
 }
 

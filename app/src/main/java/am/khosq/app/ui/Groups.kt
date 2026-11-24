@@ -191,6 +191,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
     var adding by remember { mutableStateOf(false) }
     val picked = remember { mutableStateListOf<String>() }
     var confirmLeave by remember { mutableStateOf(false) }
+    var actionFor by remember { mutableStateOf<String?>(null) }
     var editingDesc by remember { mutableStateOf(false) }
     var newDesc by remember(chat.desc) { mutableStateOf(chat.desc) }
     val candidates = remember(chat.members) { vm.contacts().filter { c -> c.peerUid !in chat.members } }
@@ -303,6 +304,12 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                 } else {
                     SheetRow(icon = KIcons.Edit, label = tr("Փոխել անունը"), onClick = { renaming = true })
                 }
+                SheetRow(
+                    icon = KIcons.Lock,
+                    label = tr("Միայն ադմինները գրեն"),
+                    subtitle = if (chat.adminOnly) tr("Միացված է. մյուսները միայն կարդում են") else tr("Անջատված է. բոլորը կարող են գրել"),
+                    onClick = { vm.setAdminOnly(chat.id, !chat.adminOnly) },
+                )
             }
 
             SectionLabel(tr("Անդամներ"))
@@ -310,7 +317,10 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                 val name = if (uid == me.uid) tr("Դու") else (chat.memberNames[uid] ?: "?")
                 val handle = chat.memberHandles[uid] ?: ""
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = 6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = iAmAdmin && uid != me.uid) { actionFor = uid }
+                        .padding(horizontal = Space.l, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Avatar(name = name, seed = uid, size = 44.dp)
@@ -391,6 +401,24 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
 
             SheetRow(icon = KIcons.Close, label = tr("Լքել խումբը"), danger = true, onClick = { confirmLeave = true })
         }
+    }
+
+    val target = actionFor
+    if (target != null) {
+        val targetName = chat.memberNames[target] ?: ""
+        val isAdmin = target in chat.admins
+        AlertDialog(
+            onDismissRequest = { actionFor = null },
+            title = { Text(targetName) },
+            text = { Text(tr("Ադմինը կարող է փոխել խմբի տվյալները, ավելացնել և հեռացնել անդամներին։")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.setAdmin(chat.id, target, targetName, !isAdmin)
+                    actionFor = null
+                }) { Text(if (isAdmin) tr("Հանել ադմինությունից") else tr("Նշանակել ադմին")) }
+            },
+            dismissButton = { TextButton(onClick = { actionFor = null }) { Text(tr("Փակել")) } },
+        )
     }
 
     if (confirmLeave) {

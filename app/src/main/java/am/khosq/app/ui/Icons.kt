@@ -179,6 +179,7 @@ object KIcons {
     }
     val Download: ImageVector by lazy { line("download", listOf("M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3")) }
     val Archive: ImageVector by lazy { line("archive", listOf("M21 8v13H3V8", "M1 3h22v5H1z", "M10 12h4")) }
+    val Poll: ImageVector by lazy { line("poll", listOf("M18 20V10", "M12 20V4", "M6 20v-6")) }
     val Location: ImageVector by lazy {
         line("location", listOf("M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z", "M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"))
     }

@@ -214,6 +214,10 @@ private fun systemLine(m: Message, actor: String): String {
         "grp_left" -> trf("{0} լքեց խումբը", actor)
         "grp_photo" -> trf("{0} փոխեց խմբի նկարը", actor)
         "grp_desc" -> trf("{0} փոխեց խմբի նկարագրությունը", actor)
+        "grp_mode_admins" -> trf("{0} միացրեց «միայն ադմինները գրեն» ռեժիմը", actor)
+        "grp_mode_all" -> trf("{0} անջատեց «միայն ադմինները գրեն» ռեժիմը", actor)
+        "grp_admin_on" -> trf("{0} ադմին նշանակեց՝ {1}", actor, m.arg)
+        "grp_admin_off" -> trf("{0} հանեց ադմինությունը՝ {1}", actor, m.arg)
         else -> m.text
     }
 }
@@ -283,6 +287,7 @@ internal fun Bubble(
     joinedOlder: Boolean,
     onSwipe: () -> Unit,
     onLong: () -> Unit,
+    onVote: (Int) -> Unit = {},
 ) {
     val k = KTheme.colors
     if (m.kind == "call" || m.kind == "sys") {
@@ -462,6 +467,7 @@ internal fun Bubble(
                         "img" -> ImageBody(m)
                         "voice" -> VoiceBody(m, mine, onLong)
                         "loc" -> LocationBody(m, mine, ink, soft, onLong)
+                        "poll" -> PollBody(m, mine, myUid, ink, soft, onVote, onLong)
                         else -> {
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
                             val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }

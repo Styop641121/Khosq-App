@@ -10,6 +10,7 @@ function member(id) { return u() in cd(id).members; }
 function canSend(id) {
 let c = cd(id);
 return u() in c.members && c.get("blocked", {}).size() == 0
+&& (c.get("sendMode", "all") == "all" || u() in c.get("admins", []))
 && (c.get("status", "active") == "active" || c.get("requester", "") == u());
 }
 function adm(x) { return u() in cd(x).get("admins", []); }
@@ -50,11 +51,11 @@ allow read, write: if u() == x;
 }
 match /chats/{chatId} {
 allow create: if u() in nd().members
-&& ((nd().status == "pending" && nd().requester == u() && dmOk(chatId))
+&& ((nd().status == "pending" && nd().requester == u() && dmOk(chatId) && !nd().keys().hasAny(["admins", "sendMode", "group", "blocked"]))
 || (nd().get("group", false) == true && nd().status == "active" && nd().admins == [u()] && grpOk(chatId)));
 allow read: if me() && (resource == null || u() in resource.data.members);
 allow update: if u() in resource.data.members
-&& (!keys().hasAny(["status", "requester", "blocked", "members", "admins", "title", "desc", "gpv"])
+&& (!keys().hasAny(["status", "requester", "blocked", "members", "admins", "title", "desc", "gpv", "sendMode"])
 || (keys().hasOnly(["blocked"]) && ownKey(nd().get("blocked", {}), resource.data.get("blocked", {})))
 || (keys().hasOnly(["status"]) && nd().status == "active" && resource.data.get("requester", "") != u())
 || u() in resource.data.get("admins", [])
@@ -63,9 +64,10 @@ allow update: if u() in resource.data.members
 match /messages/{mid} {
 allow read: if member(chatId);
 allow create: if canSend(chatId) && nd().from == u();
-allow update: if member(chatId) && keys().hasOnly(["reactions", "deleted", "text", "data", "reply", "edited"])
+allow update: if member(chatId) && keys().hasOnly(["reactions", "votes", "deleted", "text", "data", "reply", "edited"])
 && (!keys().hasAny(["reactions"]) || ownKey(nd().get("reactions", {}), resource.data.get("reactions", {})))
-&& (resource.data.from == u() || keys().hasOnly(["reactions"]));
+&& (!keys().hasAny(["votes"]) || ownKey(nd().get("votes", {}), resource.data.get("votes", {})))
+&& (resource.data.from == u() || keys().hasOnly(["reactions", "votes"]));
 }
 }
 match /stories/{sid} {

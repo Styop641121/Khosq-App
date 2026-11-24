@@ -6,6 +6,7 @@ import am.khosq.app.trf
 import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
+import am.khosq.app.data.PollCodec
 import am.khosq.app.data.Profile
 import am.khosq.app.data.Star
 import am.khosq.app.data.ProfileStore
@@ -470,7 +471,7 @@ class AppViewModel : ViewModel() {
     fun editMessage(chatId: String, m: Message, text: String) {
         val t = text.trim()
         if (m.from != uid || m.kind != "text" || t.isEmpty() || t == m.text) return
-        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" || x.kind == "loc" }
+        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" || x.kind == "loc" || x.kind == "poll" }
         repo.editMessage(chatId, m.id, t, lastReal?.id == m.id, m.enc)
     }
 
@@ -499,6 +500,30 @@ class AppViewModel : ViewModel() {
         val title = groupTitle(chatId)
         val coords = String.format(java.util.Locale.US, "%.5f,%.5f", lat, lng)
         withKey(chatId) { repo.sendLocation(chatId, me, to, coords, title) }
+    }
+
+    /** Sends a poll. False when the question and options do not make a valid poll (a question and 2 to 6 options). */
+    fun sendPoll(chatId: String, peerUid: String, question: String, options: List<String>): Boolean {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return false
+        val poll = PollCodec.clean(question, options) ?: return false
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        withKey(chatId) { repo.sendPoll(chatId, me, to, poll, title) }
+        return true
+    }
+
+    /** Votes for an option; choosing the option I already chose takes my vote back. */
+    fun vote(chatId: String, m: Message, option: Int) {
+        val poll = PollCodec.decode(m.text) ?: return
+        if (option !in poll.options.indices) return
+        val mine = PollCodec.tally(m.votes, poll.options.size)[uid]
+        viewModelScope.launch {
+            try {
+                repo.vote(chatId, m, uid, if (mine == option) null else option)
+            } catch (e: Exception) {
+                // the vote did not go out; the poll simply stays as it was
+            }
+        }
     }
 
     /** Puts a message on my starred list, or takes it off again. */
@@ -662,6 +687,16 @@ class AppViewModel : ViewModel() {
     fun renameGroup(chatId: String, title: String) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
         if (title.isNotBlank()) repo.renameGroup(chatId, me, title.trim())
+    }
+
+    fun setAdminOnly(chatId: String, on: Boolean) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.setAdminOnly(chatId, me, on)
+    }
+
+    fun setAdmin(chatId: String, uid: String, name: String, on: Boolean) {
+        val me = (_boot.value as? Boot.Ready)?.me ?: return
+        repo.setAdmin(chatId, me, uid, name, on)
     }
 
     fun leaveGroup(chat: Chat) {

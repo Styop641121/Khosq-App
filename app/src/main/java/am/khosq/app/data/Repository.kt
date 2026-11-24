@@ -233,6 +233,7 @@ class Repository {
             lastEnc = d.getBoolean("lastEnc") == true,
             lastW = stringMap(d.get("lastW")),
             pinId = d.getString("pin") ?: "",
+            adminOnly = d.getString("sendMode") == "admins",
         )
     }
 
@@ -467,9 +468,9 @@ class Repository {
     }
 
     private fun openOne(chatId: String, key: ByteArray?, m: Message): Message {
-        if (m.deleted) return m.copy(wraps = emptyMap())
+        if (m.deleted) return m.copy(wraps = emptyMap(), votes = emptyMap())
         if (key == null) {
-            return m.copy(text = if (m.text.isEmpty()) "" else tr("Նամակը չհաջողվեց բացել"), reply = "", data = null, wraps = emptyMap())
+            return m.copy(text = if (m.text.isEmpty()) "" else tr("Նամակը չհաջողվեց բացել"), reply = "", data = null, wraps = emptyMap(), votes = emptyMap())
         }
         var text = m.text
         if (text.isNotEmpty()) text = E2E.openText(key, chatId, m.from, "t", text) ?: tr("Նամակը չհաջողվեց բացել")
@@ -477,7 +478,14 @@ class Repository {
         if (reply.isNotEmpty()) reply = E2E.openText(key, chatId, m.from, "r", reply) ?: ""
         val raw = m.data
         val bytes = if (raw == null) null else E2E.openBytes(key, chatId, m.from, "d", raw)
-        return m.copy(text = text, reply = reply, data = bytes, wraps = emptyMap())
+        // each vote is sealed with the message's own key, so the server sees who voted but never what
+        val votes = HashMap<String, String>()
+        for ((voter, sealed) in m.votes) {
+            val v = E2E.openText(key, chatId, voter, "v", sealed)
+            if (v != null) votes[voter] = v
+        }
+        // a poll keeps its wrapped keys: they are needed to seal my own vote later
+        return m.copy(text = text, reply = reply, data = bytes, wraps = if (m.kind == "poll") m.wraps else emptyMap(), votes = votes)
     }
 
     private fun rawMessages(chatId: String): Flow<List<Message>> = callbackFlow {
@@ -513,6 +521,7 @@ class Repository {
                         wave = d.getString("wave") ?: "",
                         enc = d.getBoolean("e") ?: false,
                         wraps = if (d.getBoolean("e") == true) stringMap(d.get("w")) else emptyMap(),
+                        votes = readReactions(d.get("votes")),
                     )
                 }
                 trySend(list)
@@ -535,6 +544,7 @@ class Repository {
         "img" -> am.khosq.app.REPLY_IMG
         "voice" -> am.khosq.app.REPLY_VOICE
         "loc" -> am.khosq.app.REPLY_LOC
+        "poll" -> "📊 " + (PollCodec.decode(m.text)?.question ?: "").take(70)
         else -> m.text.take(80)
     }
 
@@ -543,6 +553,7 @@ class Repository {
         "img" -> "📷"
         "voice" -> "🎤"
         "loc" -> "📍"
+        "poll" -> "📊"
         else -> text.take(80)
     }
 
@@ -587,6 +598,65 @@ class Repository {
         batch.commit().addOnSuccessListener {
             if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
         }
+    }
+
+    /**
+     * A poll: the question and the options travel as the sealed text of a message of kind "poll". The chat list only
+     * gets the chart emoji. Votes are added later, one field per voter (see [vote]).
+     */
+    fun sendPoll(chatId: String, me: Profile, others: List<String>, poll: Poll, groupTitle: String = "") {
+        val chat = db.collection("chats").document(chatId)
+        val msg = chat.collection("messages").document()
+        val batch = db.batch()
+        val seal = E2E.begin(chatId, msg.id, me.uid, others)
+        val key = seal?.key
+        val json = PollCodec.encode(poll)
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to (if (key != null) E2E.sealText(key, chatId, me.uid, "t", json) else json),
+            "kind" to "poll",
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        if (seal != null) markSealed(body, seal)
+        batch.set(msg, body)
+        val preview = lastOf("poll", "")
+        batch.update(
+            chat,
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to preview,
+                    "lastEnc" to false,
+                    "lastW" to FieldValue.delete(),
+                    "lastKind" to "poll",
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
+            ),
+        )
+        batch.commit().addOnSuccessListener {
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
+        }
+    }
+
+    /** Casts my vote (option = null takes it back). The vote is sealed with the poll's own key, so only the chat can read it. */
+    suspend fun vote(chatId: String, m: Message, uid: String, option: Int?) {
+        val ref = db.collection("chats").document(chatId).collection("messages").document(m.id)
+        if (option == null) {
+            ref.update("votes.$uid", FieldValue.delete())
+            return
+        }
+        var stored = option.toString()
+        if (m.enc) {
+            val key = try {
+                if (E2E.isGroup(chatId, uid)) E2E.groupKey(chatId, m.from, uid, m.wraps) else E2E.keyFor(chatId, uid)
+            } catch (e: Exception) {
+                null
+            }
+            if (key == null) return
+            stored = E2E.sealText(key, chatId, uid, "v", stored)
+        }
+        ref.update("votes.$uid", stored)
     }
 
     fun setTyping(chatId: String, uid: String, on: Boolean) {
@@ -776,7 +846,7 @@ class Repository {
         if (bytes != null) body["data"] = Blob.fromBytes(if (key != null) E2E.sealBytes(key, target.id, me.uid, "d", bytes) else bytes)
         if (m.wave.isNotEmpty()) body["wave"] = m.wave
         val prev = lastOf(m.kind, m.text)
-        val prevIsText = m.kind != "img" && m.kind != "voice" && m.kind != "loc"
+        val prevIsText = m.kind != "img" && m.kind != "voice" && m.kind != "loc" && m.kind != "poll"
         val sealedPrev = key != null && prevIsText && prev.isNotEmpty()
         val b = db.batch()
         b.set(msg, body)
@@ -787,7 +857,7 @@ class Repository {
                     "lastText" to (if (sealedPrev) E2E.sealText(key!!, target.id, me.uid, "l", prev) else prev),
                     "lastEnc" to sealedPrev,
                     "lastW" to (if (sealedPrev) (seal?.wraps ?: FieldValue.delete()) else FieldValue.delete()),
-                    "lastKind" to (if (m.kind == "img" || m.kind == "voice" || m.kind == "loc") m.kind else "text"),
+                    "lastKind" to (if (m.kind == "img" || m.kind == "voice" || m.kind == "loc" || m.kind == "poll") m.kind else "text"),
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),
@@ -894,6 +964,24 @@ class Repository {
         val b = db.batch()
         b.update(ref, "desc", text)
         b.set(ref.collection("messages").document(), sysLine(me.uid, "grp_desc"))
+        b.commit()
+    }
+
+    /** Announcement mode: only the admins may write. The rules enforce it, the screen only hides the input. */
+    fun setAdminOnly(chatId: String, me: Profile, on: Boolean) {
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "sendMode", if (on) "admins" else "all")
+        b.set(ref.collection("messages").document(), sysLine(me.uid, if (on) "grp_mode_admins" else "grp_mode_all"))
+        b.commit()
+    }
+
+    /** Makes a member an admin, or takes the role away again. */
+    fun setAdmin(chatId: String, me: Profile, uid: String, name: String, on: Boolean) {
+        val ref = db.collection("chats").document(chatId)
+        val b = db.batch()
+        b.update(ref, "admins", if (on) FieldValue.arrayUnion(uid) else FieldValue.arrayRemove(uid))
+        b.set(ref.collection("messages").document(), sysLine(me.uid, if (on) "grp_admin_on" else "grp_admin_off", name))
         b.commit()
     }
 

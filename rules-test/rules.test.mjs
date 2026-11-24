@@ -133,3 +133,47 @@ test("location message: a member can send one, the sender must be me", async () 
   await assertSucceeds(setDoc(doc(db("B"), "chats/A_B/messages/m3"), { from: "B", kind: "loc", text: "40.18111,44.51361" }));
   await assertFails(setDoc(doc(db("B"), "chats/A_B/messages/m4"), { from: "A", kind: "loc", text: "40.18111,44.51361" }));
 });
+
+// ---------------------------------------------------------------- phase 3b-a: announcement groups, polls
+const seedGroup = (extra = {}) => seed((d) => setDoc(doc(d, "chats/G1"), grp({ ...extra })));
+test("send mode: in an announcement group only an admin can write", async () => {
+  await seedGroup({ sendMode: "admins" });
+  await assertFails(setDoc(doc(db("B"), "chats/G1/messages/x1"), { from: "B", text: "hi" }));
+  await assertSucceeds(setDoc(doc(db("A"), "chats/G1/messages/x2"), { from: "A", text: "news" }));
+});
+test("send mode: a normal group lets every member write", async () => {
+  await seedGroup();
+  await assertSucceeds(setDoc(doc(db("B"), "chats/G1/messages/x3"), { from: "B", text: "hi" }));
+  await seedGroup({ sendMode: "all" });
+  await assertSucceeds(setDoc(doc(db("B"), "chats/G1/messages/x4"), { from: "B", text: "hi" }));
+});
+test("send mode: only an admin can switch it on or off", async () => {
+  await seedGroup();
+  await assertFails(updateDoc(doc(db("B"), "chats/G1"), { sendMode: "admins" }));
+  await assertSucceeds(updateDoc(doc(db("A"), "chats/G1"), { sendMode: "admins" }));
+  await assertFails(updateDoc(doc(db("B"), "chats/G1"), { sendMode: "all" }));
+  await assertSucceeds(updateDoc(doc(db("A"), "chats/G1"), { sendMode: "all" }));
+});
+test("direct chat: a request cannot be created with admins, a send mode, a group flag or a block", async () => {
+  await assertFails(setDoc(doc(db("A"), "chats/A_C"), dm({ members: ["A", "C"], admins: ["A"] })));
+  await assertFails(setDoc(doc(db("A"), "chats/A_C"), dm({ members: ["A", "C"], sendMode: "admins" })));
+  await assertFails(setDoc(doc(db("A"), "chats/A_C"), dm({ members: ["A", "C"], blocked: { C: true } })));
+  await assertFails(setDoc(doc(db("A"), "chats/A_C"), dm({ members: ["A", "C"], group: true })));
+  await assertSucceeds(setDoc(doc(db("A"), "chats/A_C"), dm({ members: ["A", "C"] })));
+});
+test("poll: a member votes with their own key only", async () => {
+  await seedGroup();
+  await seed((d) => setDoc(doc(d, "chats/G1/messages/p1"), { from: "A", kind: "poll", text: "sealed" }));
+  const p = (uid) => doc(db(uid), "chats/G1/messages/p1");
+  await assertSucceeds(updateDoc(p("B"), { "votes.B": "sealed-vote" }));
+  await assertSucceeds(updateDoc(p("A"), { "votes.A": "sealed-vote" }));
+  await assertFails(updateDoc(p("B"), { "votes.A": "forged" }));
+  await assertSucceeds(updateDoc(p("B"), { "votes.B": deleteField() }));
+  await assertFails(updateDoc(doc(db("C"), "chats/G1/messages/p1"), { "votes.C": "x" }));
+});
+test("poll: a voter cannot use a vote to rewrite the poll", async () => {
+  await seedGroup();
+  await seed((d) => setDoc(doc(d, "chats/G1/messages/p2"), { from: "A", kind: "poll", text: "sealed" }));
+  await assertFails(updateDoc(doc(db("B"), "chats/G1/messages/p2"), { "votes.B": "1", text: "changed" }));
+  await assertFails(updateDoc(doc(db("B"), "chats/G1/messages/p2"), { deleted: true }));
+});

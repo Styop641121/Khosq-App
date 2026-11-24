@@ -277,11 +277,37 @@ object Strings {
         map["Ընդհանուր խմբեր"] = arrayOf("Groups in common", "Общие группы")
     }
 
+    /** Phase 3b-a: polls and group permissions. */
+    private fun part5() {
+        map["Հարցում"] = arrayOf("Poll", "Опрос")
+        map["Հարց և 2–6 տարբերակ, բոլորը կարող են ձայն տալ"] = arrayOf("A question and 2–6 options, everyone can vote", "Вопрос и 2–6 вариантов, голосуют все")
+        map["Նոր հարցում"] = arrayOf("New poll", "Новый опрос")
+        map["Հարցը"] = arrayOf("Question", "Вопрос")
+        map["Տարբերակ {0}"] = arrayOf("Option {0}", "Вариант {0}")
+        map["Ավելացնել տարբերակ"] = arrayOf("Add option", "Добавить вариант")
+        map["Ընտրիր մեկ տարբերակ"] = arrayOf("Choose one option", "Выберите один вариант")
+        map["Ձայներ դեռ չկան"] = arrayOf("No votes yet", "Голосов пока нет")
+        map["Ձայներ՝ {0}"] = arrayOf("Votes: {0}", "Голосов: {0}")
+        map["Հարցումը չհաջողվեց բացել"] = arrayOf("Could not open the poll", "Не удалось открыть опрос")
+        map["Միայն ադմինները կարող են գրել այս խմբում"] = arrayOf("Only admins can write in this group", "В этой группе писать могут только админы")
+        map["Միայն ադմինները գրեն"] = arrayOf("Only admins can write", "Писать могут только админы")
+        map["Միացված է. մյուսները միայն կարդում են"] = arrayOf("On: everyone else can only read", "Включено: остальные только читают")
+        map["Անջատված է. բոլորը կարող են գրել"] = arrayOf("Off: everyone can write", "Выключено: писать могут все")
+        map["Ադմինը կարող է փոխել խմբի տվյալները, ավելացնել և հեռացնել անդամներին։"] = arrayOf("An admin can change the group details and add or remove members.", "Админ может менять данные группы, добавлять и удалять участников.")
+        map["Նշանակել ադմին"] = arrayOf("Make admin", "Сделать админом")
+        map["Հանել ադմինությունից"] = arrayOf("Remove as admin", "Снять с админа")
+        map["{0} միացրեց «միայն ադմինները գրեն» ռեժիմը"] = arrayOf("{0} turned on “only admins can write”", "{0} включил(а) режим «писать могут только админы»")
+        map["{0} անջատեց «միայն ադմինները գրեն» ռեժիմը"] = arrayOf("{0} turned off “only admins can write”", "{0} выключил(а) режим «писать могут только админы»")
+        map["{0} ադմին նշանակեց՝ {1}"] = arrayOf("{0} made {1} an admin", "{0} назначил(а) админом: {1}")
+        map["{0} հանեց ադմինությունը՝ {1}"] = arrayOf("{0} removed {1} as admin", "{0} снял(а) с админов: {1}")
+    }
+
     init {
         part0()
         part1()
         part2()
         part3()
         part4()
+        part5()
     }
 }

@@ -75,6 +75,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -857,6 +858,31 @@ private fun AddContactSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (Stri
     var handle by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var showMine by remember { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    // the QR scanner: a code that matches the person's key adds them already verified
+    val scan: () -> Unit = {
+        error = null
+        scanQr(
+            ctx,
+            onText = { raw ->
+                busy = true
+                vm.addByQr(raw) { r ->
+                    busy = false
+                    val err = r.error
+                    val id = r.chatId
+                    if (err != null) {
+                        error = err
+                    } else if (id != null) {
+                        showMine = false
+                        onClose()
+                        onOpen(id)
+                    }
+                }
+            },
+            onFail = { msg -> error = msg },
+        )
+    }
 
     KSheet(onDismiss = onClose) {
         Column(
@@ -898,6 +924,16 @@ private fun AddContactSheet(vm: AppViewModel, onClose: () -> Unit, onOpen: (Stri
                     }
                 },
             )
+            SoftButton(text = tr("Սկանավորել QR կոդը"), enabled = !busy, modifier = Modifier.fillMaxWidth(), onClick = scan)
+            SoftButton(text = tr("Իմ QR կոդը"), modifier = Modifier.fillMaxWidth(), onClick = { showMine = true })
+            Spacer(Modifier.height(Space.xl))
         }
+    }
+    if (showMine) {
+        val me = (vm.boot.value as? Boot.Ready)?.me
+        if (me != null) MyQrSheet(me = me, onClose = { showMine = false }, onScan = {
+            showMine = false
+            scan()
+        })
     }
 }

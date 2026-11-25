@@ -39,6 +39,11 @@
         android:theme="@style/Theme.Khosq"
         android:usesCleartextTraffic="false">
 
+        <!-- the QR scanner of Google Play services is fetched when the app is installed, so the first scan does not have to wait for it -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode_ui" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

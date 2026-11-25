@@ -10,6 +10,8 @@ import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.PollCodec
 import am.khosq.app.data.Profile
+import am.khosq.app.data.QrLogic
+import am.khosq.app.data.QrVerdict
 import am.khosq.app.data.Star
 import am.khosq.app.data.MemChat
 import am.khosq.app.data.MemEntry
@@ -361,6 +363,85 @@ class AppViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 onDone(null, describe(e))
+            }
+        }
+    }
+
+    /** What came of adding somebody from a scanned code: [chatId] on success ([verified]: the key was matched too), else [error]. */
+    class QrAdd(val chatId: String?, val name: String, val verified: Boolean, val error: String?)
+
+    private fun qrText(v: QrVerdict, adding: Boolean, name: String): String = when (v) {
+        QrVerdict.MATCH -> ""
+        QrVerdict.BAD -> tr("Սա KHOSQ-ի կոդ չէ")
+        QrVerdict.SELF -> tr("Սա քո սեփական կոդն է")
+        QrVerdict.WRONG_PERSON -> trf("Սա {0}-ի կոդը չէ։ Սկանավորիր հենց նրա կոդը։", name)
+        QrVerdict.NO_KEY -> tr("Նրա բանալին դեռ չկա։ Թող նա բացի հավելվածը, և փորձեք նորից։")
+        QrVerdict.MISMATCH ->
+            if (adding) {
+                tr("Կոդի բանալին չի համընկնում այն բանալու հետ, որ սերվերը տալիս է այս մարդու համար։ Դա կարող է նշանակել, որ ինչ-որ մեկը կանգնել է ձեր միջև, կամ որ կոդը կեղծ է։ Կոնտակտը չի ավելացվել։")
+            } else {
+                tr("Կոդի բանալին չի համընկնում այն բանալու հետ, որ սերվերը տալիս է այս մարդու համար։ Դա կարող է նշանակել, որ ինչ-որ մեկը կանգնել է ձեր միջև, կամ որ կոդը կեղծ է։ Հաստատումը չի կատարվել։")
+            }
+    }
+
+    /**
+     * A code scanned in "New contact": find the person, check the code against the key the server holds, start the chat, and mark
+     * the key as verified. Nothing is added when the key does not match.
+     */
+    fun addByQr(text: String, onDone: (QrAdd) -> Unit) {
+        val me = (_boot.value as? Boot.Ready)?.me
+        if (me == null) {
+            onDone(QrAdd(null, "", false, tr("Գրիր ընկերոջդ ID-ն")))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val code = QrLogic.parse(text)
+                if (code == null || code.uid == me.uid) {
+                    onDone(QrAdd(null, "", false, qrText(QrLogic.judge(code, me.uid, null, null), true, "")))
+                    return@launch
+                }
+                val peer = repo.findByHandle(code.handle)
+                if (peer == null || peer.uid != code.uid) {
+                    // the ID in the code is not that account's ID: a forged or an old code
+                    onDone(QrAdd(null, "", false, tr("Կոդը չի համապատասխանում այս հաշվին։ Մի վստահիր դրան։")))
+                    return@launch
+                }
+                val pub = E2E.serverKey(peer.uid)
+                val verdict = QrLogic.judge(code, me.uid, null, pub)
+                if (verdict != QrVerdict.MATCH) {
+                    onDone(QrAdd(null, peer.name, false, qrText(verdict, true, peer.name)))
+                    return@launch
+                }
+                val chatId = repo.startChat(me, peer)
+                val ok = E2E.verifyByQr(peer.uid, me.uid, pub ?: "")
+                onDone(QrAdd(chatId, peer.name, ok, null))
+            } catch (e: Exception) {
+                onDone(QrAdd(null, "", false, describe(e)))
+            }
+        }
+    }
+
+    /** A code scanned on the card of the contact [peerUid]: check it and mark the contact verified. Calls back with null on success, else the text to show. */
+    fun verifyScanned(text: String, peerUid: String, peerName: String, onDone: (String?) -> Unit) {
+        val me = (_boot.value as? Boot.Ready)?.me
+        if (me == null) {
+            onDone(tr("Գրիր ընկերոջդ ID-ն"))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val code = QrLogic.parse(text)
+                val pub = if (code != null && code.uid == peerUid) E2E.serverKey(peerUid) else null
+                val verdict = QrLogic.judge(code, me.uid, peerUid, pub)
+                if (verdict != QrVerdict.MATCH) {
+                    onDone(qrText(verdict, false, peerName))
+                    return@launch
+                }
+                val ok = E2E.verifyByQr(peerUid, me.uid, pub ?: "")
+                onDone(if (ok) null else tr("Չհաջողվեց հաստատել։ Փորձիր նորից։"))
+            } catch (e: Exception) {
+                onDone(describe(e))
             }
         }
     }

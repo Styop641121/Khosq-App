@@ -755,6 +755,7 @@ fun ContactSheet(
     onMedia: () -> Unit,
     onBlock: () -> Unit,
     onClose: () -> Unit,
+    vm: AppViewModel? = null,
 ) {
     val k = KTheme.colors
     KSheet(onDismiss = onClose) {
@@ -862,7 +863,7 @@ fun ContactSheet(
             // the 8 pictures and the "verified" button (not for the saved-messages chat)
             if (!chat.isGroup && !chat.saved) {
                 Spacer(Modifier.height(Space.s))
-                VerifyCard(peerUid = chat.peerUid, peerName = chat.peerName)
+                VerifyCard(peerUid = chat.peerUid, peerName = chat.peerName, vm = vm)
             }
             if (shownNumber != null) {
                 Spacer(Modifier.height(Space.s))

@@ -66,4 +66,8 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
     implementation("io.github.webrtc-sdk:android:137.7151.05")
+
+    // QR codes: ZXing draws the code (pure Java, no permission); the code scanner of Google Play services reads it (its own camera screen, no camera permission of ours)
+    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

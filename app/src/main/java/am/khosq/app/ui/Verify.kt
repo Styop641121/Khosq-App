@@ -19,10 +19,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -99,11 +102,26 @@ private fun EmojiCode(code: List<String>) {
  * and the button that marks the contact as verified (or takes the mark away).
  */
 @Composable
-fun VerifyCard(peerUid: String, peerName: String) {
+fun VerifyCard(peerUid: String, peerName: String, vm: AppViewModel? = null) {
     val k = KTheme.colors
     val state = rememberVerifyState(peerUid)
     val epoch by E2E.verifyEpoch.collectAsStateWithLifecycle()
     val code = remember(peerUid, epoch) { E2E.pairEmojis(peerUid) }
+    // the QR way (needs the view model): scan the other person's code, or show mine
+    val ctx = LocalContext.current
+    var qrMsg by remember(peerUid) { mutableStateOf<String?>(null) }
+    var showMine by remember { mutableStateOf(false) }
+    val byQr = remember(peerUid, epoch, state) { E2E.verifiedByQr(peerUid) }
+    val scan: () -> Unit = {
+        qrMsg = null
+        if (vm != null) {
+            scanQr(
+                ctx,
+                onText = { raw -> vm.verifyScanned(raw, peerUid, peerName) { err -> qrMsg = err } },
+                onFail = { msg -> qrMsg = msg },
+            )
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -142,7 +160,11 @@ fun VerifyCard(peerUid: String, peerName: String) {
         when (state) {
             VerifyState.VERIFIED -> {
                 Text(
-                    text = trf("Դու և {0}-ը համեմատել եք նշանները, և դրանք համընկել են։ Եթե նրա կամ քո բանալին փոխվի, այս նշանը կվերանա։", peerName),
+                    text = if (byQr) {
+                        trf("Դու սկանավորել ես {0}-ի QR կոդը, և նրա բանալին համընկել է։ Որ դու էլ լինես ապահով նրա կողմից, թող նա էլ սկանավորի քո կոդը։ Եթե նրա կամ քո բանալին փոխվի, այս նշանը կվերանա։", peerName)
+                    } else {
+                        trf("Դու և {0}-ը համեմատել եք նշանները, և դրանք համընկել են։ Եթե նրա կամ քո բանալին փոխվի, այս նշանը կվերանա։", peerName)
+                    },
                     color = k.textSecondary,
                     style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
                 )
@@ -169,6 +191,21 @@ fun VerifyCard(peerUid: String, peerName: String) {
                 GradientButton(text = tr("Նշանները համընկնում են. հաստատել"), onClick = { E2E.markVerified(peerUid) }, modifier = Modifier.fillMaxWidth())
             }
         }
+        if (vm != null) {
+            SoftButton(text = tr("Ստուգել QR կոդով"), onClick = scan, modifier = Modifier.fillMaxWidth())
+            SoftButton(text = tr("Ցույց տալ իմ QR կոդը"), onClick = { showMine = true }, modifier = Modifier.fillMaxWidth())
+            val m = qrMsg
+            if (m != null) {
+                Text(text = m, color = k.danger, style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Medium))
+            }
+        }
+    }
+    if (showMine && vm != null) {
+        val me = (vm.boot.value as? Boot.Ready)?.me
+        if (me != null) MyQrSheet(me = me, onClose = { showMine = false }, onScan = {
+            showMine = false
+            scan()
+        })
     }
 }
 

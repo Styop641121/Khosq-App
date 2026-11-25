@@ -404,14 +404,39 @@ object E2E {
         if (d == null) return false
         Prefs.putStringSync("ver.$peer", VerifyLogic.hex(d))
         Prefs.putStringSync("pkchg.$peer", "")
+        // verified by comparing the pictures (both sides looked): not by a code that one side scanned
+        Prefs.putStringSync("vq.$peer", "")
         _verifyEpoch.value += 1
         return true
     }
 
     fun clearVerified(peer: String) {
         Prefs.putStringSync("ver.$peer", "")
+        Prefs.putStringSync("vq.$peer", "")
         _verifyEpoch.value += 1
     }
+
+    // ---- verified by a QR code shown face to face (data/QrLink.kt). One person scanned the other's code: the key of the other
+    // person is the real one, so what I write to them can only be read by them. They are safe the same way once they scan mine.
+
+    /** The public key the server holds for a person right now (null when there is none, or the server cannot be reached). */
+    suspend fun serverKey(peer: String): String? = fetchPublic(peer)
+
+    /**
+     * [serverPub] was matched with a code the person showed. Remember exactly that key (a change from an older key is noted like
+     * any change, then settled by this check), mark the person verified, and note that it was by a code. False when the key
+     * moved again in between or cannot be marked.
+     */
+    suspend fun verifyByQr(peer: String, myUid: String, serverPub: String): Boolean {
+        refreshPeer(peer, myUid)
+        if (Prefs.getString("pk.$peer") != serverPub) return false
+        if (!markVerified(peer)) return false
+        Prefs.putStringSync("vq.$peer", "1")
+        return true
+    }
+
+    /** True when the person was verified by a code that I scanned (and nothing changed since: [verifyState] decides that). */
+    fun verifiedByQr(peer: String): Boolean = Prefs.getString("vq.$peer") == "1"
 
     // ------------------------------------------------------------------ sealing and opening
 

@@ -513,6 +513,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             },
             onBlock = { vm.setBlocked(chatId, !iBlocked) },
             onClose = { showContact = false },
+            vm = vm,
         )
     }
     if (showMedia) {

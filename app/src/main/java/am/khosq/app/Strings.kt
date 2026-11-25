@@ -775,6 +775,26 @@ object Strings {
         map["Չաթերի ցանկդ կվերադառնա, բայց հին նամակները չեն բացվի, իսկ ընկերներդ կտեսնեն «անվտանգության թիվը փոխվել է» նախազգուշացում։ Հետո կարող ես վերադարձնել բանալին Անվտանգության կենտրոնից ֆայլով, բայց ընկերներդ նորից կտեսնեն նախազգուշացում։"] = arrayOf("The list of chats will come back, but the old messages will not open, and your friends will see a warning that the safety number has changed. You can bring the key back later from the security centre with the file, but your friends will see a warning again.", "Список чатов вернётся, но старые сообщения не откроются, а друзья увидят предупреждение, что номер безопасности изменился. Позже можно вернуть ключ файлом из центра безопасности, но друзья снова увидят предупреждение.")
     }
 
+    private fun part18() {
+        map["Սկանավորել QR կոդը"] = arrayOf("Scan a QR code", "Сканировать QR-код")
+        map["Իմ QR կոդը"] = arrayOf("My QR code", "Мой QR-код")
+        map["Դու սկանավորել ես {0}-ի QR կոդը, և նրա բանալին համընկել է։ Որ դու էլ լինես ապահով նրա կողմից, թող նա էլ սկանավորի քո կոդը։ Եթե նրա կամ քո բանալին փոխվի, այս նշանը կվերանա։"] = arrayOf("You scanned the QR code of {0}, and the key matched. So that you are safe from their side too, they should scan your code as well. If their key or yours changes, this mark will go away.", "Вы отсканировали QR-код {0}, и ключ совпал. Чтобы и вы были защищены с их стороны, пусть они тоже отсканируют ваш код. Если их ключ или ваш изменится, эта отметка исчезнет.")
+        map["Ստուգել QR կոդով"] = arrayOf("Verify with a QR code", "Проверить по QR-коду")
+        map["Ցույց տալ իմ QR կոդը"] = arrayOf("Show my QR code", "Показать мой QR-код")
+        map["Կոդը չկարդացվեց"] = arrayOf("The code could not be read", "Код не удалось прочитать")
+        map["Սկաները չբացվեց։ Ստուգիր համացանցը և Google Play ծառայությունների թարմացումը։"] = arrayOf("The scanner did not open. Check the internet and the update of Google Play services.", "Сканер не открылся. Проверьте интернет и обновление сервисов Google Play.")
+        map["Թող ընկերդ սկանավորի այս կոդը («Նոր կոնտակտ» → «Սկանավորել QR կոդը»)։ Այդպես նա կավելացնի քեզ և կհամոզվի, որ քո բանալին իսկապես քոնն է։ Երկուսդ էլ սկանավորեք միմյանց կոդը, և երկու կողմն էլ ապահով կլինեն։ Ցույց տուր կոդը միայն այն մարդուն, ում հանդիպել ես։"] = arrayOf("Let your friend scan this code (“New contact” → “Scan a QR code”). That way they add you and make sure that your key really is yours. Both of you scan each other’s code, and both sides will be safe. Show the code only to a person you have met.", "Пусть друг отсканирует этот код («Новый контакт» → «Сканировать QR-код»). Так он добавит вас и убедится, что ваш ключ действительно ваш. Отсканируйте коды друг друга, и обе стороны будут защищены. Показывайте код только тому, с кем вы встретились.")
+        map["Սկանավորել ընկերոջ կոդը"] = arrayOf("Scan a friend’s code", "Сканировать код друга")
+        map["Սա KHOSQ-ի կոդ չէ"] = arrayOf("This is not a KHOSQ code", "Это не код KHOSQ")
+        map["Սա քո սեփական կոդն է"] = arrayOf("This is your own code", "Это ваш собственный код")
+        map["Սա {0}-ի կոդը չէ։ Սկանավորիր հենց նրա կոդը։"] = arrayOf("This is not the code of {0}. Scan their own code.", "Это не код {0}. Отсканируйте именно его код.")
+        map["Նրա բանալին դեռ չկա։ Թող նա բացի հավելվածը, և փորձեք նորից։"] = arrayOf("They have no key yet. Let them open the app, and try again.", "У него ещё нет ключа. Пусть откроет приложение, и попробуйте снова.")
+        map["Կոդի բանալին չի համընկնում այն բանալու հետ, որ սերվերը տալիս է այս մարդու համար։ Դա կարող է նշանակել, որ ինչ-որ մեկը կանգնել է ձեր միջև, կամ որ կոդը կեղծ է։ Կոնտակտը չի ավելացվել։"] = arrayOf("The key in the code does not match the key that the server gives for this person. It may mean that somebody stands between you, or that the code is fake. The contact was not added.", "Ключ в коде не совпадает с ключом, который сервер выдаёт для этого человека. Это может значить, что кто-то стоит между вами, или что код поддельный. Контакт не добавлен.")
+        map["Կոդի բանալին չի համընկնում այն բանալու հետ, որ սերվերը տալիս է այս մարդու համար։ Դա կարող է նշանակել, որ ինչ-որ մեկը կանգնել է ձեր միջև, կամ որ կոդը կեղծ է։ Հաստատումը չի կատարվել։"] = arrayOf("The key in the code does not match the key that the server gives for this person. It may mean that somebody stands between you, or that the code is fake. The contact was not verified.", "Ключ в коде не совпадает с ключом, который сервер выдаёт для этого человека. Это может значить, что кто-то стоит между вами, или что код поддельный. Проверка не выполнена.")
+        map["Կոդը չի համապատասխանում այս հաշվին։ Մի վստահիր դրան։"] = arrayOf("The code does not match this account. Do not trust it.", "Код не соответствует этому аккаунту. Не доверяйте ему.")
+        map["Չհաջողվեց հաստատել։ Փորձիր նորից։"] = arrayOf("Verification failed. Try again.", "Не удалось подтвердить. Попробуйте снова.")
+    }
+
     init {
         part0()
         part1()
@@ -794,5 +814,6 @@ object Strings {
         part15()
         part16()
         part17()
+        part18()
     }
 }

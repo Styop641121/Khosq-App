@@ -153,9 +153,19 @@ object AssistantParser {
 
     // ---- reading the words
 
+    // The Armenian keyboard types "։" (U+0589) where English has ":" (and some keyboards use a full-width or modifier colon),
+    // so "05։27" must be read as 05:27. A dot or comma counts only right after a word like "ժամը" / "at" / "в".
+    private val TIME_COLON = Regex("(\\d{1,2})[\u0589\uFF1A\uA789\u02D0](\\d{2})")
+    private val TIME_DOT = Regex("(ժամը|at|в|во|к)\\s+(\\d{1,2})[.,](\\d{2})(?!\\d)", RegexOption.IGNORE_CASE)
+
+    private fun normalizeTimes(text: String): String {
+        val a = TIME_COLON.replace(text) { m -> m.groupValues[1] + ":" + m.groupValues[2] }
+        return TIME_DOT.replace(a) { m -> m.groupValues[1] + " " + m.groupValues[2] + ":" + m.groupValues[3] }
+    }
+
     private fun tokenize(text: String): List<Tok> {
         val out = ArrayList<Tok>()
-        for (p in text.take(MAX_INPUT).split(' ', '\n', '\t')) {
+        for (p in normalizeTimes(text.take(MAX_INPUT)).split(' ', '\n', '\t')) {
             val raw = p.trim { c -> !c.isLetterOrDigit() }
             val clean = raw.filter { c -> c.isLetterOrDigit() || c == ':' }.trim(':')
             if (clean.isEmpty()) continue
@@ -222,6 +232,8 @@ object AssistantParser {
         } else if (ref != null) {
             val day = resolveRange(ref, now, true).from
             due = if (clock != null) TaskLogic.at(day, clock.first, clock.second) else TaskLogic.at(day, 9, 0)
+            // "today" with no time, when 09:00 has gone: an hour from now, so the reminder can still ring
+            if (clock == null && due <= now && day == TaskLogic.startOfDay(now)) due = TaskLogic.inAnHour(now)
         } else if (clock != null) {
             due = TaskLogic.withTime(0L, clock.first, clock.second, now)
         }

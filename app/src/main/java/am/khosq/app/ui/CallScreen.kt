@@ -140,7 +140,7 @@ private fun Pulse(active: Boolean, content: @Composable () -> Unit) {
                     Modifier
                         .size(130.dp + 106.dp * q)
                         .graphicsLayer { alpha = (1f - q) * 0.6f }
-                        .border(2.dp, Color(0xFF8091FF), CircleShape),
+                        .border(2.dp, Color(0xFF818CF8), CircleShape),
                 )
             }
         }

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +44,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -77,20 +80,23 @@ fun formatTime(ts: Long): String = SimpleDateFormat("HH:mm", Locale.getDefault()
 // People
 // ---------------------------------------------------------------------------------------------
 
-/** Eight calm gradient pairs. The pair comes from the person's ID, so the same person always looks the same. */
-private val AvatarPairs = listOf(
-    Color(0xFF5B6CFF) to Color(0xFF8B5CF6),
-    Color(0xFF2DA8FF) to Color(0xFF2F6BFF),
-    Color(0xFF22C3A6) to Color(0xFF0E8F9E),
-    Color(0xFFF2994A) to Color(0xFFE5622D),
-    Color(0xFFEC5C8E) to Color(0xFFC93B9B),
-    Color(0xFF34C77B) to Color(0xFF1E9E6A),
-    Color(0xFF9B6BFF) to Color(0xFF6A3FE0),
-    Color(0xFF4FC3F7) to Color(0xFF3B82F6),
+/** One dark-toned avatar background: a deep base and two soft clouds of colour, so no two corners look the same. */
+private class Mesh(val base: Color, val cloudA: Color, val cloudB: Color)
+
+/** Eight dark meshes. The mesh comes from the person's ID, so the same person always looks the same. */
+private val AvatarMeshes = listOf(
+    Mesh(Color(0xFF191B3D), Color(0xFF4F46E5), Color(0xFF8B5CF6)),
+    Mesh(Color(0xFF10253A), Color(0xFF0EA5E9), Color(0xFF6366F1)),
+    Mesh(Color(0xFF0F2D2A), Color(0xFF14B8A6), Color(0xFF0EA5E9)),
+    Mesh(Color(0xFF2D1C2F), Color(0xFFDB2777), Color(0xFF7C3AED)),
+    Mesh(Color(0xFF2E2215), Color(0xFFF59E0B), Color(0xFFDC2626)),
+    Mesh(Color(0xFF13291F), Color(0xFF10B981), Color(0xFF06B6D4)),
+    Mesh(Color(0xFF251A3E), Color(0xFF8B5CF6), Color(0xFFEC4899)),
+    Mesh(Color(0xFF14223A), Color(0xFF3B82F6), Color(0xFF22D3EE)),
 )
 
 /**
- * The person's photo, or the first letter on a soft gradient picked from the ID.
+ * The person's photo, or the first letter on a dark mesh gradient picked from the ID.
  * [online] adds the small green dot in the corner. ([circle] is kept for older call sites: every avatar is round now.)
  * With [zoomable] a tap on a real photo opens it large (an avatar without a photo does nothing, so the [modifier] click still works).
  */
@@ -106,7 +112,7 @@ fun Avatar(
 ) {
     var h = 0
     for (c in seed) h = (h * 31 + c.code) and 0x7fffffff
-    val pair = AvatarPairs[h % AvatarPairs.size]
+    val mesh = AvatarMeshes[h % AvatarMeshes.size]
     val photo = ProfileStore.photos[seed]
     val k = KTheme.colors
     var big by remember { mutableStateOf(false) }
@@ -116,7 +122,24 @@ fun Avatar(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(pair.first, pair.second)))
+                .background(mesh.base)
+                .drawBehind {
+                    drawRect(
+                        Brush.radialGradient(
+                            colors = listOf(mesh.cloudA.copy(alpha = 0.78f), Color.Transparent),
+                            center = Offset(this.size.width * 0.2f, this.size.height * 0.15f),
+                            radius = this.size.minDimension * 0.95f,
+                        ),
+                    )
+                    drawRect(
+                        Brush.radialGradient(
+                            colors = listOf(mesh.cloudB.copy(alpha = 0.62f), Color.Transparent),
+                            center = Offset(this.size.width * 0.88f, this.size.height * 0.92f),
+                            radius = this.size.minDimension * 0.9f,
+                        ),
+                    )
+                }
+                .border(1.dp, Color(0x1FFFFFFF), CircleShape)
                 .then(if (canZoom) Modifier.clickable { big = true } else Modifier),
             contentAlignment = Alignment.Center,
         ) {
@@ -130,9 +153,10 @@ fun Avatar(
             } else {
                 Text(
                     text = name.trim().take(1).uppercase(),
-                    color = Color.White,
+                    color = Color(0xF2FFFFFF),
                     fontWeight = FontWeight.SemiBold,
                     fontSize = (size.value * 0.40f).sp,
+                    letterSpacing = 0.5.sp,
                 )
             }
         }
@@ -159,7 +183,11 @@ fun Chat.label(): String = if (saved) tr("Պահպանված նամակներ") 
 @Composable
 fun SavedAvatar(size: Dp = 52.dp, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.size(size).clip(CircleShape).background(Brush.linearGradient(BrandColors)),
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(BrandColors))
+            .border(1.dp, Color(0x33FFFFFF), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Icon(imageVector = KIcons.BookmarkFill, contentDescription = null, tint = InkOnBrand, modifier = Modifier.size(size * 0.5f))
@@ -175,18 +203,22 @@ fun SavedAvatar(size: Dp = 52.dp, modifier: Modifier = Modifier) {
 fun GradientButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val k = KTheme.colors
     val fill = if (enabled) Brush.horizontalGradient(BrandColors) else Brush.horizontalGradient(listOf(k.surfaceHighest, k.surfaceHighest))
+    val shape = RoundedCornerShape(Corner.m)
     Box(
         modifier = modifier
             .height(Dim.button)
-            .clip(RoundedCornerShape(Corner.m))
+            .then(if (enabled) Modifier.glow(k.glow, radius = 12.dp, shape = shape, strength = 0.32f) else Modifier)
+            .clip(shape)
             .background(fill)
+            // a thin light along the top edge: the button looks lit from above
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = if (enabled) 0.30f else 0.06f), Color.White.copy(alpha = 0.04f))), shape)
             .pressable(onClick = onClick, enabled = enabled, pressedScale = 0.97f),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
             color = if (enabled) InkOnBrand else k.textTertiary,
-            style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+            style = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
             modifier = Modifier.padding(horizontal = Space.l),
         )
     }
@@ -196,11 +228,13 @@ fun GradientButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
 @Composable
 fun SoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, danger: Boolean = false) {
     val k = KTheme.colors
+    val shape = RoundedCornerShape(Corner.m)
     Box(
         modifier = modifier
             .height(Dim.button)
-            .clip(RoundedCornerShape(Corner.m))
+            .clip(shape)
             .background(if (danger) k.danger.copy(alpha = 0.12f) else k.surfaceHigh)
+            .border(1.dp, if (danger) k.danger.copy(alpha = 0.22f) else k.line, shape)
             .pressable(onClick = onClick, enabled = enabled, pressedScale = 0.97f),
         contentAlignment = Alignment.Center,
     ) {
@@ -246,7 +280,7 @@ fun BrandTitle(size: TextUnit = 22.sp) {
     Text(
         text = "KHOSQ",
         style = TextStyle(
-            brush = Brush.linearGradient(listOf(KTheme.colors.accent, Color(0xFFA77BFF))),
+            brush = Brush.linearGradient(BrandColorsLight),
             fontSize = size,
             fontWeight = FontWeight.ExtraBold,
             letterSpacing = 3.sp,
@@ -257,8 +291,14 @@ fun BrandTitle(size: TextUnit = 22.sp) {
 /** The small rounded mark with the Armenian letter Խ, for bars. */
 @Composable
 fun BrandMark(size: Dp) {
+    val shape = RoundedCornerShape(size * 0.3f)
     Box(
-        modifier = Modifier.size(size).clip(RoundedCornerShape(size * 0.3f)).background(Brush.linearGradient(BrandColors)),
+        modifier = Modifier
+            .size(size)
+            .glow(KTheme.colors.glow, radius = 8.dp, shape = shape, strength = 0.35f)
+            .clip(shape)
+            .background(Brush.linearGradient(BrandColors))
+            .border(1.dp, Color(0x38FFFFFF), shape),
         contentAlignment = Alignment.Center,
     ) {
         Text(text = "Խ", color = InkOnBrand, fontWeight = FontWeight.Bold, fontSize = (size.value * 0.5f).sp)
@@ -300,8 +340,8 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         color = KTheme.colors.textSecondary,
-        style = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
-        modifier = modifier.padding(start = Space.l, end = Space.l, top = Space.l, bottom = Space.xs),
+        style = TextStyle(fontSize = 12.5.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
+        modifier = modifier.padding(start = Space.l, end = Space.l, top = Space.l, bottom = Space.s),
     )
 }
 
@@ -338,7 +378,13 @@ fun EmptyState(
         verticalArrangement = Arrangement.spacedBy(Space.s),
     ) {
         Box(
-            modifier = Modifier.size(76.dp).clip(CircleShape).background(k.accentSoft),
+            modifier = Modifier
+                .size(84.dp)
+                .glow(k.glow, radius = 18.dp, strength = 0.22f)
+                .clip(CircleShape)
+                .background(k.surface)
+                .background(Brush.radialGradient(listOf(k.accent.copy(alpha = 0.22f), Color.Transparent)))
+                .border(1.dp, k.glassEdge, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = k.accent, modifier = Modifier.size(34.dp))
@@ -435,9 +481,10 @@ fun SearchField(
     val k = KTheme.colors
     Row(
         modifier = modifier
-            .height(44.dp)
-            .clip(RoundedCornerShape(22.dp))
+            .height(46.dp)
+            .clip(RoundedCornerShape(23.dp))
             .background(k.surfaceHigh)
+            .border(1.dp, k.line, RoundedCornerShape(23.dp))
             .padding(start = 14.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

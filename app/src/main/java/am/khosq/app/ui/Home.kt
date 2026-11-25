@@ -3,6 +3,7 @@ package am.khosq.app.ui
 import am.khosq.app.AppState
 import am.khosq.app.membersText
 import am.khosq.app.previewOf
+import am.khosq.app.previewPlain
 import am.khosq.app.tr
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
@@ -20,6 +21,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -220,75 +222,69 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
     }
     val unreadTotal = chats.filter { c -> c.id !in prefs.muted }.sumOf { c -> c.unread }.toInt()
 
-    Column(Modifier.fillMaxSize().statusBarsPadding()) {
-        // ---- top bar
-        if (homeSearch && tab == 0) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(Dim.bar).padding(horizontal = Space.s),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                KIconButton(
-                    icon = KIcons.Back,
-                    onClick = {
-                        homeSearch = false
-                        homeQuery = ""
-                    },
-                    description = tr("Հետ"),
-                )
-                SearchField(
-                    value = homeQuery,
-                    onValueChange = { v -> homeQuery = v },
-                    placeholder = tr("Որոնել զրույցներում…"),
-                    focusRequester = homeFocus,
-                    modifier = Modifier.weight(1f).padding(end = Space.s),
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(Dim.bar).padding(start = Space.l, end = Space.s),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BrandMark(32.dp)
-                Spacer(Modifier.width(Space.m))
-                Crossfade(targetState = tab, animationSpec = tween(Motion.Normal), label = "title", modifier = Modifier.weight(1f)) { t ->
-                    Text(
-                        text = when (t) {
-                            0 -> tr("Զրույցներ")
-                            1 -> tr("Զանգեր")
-                            else -> tr("Պրոֆիլ")
-                        },
-                        color = k.text,
-                        style = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.Bold),
-                        maxLines = 1,
-                    )
-                }
-                if (tab == 0) {
-                    KIconButton(
-                        icon = KIcons.Alert,
-                        onClick = { showSos = true },
-                        description = tr("SOS"),
-                        tint = k.danger,
-                    )
-                    KIconButton(
-                        icon = KIcons.Assistant,
-                        onClick = onAssistant,
-                        description = tr("Օգնական"),
-                        tint = k.accent,
-                    )
-                    KIconButton(
-                        icon = KIcons.Search,
-                        onClick = { homeSearch = true },
-                        description = tr("Որոնել"),
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .padding(start = Space.xs, end = Space.xs)
-                        .size(44.dp)
-                        .pressable(onClick = { showMe = true }, pressedScale = 0.9f),
-                    contentAlignment = Alignment.Center,
+    Column(Modifier.fillMaxSize()) {
+        // ---- top bar (glass; it also covers the status bar, so the clock sits on it)
+        Column(Modifier.glassBar().statusBarsPadding()) {
+            if (homeSearch && tab == 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(Dim.bar).padding(horizontal = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(name = me.name, seed = me.uid, size = 34.dp)
+                    KIconButton(
+                        icon = KIcons.Back,
+                        onClick = {
+                            homeSearch = false
+                            homeQuery = ""
+                        },
+                        description = tr("Հետ"),
+                    )
+                    SearchField(
+                        value = homeQuery,
+                        onValueChange = { v -> homeQuery = v },
+                        placeholder = tr("Որոնել զրույցներում…"),
+                        focusRequester = homeFocus,
+                        modifier = Modifier.weight(1f).padding(end = Space.s),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(Dim.bar).padding(start = Space.l, end = Space.s),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BrandMark(32.dp)
+                    Spacer(Modifier.width(Space.m))
+                    Crossfade(targetState = tab, animationSpec = tween(Motion.Normal), label = "title", modifier = Modifier.weight(1f)) { t ->
+                        Text(
+                            text = when (t) {
+                                0 -> tr("Զրույցներ")
+                                1 -> tr("Զանգեր")
+                                else -> tr("Պրոֆիլ")
+                            },
+                            color = k.text,
+                            style = KType.Title,
+                            maxLines = 1,
+                        )
+                    }
+                    if (tab == 0) {
+                        SosButton(onClick = { showSos = true }, description = tr("SOS"))
+                        AssistantButton(onClick = onAssistant, description = tr("Օգնական"))
+                        KIconButton(
+                            icon = KIcons.Search,
+                            onClick = { homeSearch = true },
+                            description = tr("Որոնել"),
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(start = Space.xs, end = Space.xs)
+                            .size(44.dp)
+                            .pressable(onClick = { showMe = true }, pressedScale = 0.9f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(Modifier.border(1.5.dp, Brush.linearGradient(BrandColorsLight), CircleShape).padding(2.dp)) {
+                            Avatar(name = me.name, seed = me.uid, size = 32.dp)
+                        }
+                    }
                 }
             }
         }
@@ -583,10 +579,11 @@ private fun NewChatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(Corner.l)
     Box(
         modifier = modifier
-            .shadow(14.dp, shape, ambientColor = k.accent, spotColor = k.accent)
             .size(58.dp)
+            .glow(k.glow, radius = 18.dp, shape = shape, strength = 0.55f)
             .clip(shape)
             .background(Brush.linearGradient(BrandColors))
+            .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.05f))), shape)
             .pressable(onClick = onClick, pressedScale = 0.92f),
         contentAlignment = Alignment.Center,
     ) {
@@ -599,13 +596,15 @@ private fun NewChatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun HomeTabs(tab: Int, unread: Int, missed: Int, onTab: (Int) -> Unit) {
     val k = KTheme.colors
-    Column(Modifier.fillMaxWidth().background(k.bar)) {
-        KDivider()
+    val shape = RoundedCornerShape(Corner.capsule)
+    // the bar floats: it does not touch the edges of the screen, and the dark base shows around it
+    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = Space.xl, vertical = Space.s)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .height(64.dp)
+                .floatShadow(shape)
+                .height(Dim.nav)
+                .glassSurface(shape, strong = true)
                 .padding(horizontal = Space.s),
         ) {
             TabItem(Modifier.weight(1f), KIcons.ChatLine, KIcons.ChatFill, tr("Զրույցներ"), tab == 0, unread, false) { onTab(0) }
@@ -628,7 +627,8 @@ private fun TabItem(
 ) {
     val k = KTheme.colors
     val tint by animateColorAsState(if (selected) k.accent else k.textSecondary, tween(Motion.Normal), label = "tabTint")
-    val pill by animateColorAsState(if (selected) k.accentSoft else Color.Transparent, tween(Motion.Normal), label = "tabPill")
+    // 0 -> 1 while the tab becomes the active one: the pill and its light fade in together
+    val on by animateFloatAsState(if (selected) 1f else 0f, tween(Motion.Normal), label = "tabOn")
     val lift by animateFloatAsState(if (selected) 1.06f else 1f, tween(Motion.Normal), label = "tabLift")
     Column(
         modifier = modifier
@@ -642,10 +642,23 @@ private fun TabItem(
         verticalArrangement = Arrangement.Center,
     ) {
         Box(contentAlignment = Alignment.TopEnd) {
-            Box(
-                modifier = Modifier.width(60.dp).height(30.dp).clip(CircleShape).background(pill),
-                contentAlignment = Alignment.Center,
-            ) {
+            Box(contentAlignment = Alignment.Center) {
+                // the light under the active pill
+                Box(
+                    Modifier
+                        .size(width = 76.dp, height = 44.dp)
+                        .graphicsLayer { alpha = on }
+                        .background(Brush.radialGradient(listOf(k.glow.copy(alpha = if (k.dark) 0.34f else 0.16f), Color.Transparent))),
+                )
+                Box(
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(30.dp)
+                        .graphicsLayer { alpha = on }
+                        .clip(CircleShape)
+                        .background(Brush.horizontalGradient(listOf(BrandColors[0].copy(alpha = 0.30f), BrandColors[1].copy(alpha = 0.30f))))
+                        .border(1.dp, k.accent.copy(alpha = 0.38f), CircleShape),
+                )
                 Icon(
                     imageVector = if (selected) iconSelected else icon,
                     contentDescription = null,
@@ -664,11 +677,11 @@ private fun TabItem(
                 }
             }
         }
-        Spacer(Modifier.height(2.dp))
+        Spacer(Modifier.height(1.dp))
         Text(
             text = label,
             color = tint,
-            style = TextStyle(fontSize = 12.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
+            style = TextStyle(fontSize = 11.5.sp, lineHeight = 14.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium, letterSpacing = 0.1.sp),
             maxLines = 1,
         )
     }
@@ -705,7 +718,8 @@ private fun CategoryChips(cat: Int, archivedUnread: Int, onCat: (Int) -> Unit) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(Corner.l))
-                    .background(if (on) k.accentSoft else k.surfaceHigh)
+                    .background(if (on) k.accentSoft else k.surface)
+                    .border(1.dp, if (on) k.accent.copy(alpha = 0.40f) else k.line, RoundedCornerShape(Corner.l))
                     .semantics(mergeDescendants = true) {
                         role = Role.Tab
                         this.selected = on
@@ -738,14 +752,20 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(if (pinned) k.surface.copy(alpha = 0.55f) else Color.Transparent)
+            .then(
+                if (pinned) {
+                    Modifier.background(Brush.horizontalGradient(listOf(k.accent.copy(alpha = 0.09f), Color.Transparent)))
+                } else {
+                    Modifier
+                },
+            )
             .combinedClickable(onClick = onClick, onLongClick = onLong)
-            .padding(horizontal = Space.l, vertical = 10.dp),
+            .padding(horizontal = Space.l, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (chat.saved) SavedAvatar(Dim.avatarRow) else Avatar(name = chat.peerName, seed = chat.peerUid, size = Dim.avatarRow)
         Spacer(Modifier.width(Space.m))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             // first line: name and time
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (chat.isGroup && !chat.saved) {
@@ -787,7 +807,7 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
                     Text(
                         text = formatTime(chat.lastTs),
                         color = if (hasUnread && !muted) k.accent else k.textSecondary,
-                        style = TextStyle(fontSize = 12.sp, fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal),
+                        style = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.1.sp, fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal),
                         maxLines = 1,
                     )
                 }
@@ -800,6 +820,10 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
                     else -> ""
                 }
                 val special = chat.blockedBy.isNotEmpty() || (chat.status == "pending" && chat.requester != myUid)
+                // a photo, a voice message, a place, a poll, a missed call and an SOS show a vector sign, not an emoji
+                val plain = chat.blockedBy.isEmpty() && chat.status != "pending" && chat.lastText.isNotEmpty()
+                val leadIcon = if (plain) previewIconOf(chat.lastKind) else null
+                val leadSos = plain && chat.lastKind == "sos"
                 val previewText = when {
                     chat.blockedBy.isNotEmpty() -> tr("Արգելափակված")
                     chat.status == "pending" && chat.requester != myUid -> tr("Նոր հարցում")
@@ -807,21 +831,42 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
                     chat.lastText.isEmpty() && chat.saved -> tr("Նշումներ, հղումներ, նկարներ՝ քեզ համար")
                     chat.lastText.isEmpty() && chat.isGroup -> membersText(chat.members.size)
                     chat.lastText.isEmpty() -> "@" + chat.peerHandle
+                    leadSos -> prefix.trimEnd()
+                    leadIcon != null -> previewPlain(chat.lastKind, chat.lastText)
                     else -> prefix + previewOf(chat.lastKind, chat.lastText)
                 }
-                Text(
-                    text = previewText,
-                    color = when {
-                        chat.blockedBy.isNotEmpty() -> k.danger
-                        special -> k.accent
-                        hasUnread && !muted -> k.text
-                        else -> k.textSecondary
-                    },
-                    style = TextStyle(fontSize = 15.sp, lineHeight = 20.sp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                val previewColor = when {
+                    chat.blockedBy.isNotEmpty() -> k.danger
+                    special -> k.accent
+                    hasUnread && !muted -> k.text
+                    else -> k.textSecondary
+                }
+                val previewStyle = TextStyle(fontSize = 15.sp, lineHeight = 21.sp)
+                if (leadIcon != null && prefix.isNotEmpty()) {
+                    Text(text = prefix, color = previewColor, style = previewStyle, maxLines = 1)
+                }
+                if (leadIcon != null) {
+                    Icon(
+                        imageVector = leadIcon,
+                        contentDescription = null,
+                        tint = if (chat.lastKind == "call_missed") k.danger else previewColor,
+                        modifier = Modifier.padding(end = 5.dp).size(16.dp),
+                    )
+                }
+                if (leadSos) {
+                    if (previewText.isNotEmpty()) Text(text = previewText + " ", color = previewColor, style = previewStyle, maxLines = 1)
+                    SosTag(Modifier.padding(end = Space.xs))
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    Text(
+                        text = previewText,
+                        color = previewColor,
+                        style = previewStyle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 if (muted) {
                     Icon(
                         imageVector = KIcons.BellOff,
@@ -848,7 +893,7 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
     }
 }
 
-private val RowTitleStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
+private val RowTitleStyle = KType.RowTitle
 
 /* ---------------- add a contact ---------------- */
 

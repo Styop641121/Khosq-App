@@ -11,6 +11,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,7 +35,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -54,11 +57,18 @@ import androidx.core.view.WindowCompat
  *   spacing      Space.*
  *   radii        Corner.*
  *   motion       Motion.*
- * The accent is a blue-violet gradient. It is the same in both themes, so the brand never changes colour.
+ * The accent is an electric indigo to royal violet gradient. It is the same in both themes, so the brand never changes colour.
+ *
+ * Look of the app ("obsidian"): a near-black base, one step lighter cards with a 1dp hairline of light on their edge, glass bars
+ * (a translucent tinted layer with a hairline and a faint sheen; Android has no blur behind a layer that works on every phone,
+ * so the glass is made of colour, not of blur), a soft glow under the accent and 20dp round message bubbles.
  */
 
 /** Accent gradient: outgoing bubbles, primary buttons, the logo. */
-val BrandColors = listOf(Color(0xFF5B6CFF), Color(0xFF8B5CF6))
+val BrandColors = listOf(Color(0xFF6366F1), Color(0xFF8B5CF6))
+
+/** The same two colours, a step lighter: text and thin lines that sit on the dark base. */
+val BrandColorsLight = listOf(Color(0xFF818CF8), Color(0xFFA78BFA))
 
 /** Text and icons that sit on the accent gradient. */
 val InkOnBrand = Color.White
@@ -103,66 +113,94 @@ class KColors(
     val danger: Color,
     val warning: Color,
     val scrim: Color,
+    /** the translucent fill of the top bars and of the floating navigation */
+    val glass: Color,
+    /** the hairline around a glass surface */
+    val glassEdge: Color,
+    /** a faint light along the top edge of a glass surface */
+    val sheen: Color,
+    /** the colour of the soft light under the accent (the new-chat button, the active tab) */
+    val glow: Color,
+    /** the thin light line along the inside of an outgoing bubble */
+    val bubbleOutEdge: Color,
+    /** SOS: the crimson of the alert badge */
+    val crimson: Color,
+    /** the neon of the assistant */
+    val aura: Color,
 )
 
 private val MidnightColors = KColors(
     dark = true,
-    bg = Color(0xFF0A0C14),
-    bgGlow = Color(0xFF12162B),
-    bar = Color(0xFF0E101A),
-    surface = Color(0xFF141824),
-    surfaceHigh = Color(0xFF1B2030),
-    surfaceHighest = Color(0xFF252B3F),
-    line = Color(0x14FFFFFF),
-    lineStrong = Color(0x2EFFFFFF),
-    text = Color(0xFFEDEFF7),
-    textSecondary = Color(0xFF9BA3B8),
-    textTertiary = Color(0xFF6A7189),
-    accent = Color(0xFF8091FF),
-    accentSoft = Color(0x268091FF),
+    bg = Color(0xFF090A0F),
+    bgGlow = Color(0xFF10112A),
+    bar = Color(0xFF0C0D14),
+    surface = Color(0xFF12141D),
+    surfaceHigh = Color(0xFF1A1D29),
+    surfaceHighest = Color(0xFF252938),
+    line = Color(0x12FFFFFF),
+    lineStrong = Color(0x26FFFFFF),
+    text = Color(0xFFF1F2F8),
+    textSecondary = Color(0xFF9EA3B6),
+    textTertiary = Color(0xFF7B8097),
+    accent = Color(0xFF8187F8),
+    accentSoft = Color(0x296366F1),
     onAccent = Color.White,
-    bubbleIn = Color(0xFF1B2030),
-    onBubbleIn = Color(0xFFEDEFF7),
-    bubbleInLine = Color(0x00000000),
-    bubbleOutA = Color(0xFF5566F0),
-    bubbleOutB = Color(0xFF7C5CF2),
+    bubbleIn = Color(0xFF161924),
+    onBubbleIn = Color(0xFFECEEF6),
+    bubbleInLine = Color(0x14FFFFFF),
+    bubbleOutA = Color(0xFF6366F1),
+    bubbleOutB = Color(0xFF8B5CF6),
     onBubbleOut = Color.White,
-    onBubbleOutSoft = Color(0xB3FFFFFF),
-    tickRead = Color(0xFF8FE9FF),
-    success = Color(0xFF3DD68C),
-    danger = Color(0xFFFF6B7A),
-    warning = Color(0xFFF5B94A),
-    scrim = Color(0x99000000),
+    onBubbleOutSoft = Color(0xBFFFFFFF),
+    tickRead = Color(0xFFA5F3FC),
+    success = Color(0xFF34D399),
+    danger = Color(0xFFFB6A80),
+    warning = Color(0xFFFBBF24),
+    scrim = Color(0xB3000000),
+    glass = Color(0xE0101119),
+    glassEdge = Color(0x17FFFFFF),
+    sheen = Color(0x12FFFFFF),
+    glow = Color(0xFF6366F1),
+    bubbleOutEdge = Color(0x2EFFFFFF),
+    crimson = Color(0xFFF0455A),
+    aura = Color(0xFF7DD3FC),
 )
 
 private val PorcelainColors = KColors(
     dark = false,
-    bg = Color(0xFFF5F6FB),
+    bg = Color(0xFFF4F5FA),
     bgGlow = Color(0xFFFFFFFF),
     bar = Color(0xFFFFFFFF),
     surface = Color(0xFFFFFFFF),
-    surfaceHigh = Color(0xFFEEF0F8),
-    surfaceHighest = Color(0xFFE3E6F2),
+    surfaceHigh = Color(0xFFEDEFF7),
+    surfaceHighest = Color(0xFFE1E4F0),
     line = Color(0x14101426),
     lineStrong = Color(0x29101426),
-    text = Color(0xFF11131F),
-    textSecondary = Color(0xFF5B6278),
-    textTertiary = Color(0xFF8A90A5),
-    accent = Color(0xFF5560EE),
-    accentSoft = Color(0x1F5560EE),
+    text = Color(0xFF0F1220),
+    textSecondary = Color(0xFF555B72),
+    textTertiary = Color(0xFF6F768E),
+    accent = Color(0xFF5558E8),
+    accentSoft = Color(0x1F6366F1),
     onAccent = Color.White,
     bubbleIn = Color(0xFFFFFFFF),
-    onBubbleIn = Color(0xFF11131F),
+    onBubbleIn = Color(0xFF0F1220),
     bubbleInLine = Color(0x14101426),
-    bubbleOutA = Color(0xFF4F63F2),
-    bubbleOutB = Color(0xFF7A52F0),
+    bubbleOutA = Color(0xFF6366F1),
+    bubbleOutB = Color(0xFF8B5CF6),
     onBubbleOut = Color.White,
-    onBubbleOutSoft = Color(0xBFFFFFFF),
-    tickRead = Color(0xFF9DEBFF),
-    success = Color(0xFF16A864),
-    danger = Color(0xFFD93A4C),
+    onBubbleOutSoft = Color(0xCCFFFFFF),
+    tickRead = Color(0xFFB4F0FF),
+    success = Color(0xFF12A36A),
+    danger = Color(0xFFD92D45),
     warning = Color(0xFFC77D0A),
     scrim = Color(0x66000000),
+    glass = Color(0xE8FFFFFF),
+    glassEdge = Color(0x1A101426),
+    sheen = Color(0x80FFFFFF),
+    glow = Color(0xFF6366F1),
+    bubbleOutEdge = Color(0x33FFFFFF),
+    crimson = Color(0xFFD92D45),
+    aura = Color(0xFF0EA5E9),
 )
 
 val LocalKColors = compositionLocalOf { MidnightColors }
@@ -199,6 +237,9 @@ object Corner {
     val xl = 28.dp
     val bubble = 20.dp
     val bubbleTail = 6.dp
+
+    /** the floating bar of the navigation and the composer: a capsule */
+    val capsule = 30.dp
 }
 
 /** Sizes that repeat across the app. */
@@ -210,6 +251,9 @@ object Dim {
     val bar = 56.dp
     val button = 52.dp
     val composerField = 44.dp
+
+    /** the height of the floating navigation */
+    val nav = 64.dp
 }
 
 /** Animation timing. */
@@ -222,20 +266,37 @@ object Motion {
     val Emphasized = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 }
 
+/**
+ * Type scale. The system font is used on purpose: it is the only one that has the Armenian letters drawn well on every phone.
+ * Big sizes are set a little tighter, small ones a little looser, and every line is about 1.4 times the size.
+ */
 private val KhosqTypography = Typography(
-    headlineLarge = TextStyle(fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp),
-    headlineMedium = TextStyle(fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp),
-    headlineSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp),
-    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
-    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp),
-    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 22.sp),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp),
+    headlineLarge = TextStyle(fontWeight = FontWeight.Bold, fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.5).sp),
+    headlineMedium = TextStyle(fontWeight = FontWeight.Bold, fontSize = 26.sp, lineHeight = 32.sp, letterSpacing = (-0.4).sp),
+    headlineSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 22.sp, lineHeight = 28.sp, letterSpacing = (-0.3).sp),
+    titleLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp, letterSpacing = (-0.2).sp),
+    titleMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 23.sp, letterSpacing = (-0.1).sp),
+    titleSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 21.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 23.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 17.sp),
     labelLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp),
+    labelMedium = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.1.sp),
+    labelSmall = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 15.sp, letterSpacing = 0.2.sp),
 )
+
+/** The named text styles that new screens use, so a size is never typed twice. */
+object KType {
+    val Display = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+    val Title = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val RowTitle = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.1).sp)
+    val Body = TextStyle(fontSize = 15.sp, lineHeight = 21.sp)
+    val Caption = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)
+
+    /** the time and the ticks inside a bubble */
+    val Micro = TextStyle(fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.2.sp)
+    val Pill = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp)
+}
 
 private val KhosqShapes = Shapes(
     extraSmall = RoundedCornerShape(Corner.xs),
@@ -329,6 +390,13 @@ private fun animatedColors(t: KColors): KColors {
         danger = a(t.danger),
         warning = a(t.warning),
         scrim = a(t.scrim),
+        glass = a(t.glass),
+        glassEdge = a(t.glassEdge),
+        sheen = a(t.sheen),
+        glow = a(t.glow),
+        bubbleOutEdge = a(t.bubbleOutEdge),
+        crimson = a(t.crimson),
+        aura = a(t.aura),
     )
 }
 
@@ -377,7 +445,37 @@ fun KhosqTheme(dark: Boolean = isDark(), content: @Composable () -> Unit) {
 @Composable
 fun backgroundBrush(): Brush {
     val k = KTheme.colors
-    return Brush.verticalGradient(0f to k.bgGlow, 0.45f to k.bg, 1f to k.bg)
+    return Brush.verticalGradient(0f to k.bgGlow, 0.4f to k.bg, 1f to k.bg)
+}
+
+/**
+ * The background of the whole app: the base colour, and two very faint clouds of the brand colours in the top corners (the ambient
+ * light of the dark theme). In the light theme the clouds are almost white, so it is the plain base.
+ */
+@Composable
+fun Modifier.appBackground(): Modifier {
+    val k = KTheme.colors
+    val base = k.bg
+    val top = k.bgGlow
+    val a = if (k.dark) 0.16f else 0.05f
+    return this
+        .background(Brush.verticalGradient(0f to top, 0.4f to base, 1f to base))
+        .drawBehind {
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(BrandColors[0].copy(alpha = a), Color.Transparent),
+                    center = Offset(size.width * 0.12f, 0f),
+                    radius = size.width * 0.9f,
+                ),
+            )
+            drawRect(
+                Brush.radialGradient(
+                    colors = listOf(BrandColors[1].copy(alpha = a * 0.8f), Color.Transparent),
+                    center = Offset(size.width * 0.95f, size.height * 0.08f),
+                    radius = size.width * 0.8f,
+                ),
+            )
+        }
 }
 
 /** A button that shrinks a little while it is pressed. */

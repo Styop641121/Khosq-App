@@ -126,8 +126,7 @@ fun AssistantScreen(
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(k.bar)
+                .glassBar()
                 .statusBarsPadding()
                 .height(Dim.bar)
                 .padding(horizontal = Space.s),
@@ -144,7 +143,6 @@ fun AssistantScreen(
                 KIconButton(icon = KIcons.Trash, onClick = { vm.assistantClear() }, description = tr("Մաքրել խոսակցությունը"))
             }
         }
-        KDivider()
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -211,7 +209,7 @@ fun AssistantScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(k.bar)
+                .background(k.glass)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = Space.s, vertical = Space.s),

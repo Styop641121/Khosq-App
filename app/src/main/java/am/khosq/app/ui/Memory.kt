@@ -78,8 +78,7 @@ fun MemoryScreen(vm: AppViewModel, onBack: () -> Unit, onOpenChat: (String) -> U
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(k.bar)
+                .glassBar()
                 .statusBarsPadding()
                 .height(Dim.bar)
                 .padding(horizontal = Space.s),
@@ -93,7 +92,6 @@ fun MemoryScreen(vm: AppViewModel, onBack: () -> Unit, onOpenChat: (String) -> U
                 modifier = Modifier.padding(start = Space.xs),
             )
         }
-        KDivider()
         SearchField(
             value = query,
             onValueChange = { v -> query = v },

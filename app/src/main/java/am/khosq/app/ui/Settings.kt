@@ -6,6 +6,7 @@ import am.khosq.app.Lang
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
 import am.khosq.app.data.ProfileStore
+import am.khosq.app.data.ReliabilityLogic
 import am.khosq.app.data.VerifyState
 import am.khosq.app.sos.SosEngine
 import am.khosq.app.tr
@@ -59,6 +60,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -154,6 +156,7 @@ internal fun SettingsGroup(title: String?, content: @Composable () -> Unit) {
                 .fillMaxWidth()
                 .clip(shape)
                 .background(k.surface)
+                .background(Brush.verticalGradient(listOf(k.sheen, Color.Transparent)))
                 .border(1.dp, k.line, shape),
         ) {
             content()
@@ -183,7 +186,11 @@ internal fun SettingsRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(tone.copy(alpha = 0.14f)),
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(tone.copy(alpha = 0.14f))
+                .border(1.dp, tone.copy(alpha = 0.22f), RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(imageVector = icon, contentDescription = null, tint = tone, modifier = Modifier.size(20.dp))
@@ -291,6 +298,11 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
 
     // the answer to "may the call open above the lock screen" can change in the system settings, so it is read again on return
     var fullScreenOk by remember { mutableStateOf(fullScreenAllowed(ctx)) }
+    // "check the notifications": the sheet and the short answer shown in the row
+    var relOpen by remember { mutableStateOf(false) }
+    var relTick by remember { mutableIntStateOf(0) }
+    val relInputNow by rememberRelInput(relTick)
+    val relReport = ReliabilityLogic.plan(relInputNow)
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
         val watcher = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_RESUME) fullScreenOk = fullScreenAllowed(ctx) }
@@ -320,7 +332,14 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
             modifier = Modifier.fillMaxWidth().padding(top = Space.s, bottom = Space.s),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(contentAlignment = Alignment.BottomEnd) {
+            Box(
+                // a ring in the two brand colours and a soft light around my photo
+                modifier = Modifier
+                    .glow(k.glow, radius = 22.dp, strength = 0.32f)
+                    .border(2.dp, Brush.linearGradient(BrandColorsLight), CircleShape)
+                    .padding(5.dp),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
                 // with a photo a tap makes it large (the camera badge changes it); without one a tap picks a photo
                 Avatar(
                     name = me.name,
@@ -350,20 +369,22 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
             Text(
                 text = me.name,
                 color = k.text,
-                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                style = KType.Title,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = Space.xl),
             )
             Row(
                 modifier = Modifier
-                    .padding(top = Space.xs)
-                    .clip(RoundedCornerShape(Corner.m))
+                    .padding(top = Space.s)
+                    .clip(CircleShape)
+                    .background(k.accentSoft)
+                    .border(1.dp, k.accent.copy(alpha = 0.28f), CircleShape)
                     .clickable {
                         clipboard.setText(AnnotatedString(me.handle))
                         copied = true
                     }
-                    .padding(horizontal = Space.m, vertical = Space.xs),
+                    .padding(horizontal = Space.l, vertical = Space.s),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
@@ -555,7 +576,20 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                 subtitle = tr("Ընտրիր ձայնը և թրթռոցը"),
                 onClick = { openSoundSettings(ctx) },
             )
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Bell,
+                title = tr("Ծանուցումների ստուգում"),
+                subtitle = if (relReport.allGood) {
+                    tr("Ամեն ինչ կարգին է")
+                } else {
+                    trf("Ուշադրության է կարոտ՝ {0}։ Որ նամակները հասնեն փակ հավելվածին", relReport.attention.toString())
+                },
+                tone = if (relReport.allGood) KTheme.colors.accent else KTheme.colors.warning,
+                onClick = { relOpen = true },
+            )
             if (Build.VERSION.SDK_INT >= 34) {
+                KDivider(inset = 62.dp)
                 SettingsRow(
                     icon = KIcons.Call,
                     title = tr("Զանգը կողպված էկրանին"),
@@ -628,6 +662,15 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
         }
         UpdateSection()
         Spacer(Modifier.height(Space.m))
+        if (relOpen) {
+            NotifyCheckSheet(
+                onClose = {
+                    relOpen = false
+                    // the person may have marked steps: the short answer in the row follows
+                    relTick += 1
+                },
+            )
+        }
     }
 }
 

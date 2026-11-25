@@ -103,8 +103,7 @@ fun TasksScreen(vm: AppViewModel, onBack: () -> Unit, onOpenChat: (String) -> Un
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(k.bar)
+                .glassBar()
                 .statusBarsPadding()
                 .height(Dim.bar)
                 .padding(horizontal = Space.s),
@@ -119,7 +118,6 @@ fun TasksScreen(vm: AppViewModel, onBack: () -> Unit, onOpenChat: (String) -> Un
             )
             KIconButton(icon = KIcons.Plus, onClick = { editing = Task() }, description = tr("Նոր առաջադրանք"), tint = k.accent)
         }
-        KDivider()
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (tasks.isEmpty()) {
                 EmptyState(
@@ -170,7 +168,7 @@ fun TasksScreen(vm: AppViewModel, onBack: () -> Unit, onOpenChat: (String) -> Un
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(k.bar)
+                .background(k.glass)
                 .navigationBarsPadding()
                 .imePadding()
                 .padding(horizontal = Space.s, vertical = Space.s),

@@ -44,8 +44,7 @@ fun StarredScreen(vm: AppViewModel, onBack: () -> Unit, onOpen: (String) -> Unit
     Column(Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(k.bar)
+                .glassBar()
                 .statusBarsPadding()
                 .height(Dim.bar)
                 .padding(horizontal = Space.s),
@@ -59,7 +58,6 @@ fun StarredScreen(vm: AppViewModel, onBack: () -> Unit, onOpen: (String) -> Unit
                 modifier = Modifier.padding(start = Space.xs),
             )
         }
-        KDivider()
         if (stars.isEmpty()) {
             EmptyState(
                 icon = KIcons.Star,

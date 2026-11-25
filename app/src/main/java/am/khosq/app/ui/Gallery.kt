@@ -63,7 +63,7 @@ fun MediaGallery(messages: List<Message>, onClose: () -> Unit) {
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.fillMaxSize().background(k.bg).statusBarsPadding().navigationBarsPadding()) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(Dim.bar).background(k.bar).padding(horizontal = Space.xs),
+                modifier = Modifier.glassBar().height(Dim.bar).padding(horizontal = Space.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 KIconButton(icon = KIcons.Back, onClick = onClose, description = tr("Հետ"))
@@ -80,7 +80,6 @@ fun MediaGallery(messages: List<Message>, onClose: () -> Unit) {
                     modifier = Modifier.padding(end = Space.l),
                 )
             }
-            KDivider()
             if (photos.isEmpty()) {
                 EmptyState(icon = KIcons.Image, title = tr("Նկարներ դեռ չկան"), modifier = Modifier.padding(top = Space.huge))
             } else {

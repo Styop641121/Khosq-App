@@ -40,6 +40,8 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannels(this)
+        // when the service last started: shown in "Check the notifications"
+        Prefs.putLong("svc_at", System.currentTimeMillis())
         val open = PendingIntent.getActivity(
             this,
             0,

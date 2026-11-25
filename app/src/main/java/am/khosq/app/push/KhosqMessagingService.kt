@@ -23,6 +23,8 @@ class KhosqMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(m: RemoteMessage) {
         val type = m.data["type"] ?: return
+        // when the last push came: shown in "Check the notifications", to tell a delivery problem from a display problem
+        am.khosq.app.Prefs.putLong("fcm_last", System.currentTimeMillis())
         KeepAliveService.createChannels(this)
         KeepAliveService.start(this)
         if (type == "call") {

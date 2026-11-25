@@ -1,5 +1,7 @@
 package am.khosq.app.ui
 
+import am.khosq.app.data.Fix
+import am.khosq.app.data.LocationPick
 import am.khosq.app.tr
 import android.Manifest
 import android.annotation.SuppressLint
@@ -14,6 +16,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -44,8 +47,13 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 
 /**
- * One position, asked for once. Nothing keeps listening afterwards: the request ends as soon as there is an answer
+ * One position, asked for once. Nothing keeps listening afterwards: the request ends as soon as there is a good enough answer
  * (or after 20 seconds). It uses Android's own LocationManager, so no extra library and no Google location service.
+ *
+ * To be quick, it does not wait for the GPS alone (indoors that takes 10-20 seconds or more): it first takes what the phone already
+ * knows (a reading of the last two minutes counts as "now"), then asks every provider that is on at the same time (the phone's
+ * fused provider on Android 12+, the network, the GPS) and stops at the first reading that is exact enough. [LocationPick] holds the
+ * rules. The exact accuracy of the answer is in [Location.getAccuracy].
  */
 object OneShotLocation {
     private fun granted(ctx: Context, p: String): Boolean =
@@ -54,84 +62,147 @@ object OneShotLocation {
     fun hasPermission(ctx: Context): Boolean =
         granted(ctx, Manifest.permission.ACCESS_FINE_LOCATION) || granted(ctx, Manifest.permission.ACCESS_COARSE_LOCATION)
 
-    /** Calls [onDone] on the main thread with the position, or null when there is none (no permission, GPS off, no fix). */
+    private fun fixOf(l: Location): Fix {
+        val ageMs = (SystemClock.elapsedRealtimeNanos() - l.elapsedRealtimeNanos) / 1_000_000L
+        return Fix(
+            lat = l.latitude,
+            lng = l.longitude,
+            accuracy = LocationPick.accuracyOf(l.accuracy, l.hasAccuracy()),
+            ageMs = ageMs.coerceAtLeast(0L),
+            source = l.provider ?: "",
+            ref = l,
+        )
+    }
+
+    /**
+     * Calls [onDone] on the main thread with the position, or null when there is none (no permission, no provider on, no reading).
+     * Returns a function that gives the request up (then [onDone] is not called).
+     */
     @Suppress("DEPRECATION")
     @SuppressLint("MissingPermission")
-    fun request(ctx: Context, onDone: (Location?) -> Unit) {
+    fun request(ctx: Context, onDone: (Location?) -> Unit): () -> Unit {
         val lm = ctx.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (lm == null || !hasPermission(ctx)) {
             onDone(null)
-            return
+            return {}
         }
         val fine = granted(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
-        val provider = when {
-            fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-            lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-            else -> null
+        val providers = ArrayList<String>()
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && lm.isProviderEnabled(LocationManager.FUSED_PROVIDER)) {
+                providers.add(LocationManager.FUSED_PROVIDER)
+            }
+            if (fine && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) providers.add(LocationManager.GPS_PROVIDER)
+            if (lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) providers.add(LocationManager.NETWORK_PROVIDER)
+        } catch (e: Exception) {
+            // a provider that cannot be asked is simply left out
         }
-        if (provider == null) {
+        if (providers.isEmpty()) {
             onDone(null)
-            return
+            return {}
         }
+
         val handler = Handler(Looper.getMainLooper())
+        val started = SystemClock.elapsedRealtime()
+        var best: Fix? = null
         var finished = false
-        var cancel: android.os.CancellationSignal? = null
-        var listener: LocationListener? = null
-        fun finish(loc: Location?) {
-            if (finished) return
-            finished = true
+        var waiting = providers.size
+        val signals = ArrayList<android.os.CancellationSignal>()
+        val listeners = ArrayList<LocationListener>()
+
+        fun stopAll() {
             handler.removeCallbacksAndMessages(null)
-            cancel?.cancel()
-            val l = listener
-            if (l != null) {
+            for (c in signals) c.cancel()
+            for (l in listeners) {
                 try {
                     lm.removeUpdates(l)
-                } catch (e: SecurityException) {
+                } catch (e: Exception) {
                     // nothing more to stop
                 }
             }
-            // a recent position the phone already knows is better than none
-            val fallback = if (loc == null) {
-                try {
-                    lm.getLastKnownLocation(provider)
-                } catch (e: SecurityException) {
-                    null
-                }
-            } else {
-                null
-            }
-            onDone(loc ?: fallback)
         }
-        handler.postDelayed({ finish(null) }, 20_000L)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Android 11 and newer: one fix, asked for directly
-                val c = android.os.CancellationSignal()
-                cancel = c
-                lm.getCurrentLocation(
-                    provider,
-                    c,
-                    ContextCompat.getMainExecutor(ctx),
-                    java.util.function.Consumer<Location?> { loc -> finish(loc) },
-                )
-            } else {
-                // older Android: a single update, which ends itself after the first answer
-                val l = object : LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        finish(location)
-                    }
 
-                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+        fun finish(f: Fix?) {
+            if (finished) return
+            finished = true
+            stopAll()
+            onDone(f?.ref as? Location)
+        }
 
-                    override fun onProviderEnabled(provider: String) {}
+        fun offer(l: Location?) {
+            if (finished) return
+            if (l != null) best = LocationPick.best(best, fixOf(l))
+            val elapsed = SystemClock.elapsedRealtime() - started
+            if (LocationPick.enough(best, elapsed)) finish(best)
+        }
 
-                    override fun onProviderDisabled(provider: String) {}
-                }
-                listener = l
-                lm.requestSingleUpdate(provider, l, Looper.getMainLooper())
+        // 1. what the phone already knows: no waiting at all when it is recent and exact enough
+        val known = ArrayList<String>(providers)
+        if (fine) known.add(LocationManager.PASSIVE_PROVIDER)
+        for (p in known) {
+            try {
+                val l = lm.getLastKnownLocation(p)
+                if (l != null) best = LocationPick.best(best, fixOf(l))
+            } catch (e: Exception) {
+                // this provider has nothing to say
             }
-        } catch (e: SecurityException) {
-            finish(null)
+        }
+        if (LocationPick.enough(best, 0L)) {
+            onDone(best?.ref as? Location)
+            return {}
+        }
+
+        // 2. ask everybody at once; the first exact enough answer ends it
+        for (p in providers) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val c = android.os.CancellationSignal()
+                    signals.add(c)
+                    lm.getCurrentLocation(
+                        p,
+                        c,
+                        ContextCompat.getMainExecutor(ctx),
+                        java.util.function.Consumer<Location?> { loc ->
+                            waiting -= 1
+                            offer(loc)
+                            // every provider answered and none gave enough: take the best of them now, do not sit to the end
+                            if (!finished && waiting <= 0) finish(if (best != null && LocationPick.usable(best!!)) best else null)
+                        },
+                    )
+                } else {
+                    val l = object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            offer(location)
+                        }
+
+                        override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+
+                        override fun onProviderEnabled(provider: String) {}
+
+                        override fun onProviderDisabled(provider: String) {}
+                    }
+                    listeners.add(l)
+                    lm.requestSingleUpdate(p, l, Looper.getMainLooper())
+                }
+            } catch (e: Exception) {
+                // this provider could not be asked (permission taken back, provider gone)
+                waiting -= 1
+            }
+        }
+        if (waiting <= 0 && !finished) {
+            finish(if (best != null && LocationPick.usable(best!!)) best else null)
+            return {}
+        }
+        // a fairly exact reading is taken when the grace time is over; at the end whatever is best is taken
+        handler.postDelayed({ offer(null) }, LocationPick.GRACE_MS)
+        handler.postDelayed({
+            finish(if (best != null && LocationPick.usable(best!!)) best else null)
+        }, LocationPick.MAX_MS)
+        return {
+            if (!finished) {
+                finished = true
+                stopAll()
+            }
         }
     }
 }

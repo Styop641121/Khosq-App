@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -69,10 +70,16 @@ internal fun PollBody(
     for (choice in tally.values) counts[choice] = counts[choice] + 1
     val total = tally.size
     val myChoice = tally[myUid]
-    val track = if (mine) Color(0x26FFFFFF) else k.accentSoft
-    val fill = if (mine) Color(0x40FFFFFF) else k.accent.copy(alpha = 0.28f)
+    val track = if (mine) Color(0x24FFFFFF) else if (k.dark) Color(0x0FFFFFFF) else k.accentSoft
+    // the bar that shows the share of votes: a soft gradient, not a flat block
+    val fill: Brush = if (mine) {
+        Brush.horizontalGradient(listOf(Color(0x66FFFFFF), Color(0x33FFFFFF)))
+    } else {
+        Brush.horizontalGradient(listOf(BrandColors[0].copy(alpha = 0.55f), BrandColors[1].copy(alpha = 0.34f)))
+    }
+    val optionShape = RoundedCornerShape(14.dp)
 
-    Column(modifier = Modifier.widthIn(min = 230.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier = Modifier.widthIn(min = 230.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             Icon(
                 imageVector = KIcons.Poll,
@@ -90,8 +97,9 @@ internal fun PollBody(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Corner.s))
+                    .clip(optionShape)
                     .background(track)
+                    .border(1.dp, if (chosen) ink.copy(alpha = 0.55f) else ink.copy(alpha = 0.10f), optionShape)
                     .combinedClickable(onClick = { onVote(i) }, onLongClick = onLong),
             ) {
                 Box(Modifier.matchParentSize()) {
@@ -100,17 +108,25 @@ internal fun PollBody(
                     }
                 }
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(18.dp)
+                            .size(20.dp)
                             .clip(CircleShape)
-                            .border(1.5.dp, ink.copy(alpha = 0.7f), CircleShape),
+                            .then(if (chosen) Modifier.background(ink) else Modifier)
+                            .border(1.5.dp, ink.copy(alpha = if (chosen) 1f else 0.55f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
-                        if (chosen) Box(Modifier.size(10.dp).clip(CircleShape).background(ink))
+                        if (chosen) {
+                            Icon(
+                                imageVector = KIcons.Check,
+                                contentDescription = null,
+                                tint = if (mine) k.bubbleOutB else k.bubbleIn,
+                                modifier = Modifier.size(13.dp),
+                            )
+                        }
                     }
                     Spacer(Modifier.width(Space.s))
                     Text(

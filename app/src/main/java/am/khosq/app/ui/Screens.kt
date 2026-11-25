@@ -12,6 +12,7 @@ import am.khosq.app.call.CallPermissions
 import am.khosq.app.crypto.E2E
 import am.khosq.app.data.Chat
 import am.khosq.app.data.ChatScroll
+import am.khosq.app.data.LocationPick
 import am.khosq.app.data.VerifyLogic
 import am.khosq.app.data.VerifyState
 import android.Manifest
@@ -79,6 +80,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -222,6 +224,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var viewing by remember { mutableStateOf<Message?>(null) }
     var attachOpen by remember { mutableStateOf(false) }
     var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    // while the place is being found: a small window with a way to give up; afterwards how exact the place is
+    var locBusy by remember { mutableStateOf(false) }
+    var locCancel by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var locAcc by remember { mutableStateOf(0f) }
     var pollOpen by remember { mutableStateOf(false) }
     var stickersOpen by remember { mutableStateOf(false) }
     // a message I am turning into a task: the form opens with its text
@@ -302,9 +308,12 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
 
     // one-time location: ask once for the position, then show it and send only after "Send"
     fun fetchLocation() {
-        Toast.makeText(ctx, tr("Տեղադրությունը որոշվում է…"), Toast.LENGTH_SHORT).show()
-        OneShotLocation.request(ctx) { loc ->
+        locBusy = true
+        val stop = OneShotLocation.request(ctx) { loc ->
+            locBusy = false
+            locCancel = null
             if (loc != null) {
+                locAcc = LocationPick.accuracyOf(loc.accuracy, loc.hasAccuracy())
                 locAsk = loc.latitude to loc.longitude
             } else {
                 Toast.makeText(
@@ -314,6 +323,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 ).show()
             }
         }
+        // the answer may already have come (a recent place needs no waiting): then there is nothing to give up
+        if (locBusy) locCancel = stop
     }
     val locPerms = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         if (OneShotLocation.hasPermission(ctx)) {
@@ -638,17 +649,42 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             onCreate = { q, o -> vm.sendPoll(chatId, peerUid, q, o) },
         )
     }
+    if (locBusy) {
+        val giveUp = {
+            locCancel?.invoke()
+            locCancel = null
+            locBusy = false
+        }
+        AlertDialog(
+            onDismissRequest = giveUp,
+            title = { Text(tr("Տեղադրությունը որոշվում է…")) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(26.dp), strokeWidth = 3.dp)
+                    Spacer(Modifier.width(Space.m))
+                    Text(tr("Սովորաբար մի քանի վայրկյան։ Փակ տարածքում՝ ավելի երկար։"))
+                }
+            },
+            confirmButton = { TextButton(onClick = giveUp) { Text(tr("Չեղարկել")) } },
+        )
+    }
     val la = locAsk
     if (la != null) {
         AlertDialog(
             onDismissRequest = { locAsk = null },
             title = { Text(tr("Ուղարկե՞լ քո տեղադրությունը")) },
             text = {
+                val metres = LocationPick.metres(locAcc).toString()
+                val how = if (LocationPick.grade(locAcc) == 2) {
+                    trf("Տեղը միայն մոտավոր է՝ մոտ {0} մ ճշտությամբ։ Բաց տարածքում կստացվի ավելի ճիշտ։", metres)
+                } else {
+                    trf("Ճշտությունը՝ մոտ {0} մ։", metres)
+                }
                 Text(
                     trf(
                         "Կուղարկվի միայն քո ներկա կետը՝ {0}։ Հետագա տեղաշարժը չի հետևվում։",
                         String.format(java.util.Locale.US, "%.5f, %.5f", la.first, la.second),
-                    ),
+                    ) + "\n\n" + how,
                 )
             },
             confirmButton = {
@@ -670,7 +706,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val listState = rememberLazyListState()
     Column(Modifier.fillMaxSize().imePadding()) {
         // ---------------- top bar ----------------
-        Column(Modifier.fillMaxWidth().background(k.bar).statusBarsPadding()) {
+        Column(Modifier.glassBar().statusBarsPadding()) {
             if (searching) {
                 Row(
                     modifier = Modifier.fillMaxWidth().height(Dim.bar).padding(horizontal = Space.s),
@@ -727,7 +763,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                                 Text(
                                     text = chat?.label() ?: "…",
                                     color = k.text,
-                                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
+                                    style = KType.RowTitle,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f, fill = false),
@@ -817,8 +853,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     }
                 }
             }
-            KDivider()
             if (!searching && pinnedMsg != null) {
+                KDivider()
                 PinnedBar(
                     text = previewOf(pinnedMsg.kind, pinnedMsg.text),
                     onClick = {
@@ -829,7 +865,6 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     // in an announcement group only the admins can take the pin off
                     onClose = if (adminOnlyBlocked) null else ({ vm.setPinned(chatId, null) }),
                 )
-                KDivider()
             }
         }
 
@@ -997,8 +1032,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         }
 
         // ---------------- bottom: banners and composer ----------------
-        Column(Modifier.fillMaxWidth().background(k.bar).navigationBarsPadding()) {
-            KDivider()
+        Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
             val rt = replyTo
             var replyCache by remember { mutableStateOf<Message?>(null) }
             SideEffect { if (rt != null) replyCache = rt }
@@ -1041,12 +1075,15 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
 
             if (waiting) {
-                Text(
-                    text = trf("Սպասում ես, որ {0}-ը ընդունի հարցումդ", chat?.peerName ?: ""),
-                    color = k.textSecondary,
-                    style = TextStyle(fontSize = 13.sp),
-                    modifier = Modifier.padding(horizontal = Space.l, vertical = Space.s),
-                )
+                Box(Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.s), contentAlignment = Alignment.Center) {
+                    FrostedPill {
+                        Text(
+                            text = trf("Սպասում ես, որ {0}-ը ընդունի հարցումդ", chat?.peerName ?: ""),
+                            color = k.textSecondary,
+                            style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+                        )
+                    }
+                }
             }
             if (pendingForMe) {
                 NoticeBar(
@@ -1067,15 +1104,24 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     onPrimary = { vm.setBlocked(chatId, false) },
                 )
             } else if (adminOnlyBlocked) {
-                Text(
-                    text = tr("Միայն ադմինները կարող են գրել այս խմբում"),
-                    color = k.textSecondary,
-                    style = TextStyle(fontSize = 14.sp),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.l),
-                )
+                Box(Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.m), contentAlignment = Alignment.Center) {
+                    FrostedPill {
+                        Text(
+                            text = tr("Միայն ադմինները կարող են գրել այս խմբում"),
+                            color = k.textSecondary,
+                            style = TextStyle(fontSize = 14.sp, lineHeight = 19.sp),
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                }
             } else Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.s, vertical = Space.s),
+                // one floating capsule holds the clip, the field, the stickers and the send button
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Space.m, vertical = Space.s)
+                    .floatShadow(RoundedCornerShape(Corner.capsule))
+                    .glassSurface(RoundedCornerShape(Corner.capsule), strong = true)
+                    .padding(horizontal = Space.xs, vertical = Space.xs),
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(Space.xs),
             ) {
@@ -1084,8 +1130,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         modifier = Modifier
                             .weight(1f)
                             .height(Dim.composerField)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(k.surfaceHigh)
+                            .clip(RoundedCornerShape(Corner.capsule))
+                            .background(k.danger.copy(alpha = 0.12f))
                             .padding(start = Space.l, end = Space.xs),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -1115,9 +1161,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = Dim.composerField)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(k.surfaceHigh),
+                            .heightIn(min = Dim.composerField),
                         contentAlignment = Alignment.CenterStart,
                     ) {
                         if (text.isEmpty()) {
@@ -1214,8 +1258,17 @@ private fun ComposerButton(icon: ImageVector, description: String, filled: Boole
     Box(
         modifier = Modifier
             .size(Dim.composerField)
+            .then(if (filled) Modifier.glow(k.glow, radius = 8.dp, strength = 0.42f) else Modifier)
             .clip(CircleShape)
-            .then(if (filled) Modifier.background(Brush.linearGradient(BrandColors)) else Modifier.background(k.accentSoft))
+            .then(
+                if (filled) {
+                    Modifier
+                        .background(Brush.linearGradient(BrandColors))
+                        .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.05f))), CircleShape)
+                } else {
+                    Modifier.background(k.accentSoft)
+                },
+            )
             .pressable(onClick = onClick, pressedScale = 0.9f),
         contentAlignment = Alignment.Center,
     ) {
@@ -1235,11 +1288,13 @@ private fun ComposerBanner(icon: ImageVector, title: String, text: String, onClo
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = Space.l, top = Space.s, bottom = Space.xs, end = Space.xs)
+            .padding(start = Space.m, top = Space.s, end = Space.m)
+            .glassSurface(RoundedCornerShape(Corner.l), strong = true)
+            .padding(start = Space.m, top = Space.s, bottom = Space.s, end = Space.xs)
             .height(IntrinsicSize.Min),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().clip(CircleShape).background(k.accent))
+        Box(Modifier.width(3.dp).fillMaxHeight().clip(CircleShape).background(Brush.verticalGradient(BrandColors)))
         Spacer(Modifier.width(Space.m))
         Icon(imageVector = icon, contentDescription = null, tint = k.accent, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(Space.s))

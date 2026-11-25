@@ -74,20 +74,14 @@ internal fun sameRun(a: Message?, b: Message?): Boolean {
     return a.from == b.from && kotlin.math.abs(a.ts - b.ts) < 3L * 60_000L && dayKey(a.ts) == dayKey(b.ts)
 }
 
-/** The grey pill with the day, between two days of messages. */
+/** The frosted pill with the day, between two days of messages. */
 @Composable
 internal fun DateChip(text: String) {
     val k = KTheme.colors
     Box(Modifier.fillMaxWidth().padding(vertical = Space.s), contentAlignment = Alignment.Center) {
-        Text(
-            text = text,
-            color = k.textSecondary,
-            style = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
-            modifier = Modifier
-                .clip(RoundedCornerShape(Corner.m))
-                .background(k.surfaceHigh.copy(alpha = 0.88f))
-                .padding(horizontal = Space.m, vertical = 5.dp),
-        )
+        FrostedPill {
+            Text(text = text, color = k.textSecondary, style = KType.Pill)
+        }
     }
 }
 
@@ -117,7 +111,8 @@ internal fun SecureChip(
             .fillMaxWidth()
             .padding(horizontal = Space.l, vertical = Space.m)
             .clip(RoundedCornerShape(Corner.l))
-            .background(k.surfaceHigh)
+            .background(k.glass.copy(alpha = 0.74f))
+            .border(1.dp, k.glassEdge, RoundedCornerShape(Corner.l))
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(Space.m),
         verticalAlignment = Alignment.CenterVertically,
@@ -307,16 +302,10 @@ internal fun Bubble(
         val isCall = m.kind == "call"
         val bad = isCall && m.code != "call_done"
         Box(Modifier.fillMaxWidth().padding(vertical = Space.xs), contentAlignment = Alignment.Center) {
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(Corner.m))
-                    .background(k.surfaceHigh.copy(alpha = 0.88f))
-                    .padding(horizontal = Space.m, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            FrostedPill {
                 if (isCall) {
                     Icon(
-                        imageVector = if (m.vid) KIcons.VideoLine else KIcons.PhoneLine,
+                        imageVector = if (bad) KIcons.PhoneMissed else if (m.vid) KIcons.VideoLine else KIcons.PhoneLine,
                         contentDescription = null,
                         tint = if (bad) k.danger else k.success,
                         modifier = Modifier.size(15.dp),
@@ -326,7 +315,7 @@ internal fun Bubble(
                 Text(
                     text = systemLine(m, names[m.from] ?: peerName) + "  " + formatTime(m.ts),
                     color = k.textSecondary,
-                    style = TextStyle(fontSize = 12.5.sp, lineHeight = 17.sp),
+                    style = KType.Pill,
                 )
             }
         }
@@ -340,7 +329,10 @@ internal fun Bubble(
         RoundedCornerShape(topStart = if (joinedOlder) small else big, topEnd = big, bottomEnd = big, bottomStart = small)
     }
     val fill = if (mine) {
-        Modifier.background(Brush.linearGradient(listOf(k.bubbleOutA, k.bubbleOutB)))
+        Modifier
+            .background(Brush.linearGradient(listOf(k.bubbleOutA, k.bubbleOutB)))
+            // a thin light along the upper edge, as if the bubble were a piece of lit glass
+            .border(1.dp, Brush.verticalGradient(listOf(k.bubbleOutEdge, Color(0x0DFFFFFF))), shape)
     } else {
         Modifier.background(k.bubbleIn).border(1.dp, k.bubbleInLine, shape)
     }
@@ -412,7 +404,7 @@ internal fun Bubble(
                     .clip(shape)
                     .then(fill)
                     .combinedClickable(onClick = {}, onLongClick = onLong)
-                    .padding(horizontal = 12.dp, vertical = 7.dp),
+                    .padding(horizontal = 13.dp, vertical = 8.dp),
             ) {
                 if (sender != null) {
                     Text(
@@ -486,7 +478,7 @@ internal fun Bubble(
                         else -> {
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
                             val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }
-                            Text(text = rich, color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp))
+                            Text(text = rich, color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 23.sp))
                             if (shield != null && !mine && !m.deleted) ShieldStrip(messageId = m.id, text = m.text, env = shield)
                         }
                     }
@@ -518,7 +510,7 @@ internal fun Bubble(
                         Icon(imageVector = KIcons.StarFill, contentDescription = null, tint = soft, modifier = Modifier.size(12.dp))
                         Spacer(Modifier.width(4.dp))
                     }
-                    Text(text = formatTime(m.ts), color = soft, style = TextStyle(fontSize = 11.sp))
+                    Text(text = formatTime(m.ts), color = soft, style = KType.Micro)
                     if (mine && showTicks) {
                         Spacer(Modifier.width(4.dp))
                         StatusTicks(pending = m.pending, delivered = delivered, read = read, soft = soft)

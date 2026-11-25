@@ -2,6 +2,7 @@ package am.khosq.app
 
 import am.khosq.app.call.CallManager
 import am.khosq.app.data.Profile
+import am.khosq.app.data.ReliabilityLogic
 import am.khosq.app.ui.CallBar
 import am.khosq.app.ui.CallOverlay
 import am.khosq.app.ui.CallPip
@@ -23,6 +24,10 @@ import am.khosq.app.ui.GradientButton
 import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.InviteJoinHost
 import am.khosq.app.ui.MemoryScreen
+import am.khosq.app.ui.NotifyCheckSheet
+import am.khosq.app.ui.PhoneInfo
+import am.khosq.app.ui.RelStore
+import am.khosq.app.ui.relInput
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.LockScreen
 import am.khosq.app.ui.RecoverScreen
@@ -31,7 +36,7 @@ import am.khosq.app.ui.StarredScreen
 import am.khosq.app.ui.TasksScreen
 import am.khosq.app.ui.UpdateDialog
 import am.khosq.app.update.Updater
-import am.khosq.app.ui.backgroundBrush
+import am.khosq.app.ui.appBackground
 import android.Manifest
 import android.app.Activity
 import android.app.PictureInPictureParams
@@ -204,6 +209,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val call by CallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
+    // phones of the makers that close apps in the background: one question the first time, then the "check the notifications" sheet
+    var askRel by remember { mutableStateOf(false) }
+    var relSheet by remember { mutableStateOf(false) }
+    var relMaker by remember { mutableStateOf("") }
     var showRecover by remember { mutableStateOf(false) }
     val pip by AppState.inPip.collectAsStateWithLifecycle()
     val locked by AppLock.locked.collectAsStateWithLifecycle()
@@ -237,12 +246,20 @@ private fun Root(vm: AppViewModel = viewModel()) {
             }
             val prefs = ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE)
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
-            if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
-                askBattery = true
-            }
-            if (Build.VERSION.SDK_INT >= 34) {
-                val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                if (!nm.canUseFullScreenIntent() && !prefs.getBoolean("fsi_asked", false)) askFullScreen = true
+            val oem = PhoneInfo.oem()
+            val relAsk = ReliabilityLogic.shouldAsk(oem, Prefs.getString(RelStore.ASKED) == "1", ReliabilityLogic.plan(relInput(ctx)))
+            if (relAsk) {
+                // the sheet holds the battery step and the call-screen step too, so the two single questions would only repeat it
+                relMaker = PhoneInfo.title(oem)
+                askRel = true
+            } else {
+                if (!prefs.getBoolean("battery_asked", false) && !pm.isIgnoringBatteryOptimizations(ctx.packageName)) {
+                    askBattery = true
+                }
+                if (Build.VERSION.SDK_INT >= 34) {
+                    val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+                    if (!nm.canUseFullScreenIntent() && !prefs.getBoolean("fsi_asked", false)) askFullScreen = true
+                }
             }
         }
     }
@@ -259,7 +276,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(backgroundBrush())) {
+    Box(Modifier.fillMaxSize().appBackground()) {
         Column(Modifier.fillMaxSize()) {
             if (showBar) CallBar()
             // below the green bar the status bar is already taken care of
@@ -313,6 +330,35 @@ private fun Root(vm: AppViewModel = viewModel()) {
 
         if (pip && callOn) CallPip() else CallOverlay()
         if (boot is Boot.Ready && !locked) UpdateDialog()
+    }
+
+    if (askRel && !locked) {
+        val done = {
+            Prefs.putString(RelStore.ASKED, "1")
+            askRel = false
+        }
+        AlertDialog(
+            onDismissRequest = { done() },
+            title = { Text(tr("Որ ծանուցումները հասնեն")) },
+            text = {
+                Text(
+                    trf(
+                        "Քո հեռախոսի համակարգը ({0}) ֆոնում փակում է հավելվածները, եթե դա չես թույլատրել մի քանի տեղ։ Առանց դրա նամակները փակ հավելվածին չեն հասնի։ Անցնենք կարգավորումներով՝ մի քանի րոպեում։",
+                        relMaker,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    done()
+                    relSheet = true
+                }) { Text(tr("Ստուգել հիմա")) }
+            },
+            dismissButton = { TextButton(onClick = { done() }) { Text(tr("Ոչ հիմա")) } },
+        )
+    }
+    if (relSheet && !locked) {
+        NotifyCheckSheet(onClose = { relSheet = false })
     }
 
     if (askFullScreen && !locked) {

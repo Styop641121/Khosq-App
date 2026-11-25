@@ -121,7 +121,7 @@ fun CallsTab(me: Profile, calls: List<CallRecord>, chats: List<Chat>, onOpenChat
                     onOpen = { if (chat != null) onOpenChat(chat.id) },
                     onCall = { if (chat != null) callBack(chat, rec.video) },
                 )
-                KDivider(inset = Space.l + 48.dp + Space.m)
+                KDivider(inset = Space.l + 52.dp + Space.m)
             }
         }
     }
@@ -139,31 +139,35 @@ private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () 
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
-            .padding(horizontal = Space.l, vertical = 10.dp),
+            .padding(horizontal = Space.l, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Avatar(name = name, seed = rec.peerUid, size = 48.dp)
+        Avatar(name = name, seed = rec.peerUid, size = 52.dp)
         Spacer(Modifier.width(Space.m))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 text = name,
-                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
+                style = KType.RowTitle,
                 color = if (rec.missed) k.danger else k.text,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (rec.outgoing) KIcons.ArrowOut else KIcons.ArrowIn,
-                    contentDescription = null,
-                    tint = tone,
-                    modifier = Modifier.size(15.dp),
+                // a small round badge says what happened: a missed, an outgoing or an incoming call
+                CallStatusBadge(
+                    icon = when {
+                        rec.missed -> KIcons.PhoneMissed
+                        rec.outgoing -> KIcons.PhoneOut
+                        else -> KIcons.PhoneIn
+                    },
+                    tone = tone,
+                    size = 22.dp,
                 )
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(Space.s))
                 Text(
                     text = (if (rec.video) tr("Տեսազանգ") + " · " else "") + callLabel(rec) + " · " + callTime(rec.ts),
                     color = k.textSecondary,
-                    style = TextStyle(fontSize = 14.sp),
+                    style = TextStyle(fontSize = 13.5.sp, lineHeight = 18.sp),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -174,6 +178,9 @@ private fun CallRow(rec: CallRecord, name: String, canCall: Boolean, onOpen: () 
                 icon = if (rec.video) KIcons.VideoLine else KIcons.PhoneLine,
                 onClick = onCall,
                 tint = k.accent,
+                size = 42.dp,
+                iconSize = 21.dp,
+                background = k.accentSoft,
                 description = if (rec.video) tr("Տեսազանգ") else tr("Զանգ"),
             )
         }

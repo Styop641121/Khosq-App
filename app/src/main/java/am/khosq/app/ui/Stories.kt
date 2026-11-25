@@ -75,7 +75,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 val StoryBackgrounds: List<Brush> = listOf(
-    Brush.linearGradient(listOf(Color(0xFF5B6CFF), Color(0xFF8B5CF6))),
+    Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFF8B5CF6))),
     Brush.linearGradient(listOf(Color(0xFF4F7BFF), Color(0xFF9B4BFF))),
     Brush.linearGradient(listOf(Color(0xFF12C2A3), Color(0xFF2E5BFF))),
     Brush.linearGradient(listOf(Color(0xFFFF5E8A), Color(0xFFFF9A3D))),
@@ -143,7 +143,7 @@ private fun StoryTile(
     val k = KTheme.colors
     val ringBrush: Brush = when (ring) {
         1 -> Brush.sweepGradient(
-            listOf(Color(0xFF5B6CFF), Color(0xFF8B5CF6), Color(0xFFEC5C8E), Color(0xFFF2994A), Color(0xFF5B6CFF)),
+            listOf(Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFEC5C8E), Color(0xFFF2994A), Color(0xFF6366F1)),
         )
         2 -> Brush.linearGradient(listOf(k.lineStrong, k.lineStrong))
         else -> Brush.linearGradient(listOf(Color(0x00000000), Color(0x00000000)))

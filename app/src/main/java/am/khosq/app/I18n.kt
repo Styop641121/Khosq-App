@@ -119,6 +119,19 @@ fun previewOf(kind: String, text: String): String = when (kind) {
     else -> if (text == "📷 Նկար" || text == "🎤 Ձայնային նամակ" || text == "📵 Բաց թողնված զանգ") tr(text) else text
 }
 
+/**
+ * The same as [previewOf] without the little picture in front, for screens that draw a vector sign there. Only the kinds that have
+ * such a sign differ (a photo, a voice message, a place, a poll, a missed call); the rest are what [previewOf] says.
+ */
+fun previewPlain(kind: String, text: String): String = when (kind) {
+    "img" -> tr("Նկար")
+    "voice" -> tr("Ձայնային նամակ")
+    "loc" -> tr("Տեղադրություն")
+    "poll" -> PollCodec.decode(text)?.question ?: tr("Հարցում")
+    "call_missed" -> tr("Բաց թողնված զանգ")
+    else -> previewOf(kind, text)
+}
+
 /** Marks a reply to a photo / voice message, so each reader sees it in their own language. */
 const val REPLY_IMG = "\uE000img"
 const val REPLY_VOICE = "\uE000voice"

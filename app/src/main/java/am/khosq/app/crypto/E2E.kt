@@ -1,10 +1,15 @@
 package am.khosq.app.crypto
 
 import am.khosq.app.Prefs
+import am.khosq.app.data.VerifyLogic
+import am.khosq.app.data.VerifyState
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
@@ -291,7 +296,11 @@ object E2E {
         missUntil.remove(peer)
         for (id in keys.keys.toList()) if (id.contains(peer)) keys.remove(id)
         pairKeys.remove(peer)
-        if (pinned.isNotEmpty()) Prefs.putStringSync("pkchg.$peer", "1")
+        if (pinned.isNotEmpty()) {
+            Prefs.putStringSync("pkchg.$peer", "1")
+            // a verified contact is no longer verified: the screens look again
+            _verifyEpoch.value += 1
+        }
     }
 
     /** True when the person's key changed since it was first seen and nobody has looked at the safety number yet. */
@@ -301,20 +310,59 @@ object E2E {
         Prefs.putStringSync("pkchg.$peer", "")
     }
 
+    /** The two public keys of a pair boiled down to bytes: the same on both phones. Null while the other person's key is not known. */
+    private fun pairDigest(peer: String): ByteArray? {
+        val theirs = Prefs.getString("pk.$peer")
+        if (theirs.isEmpty()) return null
+        return VerifyLogic.digest(mine.pubText, theirs)
+    }
+
     /** A short number both phones compute from the two public keys. If it is the same on both, nobody stands between them. */
     suspend fun safetyNumber(peer: String): String? {
         if (peerPublic(peer) == null) return null
-        val theirs = Prefs.getString("pk.$peer")
-        val a = mine.pubText
-        val first = if (a <= theirs) a else theirs
-        val second = if (a <= theirs) theirs else a
-        val md = MessageDigest.getInstance("SHA-256")
-        md.update(first.toByteArray(Charsets.UTF_8))
-        md.update(second.toByteArray(Charsets.UTF_8))
-        val h = md.digest()
-        val hex = StringBuilder()
-        for (i in 0 until 16) hex.append(String.format("%02X", h[i].toInt() and 0xFF))
-        return hex.chunked(4).joinToString(" ")
+        val d = pairDigest(peer) ?: return null
+        return VerifyLogic.numberText(d)
+    }
+
+    // ---- verified contacts: the two people compare a short code and each marks the other as verified.
+    // What is saved is the digest of the keys at that moment, so a changed key (either side) ends the verification by itself.
+
+    private val _verifyEpoch = MutableStateFlow(0)
+
+    /** Goes up whenever somebody is verified or unverified, or a contact's key changes, so screens that show the mark look again. */
+    val verifyEpoch: StateFlow<Int> = _verifyEpoch.asStateFlow()
+
+    /** The 8 pictures both phones show for this pair, or null while the other person's key is not known. */
+    fun pairEmojis(peer: String): List<String>? = try {
+        pairDigest(peer)?.let { d -> VerifyLogic.emojis(d) }
+    } catch (e: Exception) {
+        null
+    }
+
+    fun verifyState(peer: String): VerifyState = try {
+        VerifyLogic.state(Prefs.getString("ver.$peer"), pairDigest(peer)?.let { d -> VerifyLogic.hex(d) })
+    } catch (e: Exception) {
+        VerifyState.NONE
+    }
+
+    /** The person confirmed that the code matches. False while the other person's key is not known. */
+    fun markVerified(peer: String): Boolean {
+        var d: ByteArray? = null
+        try {
+            d = pairDigest(peer)
+        } catch (e: Exception) {
+            // no key to confirm
+        }
+        if (d == null) return false
+        Prefs.putStringSync("ver.$peer", VerifyLogic.hex(d))
+        Prefs.putStringSync("pkchg.$peer", "")
+        _verifyEpoch.value += 1
+        return true
+    }
+
+    fun clearVerified(peer: String) {
+        Prefs.putStringSync("ver.$peer", "")
+        _verifyEpoch.value += 1
     }
 
     // ------------------------------------------------------------------ sealing and opening

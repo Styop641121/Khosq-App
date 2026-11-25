@@ -5,6 +5,7 @@ import am.khosq.app.KeepAliveService
 import am.khosq.app.Lang
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
+import am.khosq.app.data.VerifyState
 import am.khosq.app.tr
 import am.khosq.app.trf
 import am.khosq.app.update.UpState
@@ -738,14 +739,22 @@ fun ContactSheet(
         ) {
             Avatar(name = chat.peerName, seed = chat.peerUid, size = 112.dp)
             Spacer(Modifier.height(Space.s))
-            Text(
-                text = chat.peerName,
-                color = k.text,
-                style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-            )
+            val vstate = rememberVerifyState(chat.peerUid)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Text(
+                    text = chat.peerName,
+                    color = k.text,
+                    style = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (vstate != VerifyState.NONE) {
+                    Spacer(Modifier.width(Space.xs))
+                    VerifyBadge(state = vstate, size = 22.dp)
+                }
+            }
             if (chat.peerHandle.isNotEmpty()) {
                 Text(
                     text = "@" + chat.peerHandle,
@@ -824,6 +833,11 @@ fun ContactSheet(
             }
             var changed by remember(chat.peerUid) { mutableStateOf(E2E.keyChanged(chat.peerUid)) }
             val shownNumber = number
+            // the 8 pictures and the "verified" button (not for the saved-messages chat)
+            if (!chat.isGroup && !chat.saved) {
+                Spacer(Modifier.height(Space.s))
+                VerifyCard(peerUid = chat.peerUid, peerName = chat.peerName)
+            }
             if (shownNumber != null) {
                 Spacer(Modifier.height(Space.s))
                 Column(
@@ -853,7 +867,7 @@ fun ContactSheet(
                         color = k.textSecondary,
                         style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
                     )
-                    if (changed) {
+                    if (changed && vstate != VerifyState.CHANGED) {
                         Spacer(Modifier.height(Space.xs))
                         Text(
                             text = tr("Զրուցակցի անվտանգության թիվը փոխվել է։ Դա կարող է նշանակել, որ նա նոր հեռախոս է օգտագործում։ Համեմատիր թիվը նրա հետ։"),

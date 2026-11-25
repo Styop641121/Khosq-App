@@ -565,6 +565,24 @@ object Strings {
         map["«Բողոքել»-ը պատրաստում է բողոքի տեքստը, և դու ինքդ ընտրում ես՝ որտեղ ուղարկել (օրինակ՝ քո փոստին)։ KHOSQ-ը ոչինչ ինքնաբերաբար չի ուղարկում։"] = arrayOf("“Report” prepares the text of a complaint and you choose where to send it (for example to your own email). KHOSQ sends nothing by itself.", "«Пожаловаться» готовит текст жалобы, а вы сами выбираете, куда её отправить (например, на свою почту). KHOSQ ничего не отправляет сам.")
     }
 
+    private fun part13() {
+        map["Հաստատված"] = arrayOf("Verified", "Подтверждён")
+        map["Անվտանգության թիվը փոխվել է"] = arrayOf("The safety number has changed", "Номер безопасности изменился")
+        map["Հաստատված զրուցակցի անվտանգության թիվը փոխվել է։ Նորից համեմատիր նշանները, նախքան նրան կարևոր բան գրելը։"] = arrayOf("The safety number of a verified contact has changed. Compare the pictures again before writing anything important to them.", "Номер безопасности подтверждённого собеседника изменился. Сравните картинки ещё раз, прежде чем писать ему что-то важное.")
+        map["Հաստատված զրուցակից"] = arrayOf("Verified contact", "Подтверждённый собеседник")
+        map["Հաստատել զրուցակցին"] = arrayOf("Verify this contact", "Подтвердить собеседника")
+        map["Զրուցակցի բանալին դեռ չի ստացվել. բացիր զրույցը և փորձիր քիչ հետո։"] = arrayOf("The contact’s key has not been received yet. Open the chat and try again in a moment.", "Ключ собеседника ещё не получен. Откройте чат и попробуйте чуть позже.")
+        map["Դու և {0}-ը համեմատել եք նշանները, և դրանք համընկել են։ Եթե նրա կամ քո բանալին փոխվի, այս նշանը կվերանա։"] = arrayOf("You and {0} compared the pictures and they matched. If their key or yours changes, this mark will disappear.", "Вы и {0} сравнили картинки, и они совпали. Если изменится его или ваш ключ, эта отметка исчезнет.")
+        map["Հանել հաստատումը"] = arrayOf("Remove verification", "Снять подтверждение")
+        map["Դու նրան հաստատել էիր, բայց հետո նրա (կամ քո) բանալին փոխվել է։ Դա կարող է նշանակել նոր հեռախոս, բայց նաև որ ինչ-որ մեկը կանգնել է ձեր միջև։ Զանգիր նրան և նորից համեմատեք նշանները։"] = arrayOf("You had verified this contact, but then their key (or yours) changed. It may mean a new phone, but also that someone has come between you. Call them and compare the pictures again.", "Вы подтвердили этого собеседника, но потом его ключ (или ваш) изменился. Это может значить новый телефон, но также и то, что кто-то встал между вами. Позвоните ему и снова сравните картинки.")
+        map["Նշանները համընկնում են. հաստատել նորից"] = arrayOf("The pictures match: verify again", "Картинки совпадают: подтвердить снова")
+        map["Զանգիր {0}-ին կամ հանդիպեք և համեմատեք այս նշանները՝ նույն կարգով։ Եթե նույնն են, սեղմիր «Հաստատել»։ Այդպես կիմանաս, որ ձեր միջև ոչ ոք չկա։"] = arrayOf("Call {0} or meet and compare these pictures in the same order. If they are the same, tap “Verify”. That way you will know that nobody is between you.", "Позвоните {0} или встретьтесь и сравните эти картинки в том же порядке. Если они одинаковые, нажмите «Подтвердить». Так вы будете знать, что между вами никого нет.")
+        map["Նշանները համընկնում են. հաստատել"] = arrayOf("The pictures match: verify", "Картинки совпадают: подтвердить")
+        map["Ուշադրություն. այս անունը նույնն է քո հաստատված զրուցակից {0}-ի անվանը։ Դա կարող է լինել խաբեբա, ով ձևանում է նա։ Մի հավատա, մինչև չստուգես նրա հետ ուրիշ ճանապարհով։"] = arrayOf("Attention: this name is the same as the name of your verified contact {0}. It may be a scammer pretending to be them. Do not believe it until you check with them another way.", "Внимание: это имя совпадает с именем вашего подтверждённого собеседника {0}. Это может быть мошенник, который выдаёт себя за него. Не верьте, пока не проверите у него другим способом.")
+        map["Ուշադրություն. այս անունը նույնն է քո զրուցակից {0}-ի անվանը։ Դա կարող է լինել խաբեբա, ով ձևանում է նա։ Համոզվիր նրա հետ ուրիշ ճանապարհով։"] = arrayOf("Attention: this name is the same as the name of your contact {0}. It may be a scammer pretending to be them. Make sure with them another way.", "Внимание: это имя совпадает с именем вашего собеседника {0}. Это может быть мошенник, который выдаёт себя за него. Убедитесь у него другим способом.")
+        map["Այս անունը շատ նման է քո զրուցակից {0}-ի անվանը (տարբերվում է մեկ տառով)։ Համոզվիր, որ դա նա է։"] = arrayOf("This name is very similar to the name of your contact {0} (one letter differs). Make sure it is them.", "Это имя очень похоже на имя вашего собеседника {0} (отличается одной буквой). Убедитесь, что это он.")
+    }
+
     init {
         part0()
         part1()
@@ -579,5 +597,6 @@ object Strings {
         part10()
         part11()
         part12()
+        part13()
     }
 }

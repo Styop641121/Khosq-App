@@ -6,6 +6,7 @@ import am.khosq.app.previewOf
 import am.khosq.app.tr
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
+import am.khosq.app.data.VerifyState
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -728,14 +729,22 @@ private fun ChatRow(chat: Chat, myUid: String, pinned: Boolean, muted: Boolean, 
                     )
                     Spacer(Modifier.width(5.dp))
                 }
-                Text(
-                    text = chat.label(),
-                    color = k.text,
-                    style = RowTitleStyle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
+                // the name, and a badge after it when the contact has been verified
+                val vstate = rememberVerifyState(chat.peerUid, enabled = !chat.isGroup && !chat.saved)
+                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = chat.label(),
+                        color = k.text,
+                        style = RowTitleStyle,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (vstate != VerifyState.NONE) {
+                        Spacer(Modifier.width(Space.xs))
+                        VerifyBadge(state = vstate, size = 15.dp)
+                    }
+                }
                 if (chat.lastFrom == myUid && chat.lastTs > 0L && !chat.isGroup && !chat.saved) {
                     val read = chat.peerRead >= chat.lastTs
                     val delivered = read || chat.peerDelivered >= chat.lastTs

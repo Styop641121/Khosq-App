@@ -256,6 +256,18 @@ object KIcons {
     val Transcribe: ImageVector by lazy {
         line("transcribe", listOf("M5 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z", "M7 15h4", "M15 15h2", "M7 11h2", "M13 11h4"))
     }
+    val Verified: ImageVector by lazy {
+        line(
+            "verified",
+            listOf(
+                "M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z",
+                "m9 12 2 2 4-4",
+            ),
+        )
+    }
+    val Alert: ImageVector by lazy {
+        line("alert", listOf("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01"))
+    }
     val Sparkle: ImageVector by lazy { line("sparkle", listOf("M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z", "M19 16l.7 1.8 1.8.7-1.8.7L19 21l-.7-1.8-1.8-.7 1.8-.7L19 16z")) }
 
 }

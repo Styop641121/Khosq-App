@@ -9,7 +9,10 @@ import am.khosq.app.replyText
 
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
+import am.khosq.app.crypto.E2E
 import am.khosq.app.data.Chat
+import am.khosq.app.data.VerifyLogic
+import am.khosq.app.data.VerifyState
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
@@ -180,6 +183,20 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val isGroup = chat != null && chat.isGroup && !isSaved
     var showInfo by remember { mutableStateOf(false) }
     var showContact by remember { mutableStateOf(false) }
+    // verification: the badge by the name, and (for a contact verified once whose key has changed) the red strip
+    val vstate = rememberVerifyState(peerUid, enabled = chat != null && !chat.isGroup && !isSaved)
+    // a person asking to write whose name copies one of my contacts' names
+    val vEpoch by E2E.verifyEpoch.collectAsStateWithLifecycle()
+    val lookalike = remember(chat?.peerName, chat?.id, chats, pendingForMe, vEpoch) {
+        if (!pendingForMe || chat == null) {
+            null
+        } else {
+            val known = chats
+                .filter { c -> c.id != chat.id && !c.isGroup && !c.saved && c.status == "active" }
+                .map { c -> c.peerUid to c.peerName }
+            lookalikeNote(VerifyLogic.similarNames(chat.peerName, known)) { id -> E2E.verifyState(id) == VerifyState.VERIFIED }
+        }
+    }
     var editing by remember { mutableStateOf<Message?>(null) }
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -675,13 +692,20 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         }
                         Spacer(Modifier.width(Space.m))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                text = chat?.label() ?: "…",
-                                color = k.text,
-                                style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = chat?.label() ?: "…",
+                                    color = k.text,
+                                    style = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, lineHeight = 22.sp),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                if (vstate != VerifyState.NONE) {
+                                    Spacer(Modifier.width(Space.xs))
+                                    VerifyBadge(state = vstate, size = 16.dp)
+                                }
+                            }
                             val sub = if (statusText.isNotEmpty()) {
                                 statusText
                             } else if (chat != null && chat.peerHandle.isNotEmpty() && !isGroup) {
@@ -814,6 +838,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 delay(1800L)
                 flashId = null
             }
+        }
+        if (vstate == VerifyState.CHANGED) {
+            VerifyChangedBar(onOpen = { showContact = true })
         }
         Box(Modifier.weight(1f).fillMaxWidth().chatWallpaper()) {
             LazyColumn(
@@ -970,7 +997,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     onPrimary = { vm.acceptChat(chatId) },
                     secondary = tr("Արգելափակել"),
                     onSecondary = { vm.setBlocked(chatId, true) },
-                    note = if (shieldOn) tr("Անծանոթ մարդ է. եթե նա փող, կոդ կամ գաղտնաբառ խնդրի կամ հղում ուղարկի, մի հավատա։") else null,
+                    note = listOfNotNull(
+                        lookalike,
+                        if (shieldOn) tr("Անծանոթ մարդ է. եթե նա փող, կոդ կամ գաղտնաբառ խնդրի կամ հղում ուղարկի, մի հավատա։") else null,
+                    ).joinToString("\n\n").ifEmpty { null },
                 )
             } else if (iBlocked) {
                 NoticeBar(

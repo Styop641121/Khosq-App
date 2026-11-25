@@ -11,6 +11,7 @@ import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
 import am.khosq.app.crypto.E2E
 import am.khosq.app.data.Chat
+import am.khosq.app.data.ChatScroll
 import am.khosq.app.data.VerifyLogic
 import am.khosq.app.data.VerifyState
 import android.Manifest
@@ -217,6 +218,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var recording by remember { mutableStateOf(false) }
     var recSec by remember { mutableStateOf(0) }
     var menuFor by remember { mutableStateOf<Message?>(null) }
+    // a photo of the chat shown large
+    var viewing by remember { mutableStateOf<Message?>(null) }
     var attachOpen by remember { mutableStateOf(false) }
     var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var pollOpen by remember { mutableStateOf(false) }
@@ -514,6 +517,14 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     }
     if (showMedia) {
         MediaGallery(messages = messages, onClose = { showMedia = false })
+    }
+    val vw = viewing
+    if (vw != null) {
+        val vbmp = remember(vw.id) {
+            val d = vw.data
+            if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
+        }
+        ImageViewer(bitmap = vbmp, title = dayLabel(vw.ts) + "  " + formatTime(vw.ts), onClose = { viewing = null })
     }
     if (attachOpen) {
         KSheet(onDismiss = { attachOpen = false }) {
@@ -818,6 +829,32 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             set
         }
         val rev = remember(shown) { shown.asReversed() }
+        // The list is upside down: a new message takes place 0, and the list keeps showing the same older message, so the new one
+        // stayed out of sight. Follow it down when I wrote it or when the chat was already at the bottom; stay put when I scrolled up
+        // to read. "At the bottom" is read while composing, i.e. as the list was laid out before the new message moved it; a follow that
+        // is still on its way counts as the bottom too (two messages in a row must not stop the first jump half way).
+        val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
+        var following by remember { mutableStateOf(false) }
+        val bottomBefore = atBottom || following
+        val newest = messages.lastOrNull()
+        val newestId = newest?.id
+        val newestMine = newest != null && newest.from == me.uid
+        var seenNewest by remember(chatId) { mutableStateOf<String?>(null) }
+        LaunchedEffect(newestId) {
+            val before = seenNewest
+            seenNewest = newestId
+            if (ChatScroll.follow(before, newestId, newestMine, bottomBefore, searching)) {
+                following = true
+                try {
+                    listState.animateScrollToItem(0)
+                } finally {
+                    following = false
+                }
+            }
+        }
+        LaunchedEffect(typingNow) {
+            if (ChatScroll.followTyping(typingNow, bottomBefore, searching)) listState.animateScrollToItem(0)
+        }
         // a message to show (from a search result, a task or a star): scroll to it and flash it
         val jump by AppState.jump.collectAsStateWithLifecycle()
         var flashId by remember { mutableStateOf<String?>(null) }
@@ -884,6 +921,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                             onVote = { i -> if (!m.deleted) vm.vote(chatId, m, i) },
                             shield = shieldEnv,
+                            onImage = { if (!m.deleted && m.data != null) viewing = m },
                         )
                     }
                 }

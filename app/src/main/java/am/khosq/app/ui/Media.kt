@@ -62,22 +62,27 @@ object MediaUtil {
         }
     }
 
-    /** A profile photo: the middle square of the picture, 256 x 256 px, about 15-30 KB. */
+    /**
+     * A profile photo: the middle square of the picture, 512 x 512 px (about 30-70 KB), so it can be looked at large. The rules of the
+     * database refuse a photo of 90 KB or more, so a very detailed picture is saved smaller (384, then 256 px) instead of failing.
+     * Lists keep a small copy of it in memory (ProfileStore), the large view reads the whole one.
+     */
     fun avatar(ctx: Context, uri: Uri): ByteArray? {
         return try {
             val bmp = decode(ctx, uri, 1024) ?: return null
             val side = minOf(bmp.width, bmp.height)
             val square = Bitmap.createBitmap(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side)
-            val small = Bitmap.createScaledBitmap(square, 256, 256, true)
-            var quality = 85
-            var out: ByteArray
-            do {
-                val bos = ByteArrayOutputStream()
-                small.compress(Bitmap.CompressFormat.JPEG, quality, bos)
-                out = bos.toByteArray()
-                quality -= 10
-            } while (out.size > 60_000 && quality >= 40)
-            out
+            for (px in intArrayOf(512, 384, 256)) {
+                val small = Bitmap.createScaledBitmap(square, px, px, true)
+                var quality = 85
+                while (quality >= 40) {
+                    val bos = ByteArrayOutputStream()
+                    small.compress(Bitmap.CompressFormat.JPEG, quality, bos)
+                    if (bos.size() <= 70_000) return bos.toByteArray()
+                    quality -= 10
+                }
+            }
+            null
         } catch (e: Exception) {
             null
         }

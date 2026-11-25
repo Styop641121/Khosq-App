@@ -113,32 +113,10 @@ fun MediaGallery(messages: List<Message>, onClose: () -> Unit) {
 
     val big = open
     if (big != null) {
-        Dialog(onDismissRequest = { open = null }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-            val full = remember(big.id) {
-                val d = big.data
-                if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
-            }
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black).clickable { open = null },
-                contentAlignment = Alignment.Center,
-            ) {
-                if (full != null) {
-                    Image(
-                        bitmap = full,
-                        contentDescription = tr("Նկար"),
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Text(text = tr("Այս նկարը չհաջողվեց բացել"), color = Color.White)
-                }
-                Text(
-                    text = dayLabel(big.ts) + "  " + formatTime(big.ts),
-                    color = Color.White,
-                    style = TextStyle(fontSize = 14.sp),
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = Space.m),
-                )
-            }
+        val full = remember(big.id) {
+            val d = big.data
+            if (d == null) null else BitmapFactory.decodeByteArray(d, 0, d.size)?.asImageBitmap()
         }
+        ImageViewer(bitmap = full, title = dayLabel(big.ts) + "  " + formatTime(big.ts), onClose = { open = null })
     }
 }

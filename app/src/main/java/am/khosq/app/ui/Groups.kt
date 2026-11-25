@@ -242,7 +242,7 @@ fun GroupInfoSheet(vm: AppViewModel, me: Profile, chat: Chat, onClose: () -> Uni
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Space.xs),
             ) {
-                Avatar(name = chat.peerName, seed = chat.id, size = 92.dp)
+                Avatar(name = chat.peerName, seed = chat.id, size = 92.dp, zoomable = true)
                 Spacer(Modifier.height(Space.xs))
                 Text(
                     text = chat.peerName,

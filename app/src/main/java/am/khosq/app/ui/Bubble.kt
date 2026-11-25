@@ -165,8 +165,10 @@ internal fun NoticeBar(
     }
 }
 
+/** A photo in a bubble: a tap opens it large ([onOpen]), a long press is the message menu like anywhere else in the bubble. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ImageBody(m: Message) {
+private fun ImageBody(m: Message, onOpen: () -> Unit, onLong: () -> Unit) {
     val k = KTheme.colors
     val bmp = remember(m.id) {
         val d = m.data
@@ -177,7 +179,10 @@ private fun ImageBody(m: Message) {
             bitmap = bmp,
             contentDescription = tr("Նկար"),
             contentScale = ContentScale.FillWidth,
-            modifier = Modifier.width(240.dp).clip(RoundedCornerShape(Corner.m)),
+            modifier = Modifier
+                .width(240.dp)
+                .clip(RoundedCornerShape(Corner.m))
+                .combinedClickable(onClick = onOpen, onLongClick = onLong),
         )
     } else {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -295,6 +300,7 @@ internal fun Bubble(
     onLong: () -> Unit,
     onVote: (Int) -> Unit = {},
     shield: ShieldEnv? = null,
+    onImage: () -> Unit = {},
 ) {
     val k = KTheme.colors
     if (m.kind == "call" || m.kind == "sys") {
@@ -471,7 +477,7 @@ internal fun Bubble(
                         }
                     }
                     when (m.kind) {
-                        "img" -> ImageBody(m)
+                        "img" -> ImageBody(m, onOpen = onImage, onLong = onLong)
                         "voice" -> VoiceBody(m, mine, onLong)
                         "loc" -> LocationBody(m, mine, ink, soft, onLong)
                         "sos" -> SosBody(m, mine, peerName, ink, soft, onLong)

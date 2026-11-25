@@ -5,6 +5,7 @@ import am.khosq.app.KeepAliveService
 import am.khosq.app.Lang
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
+import am.khosq.app.data.ProfileStore
 import am.khosq.app.data.VerifyState
 import am.khosq.app.sos.SosEngine
 import am.khosq.app.tr
@@ -320,11 +321,13 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(contentAlignment = Alignment.BottomEnd) {
+                // with a photo a tap makes it large (the camera badge changes it); without one a tap picks a photo
                 Avatar(
                     name = me.name,
                     seed = me.uid,
                     size = 100.dp,
-                    modifier = Modifier.clip(CircleShape).clickable { pickPhoto() },
+                    zoomable = true,
+                    modifier = Modifier.clip(CircleShape).clickable(enabled = ProfileStore.photos[me.uid] == null) { pickPhoto() },
                 )
                 Box(
                     modifier = Modifier
@@ -760,7 +763,7 @@ fun ContactSheet(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
-            Avatar(name = chat.peerName, seed = chat.peerUid, size = 112.dp)
+            Avatar(name = chat.peerName, seed = chat.peerUid, size = 112.dp, zoomable = true)
             Spacer(Modifier.height(Space.s))
             val vstate = rememberVerifyState(chat.peerUid)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {

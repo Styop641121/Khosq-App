@@ -12,6 +12,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,9 @@ import androidx.compose.material3.TextFieldColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -88,6 +92,7 @@ private val AvatarPairs = listOf(
 /**
  * The person's photo, or the first letter on a soft gradient picked from the ID.
  * [online] adds the small green dot in the corner. ([circle] is kept for older call sites: every avatar is round now.)
+ * With [zoomable] a tap on a real photo opens it large (an avatar without a photo does nothing, so the [modifier] click still works).
  */
 @Composable
 fun Avatar(
@@ -97,18 +102,22 @@ fun Avatar(
     modifier: Modifier = Modifier,
     circle: Boolean = true,
     online: Boolean = false,
+    zoomable: Boolean = false,
 ) {
     var h = 0
     for (c in seed) h = (h * 31 + c.code) and 0x7fffffff
     val pair = AvatarPairs[h % AvatarPairs.size]
     val photo = ProfileStore.photos[seed]
     val k = KTheme.colors
+    var big by remember { mutableStateOf(false) }
+    val canZoom = zoomable && photo != null
     Box(modifier = modifier.size(size)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(pair.first, pair.second))),
+                .background(Brush.linearGradient(listOf(pair.first, pair.second)))
+                .then(if (canZoom) Modifier.clickable { big = true } else Modifier),
             contentAlignment = Alignment.Center,
         ) {
             if (photo != null) {
@@ -127,6 +136,7 @@ fun Avatar(
                 )
             }
         }
+        if (big && canZoom) AvatarViewer(uid = seed, name = name, onClose = { big = false })
         if (online) {
             val dot = (size.value * 0.27f).coerceAtLeast(11f).dp
             Box(

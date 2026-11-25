@@ -23,6 +23,25 @@ object ProfileStore {
     private val busy: MutableSet<String> = ConcurrentHashMap.newKeySet()
     private var dir: File? = null
 
+    /** The small copy that lists keep in memory: a big photo is read at half or quarter size (never under 256 px). */
+    private fun small(bytes: ByteArray): ImageBitmap? {
+        val b = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, b)
+        val o = BitmapFactory.Options().apply { inSampleSize = PhotoMath.sample(b.outWidth, b.outHeight, 256) }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)?.asImageBitmap()
+    }
+
+    /** The photo as it was saved (for the large view), or null while there is no copy of it on this phone. Call it off the main thread. */
+    fun full(uid: String): ImageBitmap? {
+        val folder = dir ?: return null
+        val f = folder.listFiles { x -> x.name.startsWith("$uid-") }?.firstOrNull() ?: return null
+        return try {
+            BitmapFactory.decodeFile(f.path)?.asImageBitmap()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun init(ctx: Context) {
         if (dir != null) return
         val d = File(ctx.applicationContext.cacheDir, "photos")
@@ -51,7 +70,7 @@ object ProfileStore {
                         file.writeBytes(bytes)
                     }
                 }
-                val bmp = if (bytes != null) BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() else null
+                val bmp = if (bytes != null) small(bytes) else null
                 withContext(Dispatchers.Main) {
                     if (bmp != null) {
                         photos[uid] = bmp
@@ -68,7 +87,7 @@ object ProfileStore {
 
     /** My own new photo shows at once, before the upload is finished. */
     fun setLocal(uid: String, bytes: ByteArray, ver: Long) {
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() ?: return
+        val bmp = small(bytes) ?: return
         photos[uid] = bmp
         have[uid] = ver
         val folder = dir ?: return

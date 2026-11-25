@@ -272,6 +272,7 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
     val stars by vm.stars.collectAsStateWithLifecycle()
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
     val memChats by vm.memoryChats.collectAsStateWithLifecycle()
+    val translateOn by vm.translateOn.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -422,7 +423,7 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
             SettingsRow(
                 icon = KIcons.Assistant,
                 title = tr("KHOSQ Օգնական"),
-                subtitle = tr("Հարցեր և հրամաններ՝ առանց լեզվական մոդելի"),
+                subtitle = tr("Հարցեր, հրամաններ, թարգմանություն"),
                 onClick = onAssistant,
             )
             KDivider(inset = 62.dp)
@@ -438,6 +439,19 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                 title = "KHOSQ Memory",
                 subtitle = if (memChats.isNotEmpty()) trf("Միացված է՝ {0} զրույցում", memChats.size.toString()) else tr("Անջատված է"),
                 onClick = onMemory,
+            )
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Translate,
+                title = tr("Թարգմանություն"),
+                subtitle = if (translateOn) {
+                    tr("Միացված է. նամակը թարգմանվում է միայն երբ ընտրում ես «Թարգմանել», և միայն այդ նամակի տեքստն է ուղարկվում սերվեր։")
+                } else {
+                    tr("Անջատված է. ոչինչ չի ուղարկվում սերվեր։")
+                },
+                trailing = {
+                    Switch(checked = translateOn, onCheckedChange = { on -> vm.setTranslateOn(on) }, colors = kSwitchColors())
+                },
             )
         }
 

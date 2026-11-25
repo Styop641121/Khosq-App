@@ -18,6 +18,11 @@ import am.khosq.app.data.AsstIntent
 import am.khosq.app.data.AsstTurn
 import am.khosq.app.data.AssistantLogic
 import am.khosq.app.data.AssistantParser
+import am.khosq.app.data.TranslateCache
+import am.khosq.app.data.TranslateLogic
+import am.khosq.app.data.TranslateResult
+import am.khosq.app.push.TranslateClient
+import am.khosq.app.Lang
 import am.khosq.app.data.Task
 import am.khosq.app.data.TaskStore
 import am.khosq.app.Reminders
@@ -932,10 +937,14 @@ class AppViewModel : ViewModel() {
             if (intent.title.isNotEmpty()) turn = turn.copy(proposal = Task(title = intent.title, due = intent.due, remind = intent.remind), busy = true)
         } else if (intent is AsstIntent.Find) {
             turn = turn.copy(busy = true)
+        } else if (intent is AsstIntent.Translate && intent.text.isNotEmpty()) {
+            // nothing leaves the phone before the person has allowed translation
+            turn = if (_translateOn.value) turn.copy(busy = true) else turn.copy(needsAllow = true)
         }
         val shown = turn
         _asst.update { list -> (list + shown).takeLast(30) }
         if (intent is AsstIntent.Find) assistantFind(id, intent)
+        if (intent is AsstIntent.Translate && shown.busy) assistantTranslate(id, intent)
         val offered = shown.proposal
         if (intent is AsstIntent.AddTask && offered != null) assistantAdd(id, offered)
     }
@@ -1036,6 +1045,65 @@ class AppViewModel : ViewModel() {
         val t = turn.proposal ?: return
         if (turn.proposalState == 1 && t.id != 0L) deleteTask(t.id)
         asstChange(turnId) { x -> x.copy(proposalState = 2) }
+    }
+
+    private fun assistantTranslate(id: Long, f: AsstIntent.Translate) {
+        val to = f.to.ifEmpty { TranslateLogic.defaultTarget(f.text, Lang.code) }
+        viewModelScope.launch {
+            try {
+                if (!TranslateLogic.fits(f.text)) throw TranslateClient.Failure(413)
+                val r = translateText(f.text, to)
+                asstChange(id) { x -> x.copy(busy = false, translation = r, transError = "") }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                asstChange(id) { x -> x.copy(busy = false, transError = TranslateClient.explain(e)) }
+            }
+        }
+    }
+
+    /** The person allowed translation on the answer card: it is switched on, and this question is translated. */
+    fun assistantAllowTranslate(turnId: Long) {
+        val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
+        val f = turn.intent as? AsstIntent.Translate ?: return
+        if (turn.busy) return
+        setTranslateOn(true)
+        asstChange(turnId) { x -> x.copy(needsAllow = false, busy = true, transError = "") }
+        assistantTranslate(turnId, f)
+    }
+
+    /** Translating failed: try the same text again. */
+    fun assistantRetryTranslate(turnId: Long) {
+        val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
+        val f = turn.intent as? AsstIntent.Translate ?: return
+        if (turn.busy) return
+        if (!_translateOn.value) {
+            asstChange(turnId) { x -> x.copy(needsAllow = true, transError = "") }
+            return
+        }
+        asstChange(turnId) { x -> x.copy(busy = true, transError = "") }
+        assistantTranslate(turnId, f)
+    }
+
+    // ---- Translation: one text at a time, only when the person asks for it, and only after they allowed it once.
+
+    private val _translateOn = MutableStateFlow(Prefs.getString("translate_ok") == "1")
+    val translateOn: StateFlow<Boolean> = _translateOn.asStateFlow()
+    private val translateCache = TranslateCache()
+
+    /** The switch in Settings and the "Allow" button of the translation sheet. Switching it off also forgets the translations kept for this run. */
+    fun setTranslateOn(on: Boolean) {
+        Prefs.putString("translate_ok", if (on) "1" else "0")
+        _translateOn.value = on
+        if (!on) translateCache.clear()
+    }
+
+    /** The translation of [text] into [to] (the last answers are kept while the app runs). Throws when the server says no: see [TranslateClient.explain]. */
+    suspend fun translateText(text: String, to: String): TranslateResult {
+        translateCache.get(text, to)?.let { return it }
+        val r = TranslateClient.translate(text, to)
+        translateCache.put(text, to, r)
+        return r
     }
 
     private fun isTaken(e: Throwable?): Boolean {

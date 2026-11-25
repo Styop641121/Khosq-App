@@ -188,6 +188,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var pollOpen by remember { mutableStateOf(false) }
     // a message I am turning into a task: the form opens with its text
     var taskSeed by remember { mutableStateOf<Task?>(null) }
+    var translateFor by remember { mutableStateOf<String?>(null) }
     // KHOSQ Memory for this chat: 1 = asking to switch it on, 2 = asking to switch it off
     var memAsk by remember { mutableStateOf(0) }
     val memChats by vm.memoryChats.collectAsStateWithLifecycle()
@@ -386,6 +387,15 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             }
             if (mm.kind == "text" && !mm.deleted && mm.text.isNotBlank()) {
                 SheetRow(
+                    icon = KIcons.Translate,
+                    label = tr("Թարգմանել"),
+                    subtitle = tr("Ուղարկվում է միայն այս նամակի տեքստը"),
+                    onClick = {
+                        translateFor = mm.text
+                        menuFor = null
+                    },
+                )
+                SheetRow(
                     icon = KIcons.Tasks,
                     label = tr("Ավելացնել առաջադրանքներին"),
                     subtitle = tr("Միայն քո հեռախոսում"),
@@ -501,6 +511,10 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
             onClose = { taskSeed = null },
             onSave = { t -> vm.saveTask(t, announce = true) },
         )
+    }
+    val tf = translateFor
+    if (tf != null) {
+        TranslateSheet(vm = vm, text = tf, onClose = { translateFor = null })
     }
     if (pollOpen) {
         CreatePollSheet(

@@ -6,7 +6,6 @@ import am.khosq.app.data.AsstIntent
 import am.khosq.app.data.AsstTurn
 import am.khosq.app.data.AssistantParser
 import am.khosq.app.data.DayRange
-import am.khosq.app.data.LaterKind
 import am.khosq.app.data.RangeKind
 import am.khosq.app.data.Task
 import am.khosq.app.data.TaskFilter
@@ -48,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -65,6 +66,7 @@ private val EXAMPLES = listOf(
     "Անավարտ առաջադրանքներ",
     "Հիշեցրու վաղը ժամը 10-ին զանգահարել",
     "Գտիր հասցեն անցյալ շաբաթ",
+    "Թարգմանիր ռուսերեն՝ բարի լույս",
 )
 
 /** "Tomorrow (26 Nov)", "Last week (16 Nov – 22 Nov)": what the assistant took the person's words to mean, written out. */
@@ -91,7 +93,8 @@ internal fun rangeLabel(r: DayRange): String {
 /**
  * KHOSQ Assistant: the person asks or gives a command in plain words; the answer comes from their own tasks and from the
  * chats they switched Memory on for, found by simple rules (no language model, nothing leaves the phone). Under every
- * answer is its source. A reminder is only added after the person agrees to it.
+ * answer is its source. A reminder is added at once, with "Change" and "Undo". The one thing that leaves the phone is
+ * the text of a "translate …" command, and only after the person allowed translation.
  */
 @Composable
 fun AssistantScreen(
@@ -156,7 +159,7 @@ fun AssistantScreen(
                     Icon(imageVector = KIcons.Assistant, contentDescription = null, tint = k.accent, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.width(Space.s))
                     Text(
-                        text = tr("Պատասխանում եմ քո առաջադրանքներից և այն զրույցներից, որոնցում միացրել ես Հիշողությունը։ Լեզվական մոդել չեմ օգտագործում, ոչինչ չի ուղարկվում սերվեր, և ամեն պատասխանի տակ ցույց եմ տալիս աղբյուրը։"),
+                        text = tr("Պատասխանում եմ քո առաջադրանքներից և այն զրույցներից, որոնցում միացրել ես Հիշողությունը։ Այդ պատասխանների համար ոչինչ չի ուղարկվում սերվեր, և ամեն պատասխանի տակ ցույց եմ տալիս աղբյուրը։ Միակ բացառությունը թարգմանությունն է՝ միայն երբ դու ես խնդրում, և միայն քո թույլտվությամբ։"),
                         color = k.text,
                         style = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
                     )
@@ -198,6 +201,8 @@ fun AssistantScreen(
                         onAdd = { vm.assistantAddTask(t.id) },
                         onChange = { p -> changing = t.id to p },
                         onUndo = { vm.assistantUndoTask(t.id) },
+                        onAllow = { vm.assistantAllowTranslate(t.id) },
+                        onRetry = { vm.assistantRetryTranslate(t.id) },
                     )
                 }
             }
@@ -350,6 +355,8 @@ private fun AnswerCard(
     onAdd: () -> Unit,
     onChange: (Task) -> Unit,
     onUndo: () -> Unit,
+    onAllow: () -> Unit,
+    onRetry: () -> Unit,
 ) {
     val k = KTheme.colors
     val now = System.currentTimeMillis()
@@ -365,14 +372,9 @@ private fun AnswerCard(
         when (intent) {
             is AsstIntent.Help -> HelpBody()
             is AsstIntent.Later -> {
-                CardText(
-                    if (intent.kind == LaterKind.SUMMARY) {
-                        tr("Զրույցի ամփոփումը լեզվական մոդել է պահանջում, իսկ ես այն դեռ չեմ օգտագործում։ Սա կավելանա առանձին քայլով և միայն քո թույլտվությամբ։")
-                    } else {
-                        tr("Թարգմանությունը առանձին հնարավորություն է, որը դեռ պատրաստ չէ։ Կավելանա հաջորդ քայլերով։")
-                    },
-                )
+                CardText(tr("Զրույցի ամփոփումը լեզվական մոդել է պահանջում, իսկ ես այն դեռ չեմ օգտագործում։ Սա կավելանա առանձին քայլով և միայն քո թույլտվությամբ։"))
             }
+            is AsstIntent.Translate -> TranslateBody(turn = turn, intent = intent, onAllow = onAllow, onRetry = onRetry)
             is AsstIntent.ListTasks -> {
                 val total = turn.tasks.size + turn.moreTasks
                 val range = intent.range
@@ -415,8 +417,65 @@ private fun HelpBody() {
     CardText(tr("Հիշեցում՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել Արմանին»։ Ավելացնում եմ անմիջապես և ցույց եմ տալիս, թե ինչ եմ հասկացել. սխալի դեպքում սեղմիր «Փոխել» կամ «Հետարկել»։"))
     CardText(tr("Որոնում՝ «գտիր հասցեն անցյալ շաբաթ», «գտիր Արման ժամ»։ Փնտրում եմ քո առաջադրանքներում և այն զրույցներում, որտեղ Հիշողությունը միացված է։"))
     CardText(tr("Օրեր՝ այսօր, վաղը, երեկ, այս / անցյալ / հաջորդ շաբաթ, այս / անցյալ ամիս, երկուշաբթի…, «վերջին 7 օրը»։"))
-    CardText(tr("Ամփոփում և թարգմանություն՝ դեռ չեմ կարող, դրանք լեզվական մոդել են պահանջում։ Եթե չեմ հասկանում, ասում եմ և ոչինչ չեմ կռահում քո փոխարեն։"), secondary = true)
+    CardText(tr("Թարգմանություն՝ «թարգմանիր ռուսերեն՝ բարի լույս»։ Թարգմանվող տեքստն ուղարկվում է սերվեր՝ միայն քո թույլտվությամբ։ Նամակը թարգմանելու համար երկար սեղմիր այն և ընտրիր «Թարգմանել»։"))
+    CardText(tr("Ամփոփում՝ դեռ չեմ կարող, դա լեզվական մոդել է պահանջում։ Եթե չեմ հասկանում, ասում եմ և ոչինչ չեմ կռահում քո փոխարեն։"), secondary = true)
     Spacer(Modifier.height(Space.xs))
+}
+
+/** The answer to "translate …": what to do when no text was given, the permission, the wait, the failure, or the translation. */
+@Composable
+private fun TranslateBody(turn: AsstTurn, intent: AsstIntent.Translate, onAllow: () -> Unit, onRetry: () -> Unit) {
+    val k = KTheme.colors
+    val clip = LocalClipboardManager.current
+    var copied by remember(turn.id) { mutableStateOf(false) }
+    if (intent.text.isEmpty()) {
+        CardText(tr("Ասա, թե ինչ թարգմանեմ"), bold = true)
+        CardText(tr("Գրիր, օրինակ՝ «թարգմանիր ռուսերեն՝ բարի լույս»։"))
+        CardText(tr("Զրույցում նամակը թարգմանելու համար երկար սեղմիր այն և ընտրիր «Թարգմանել»։"), secondary = true)
+        Spacer(Modifier.height(Space.xs))
+        return
+    }
+    val r = turn.translation
+    when {
+        turn.needsAllow -> {
+            CardText(tr("Թարգմանության թույլտվություն"), bold = true)
+            CardText(tr("Թարգմանելու համար միայն այս տեքստը կուղարկվի KHOSQ-ի սերվեր և այնտեղից՝ Cloudflare AI. այդ պահին այն չգաղտնագրված է։ KHOSQ-ի սերվերը այն չի պահում և չի գրանցում։ Թույլտվությունը կարելի է հանել Կարգավորումներում։"))
+            Box(Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs)) {
+                GradientButton(text = tr("Թույլատրել և թարգմանել"), onClick = onAllow, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        turn.busy -> CardText(tr("Թարգմանում եմ…"), bold = true)
+        turn.transError.isNotEmpty() -> {
+            CardText(turn.transError, bold = true)
+            Box(Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs)) {
+                SoftButton(text = tr("Կրկնել"), onClick = onRetry, modifier = Modifier.fillMaxWidth())
+            }
+        }
+        r != null -> {
+            if (r.same) {
+                CardText(tr("Տեքստն արդեն այս լեզվով է"), bold = true)
+                CardText(r.text)
+            } else {
+                CardText(trf("Թարգմանություն՝ {0}", langName(r.to)), secondary = true)
+                CardText(r.text, bold = true)
+                Box(Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs)) {
+                    SoftButton(
+                        text = if (copied) tr("Պատճենվեց") else tr("Պատճենել"),
+                        onClick = {
+                            clip.setText(AnnotatedString(r.text))
+                            copied = true
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                CardText(tr("Ավտոմատ թարգմանությունը կարող է սխալներ պարունակել։"), secondary = true)
+                SourceLine(
+                    if (r.via.isEmpty()) tr("Աղբյուր՝ KHOSQ-ի սերվեր (Cloudflare AI). տեքստը չի պահվում")
+                    else trf("Աղբյուր՝ KHOSQ-ի սերվեր (Cloudflare AI, {0}). տեքստը չի պահվում", viaName(r.via)),
+                )
+            }
+        }
+    }
 }
 
 /** The task the assistant added at the person's word: what it understood, and "Change" / "Undo" in case it understood wrongly. */

@@ -9,7 +9,7 @@ enum class TaskFilter { OPEN, DONE, OVERDUE, ALL }
 enum class RangeKind { TODAY, TOMORROW, DAY_AFTER, YESTERDAY, THIS_WEEK, LAST_WEEK, NEXT_WEEK, THIS_MONTH, LAST_MONTH, WEEKDAY, LAST_DAYS }
 
 /** What the assistant cannot do yet (it needs a language model, which KHOSQ does not use here). */
-enum class LaterKind { SUMMARY, TRANSLATE }
+enum class LaterKind { SUMMARY }
 
 /** A period of time: [from] and [to] are moments (both inside the period). [n] is the weekday (Calendar.MONDAY…) or the number of days. */
 data class DayRange(val kind: RangeKind, val from: Long, val to: Long, val n: Int = 0)
@@ -28,6 +28,12 @@ sealed class AsstIntent {
     data class Find(val words: List<String>, val range: DayRange?) : AsstIntent()
 
     data class Later(val kind: LaterKind) : AsstIntent()
+
+    /**
+     * "Translate into Russian: …". [text] is what the person wrote to be translated; it is empty when they only pointed at
+     * something ("translate this message"). [to] is "hy", "ru" or "en", or empty when no language was named.
+     */
+    data class Translate(val text: String, val to: String) : AsstIntent()
 }
 
 /**
@@ -55,6 +61,11 @@ data class AsstTurn(
      */
     val proposal: Task? = null,
     val proposalState: Int = 0,
+    /** The translation the server gave (for a [AsstIntent.Translate] question), or the reason there is none. */
+    val translation: TranslateResult? = null,
+    val transError: String = "",
+    /** True while the person has not yet allowed translation (nothing was sent anywhere). */
+    val needsAllow: Boolean = false,
 )
 
 /**
@@ -103,6 +114,127 @@ object AssistantParser {
     private val ALL_WORDS = arrayOf("բոլոր", "all", "все", "всех")
     private val SUMMARY_WORDS = arrayOf("ամփոփ", "summar", "резюмир", "суммир", "перескаж", "сводк")
     private val TRANSLATE_WORDS = arrayOf("թարգման", "translat", "переведи", "перевест", "перевод")
+
+    // ---- "translate …": the language words, the little words around them, and the words that only point at a message
+    private class LangWord(val code: String, val stems: Array<String>, val adverb: Array<String>)
+
+    private val LANGS = listOf(
+        LangWord("hy", arrayOf("armenian", "армянск"), arrayOf("հայերեն", "поармянски")),
+        LangWord("ru", arrayOf("russian", "русск"), arrayOf("ռուսերեն", "порусски")),
+        LangWord("en", arrayOf("english", "английск"), arrayOf("անգլերեն", "поанглийски")),
+    )
+    private val TR_FILLERS = setOf(
+        "to", "into", "in", "on", "me", "please", "ի", "ինձ", "խնդրում", "եմ", "խնդրեմ",
+        "на", "в", "во", "мне", "пожалуйста", "язык", "language", "լեզվով", "լեզու",
+    )
+    private val DEICTIC = setOf(
+        "սա", "այս", "այդ", "այն", "նամակը", "նամակ", "հաղորդագրությունը", "հաղորդագրություն", "տեքստը", "տեքստ", "վերջին", "նախորդ",
+        "this", "that", "it", "the", "message", "text", "last", "previous", "latest",
+        "это", "этот", "эту", "эти", "сообщение", "сообщения", "текст", "последнее", "последний", "предыдущее",
+    )
+    private const val QUOTE_OPEN = "«\"“„"
+    private val EDGE_JUNK = charArrayOf(':', '՝', '։', '-', '—', '–', ',', '.', ';', '«', '»', '"', '“', '”', '„', '\'', '‘', '’')
+
+    private class Wd(val f: String, val start: Int, val end: Int)
+
+    private fun wordsOf(s: String): List<Wd> {
+        val out = ArrayList<Wd>()
+        var i = 0
+        while (i < s.length) {
+            while (i < s.length && s[i].isWhitespace()) i++
+            if (i >= s.length) break
+            val st = i
+            while (i < s.length && !s[i].isWhitespace()) i++
+            out.add(Wd(MemoryLogic.fold(s.substring(st, i).filter { c -> c.isLetterOrDigit() }), st, i))
+            if (out.size >= MAX_TOKENS) break
+        }
+        return out
+    }
+
+    private fun langOf(f: String, withAdverbs: Boolean): LangWord? {
+        if (f.isEmpty()) return null
+        for (l in LANGS) {
+            for (x in l.stems) if (f.startsWith(x)) return l
+            if (withAdverbs) for (x in l.adverb) if (f.startsWith(x)) return l
+        }
+        return null
+    }
+
+    /** The same word may name the language with or without a little word before it ("into Russian"); adverb forms ("ռուսերեն", "по-русски") stand alone. */
+    private fun anyLang(f: String): LangWord? = langOf(f, true)
+
+    private fun cleanTranslateText(t: String): String {
+        val r = t.trim().trim { c -> c.isWhitespace() || c in EDGE_JUNK }
+        val w = wordsOf(r)
+        if (w.all { x -> x.f.isEmpty() || x.f in DEICTIC }) return ""
+        return r
+    }
+
+    /**
+     * "Translate into Russian: Good morning", "translate "Good morning" to Russian", "переведи на английский: Привет",
+     * "թարգմանիր ռուսերեն՝ Բարի լույս", "translate this message into Armenian" (no text: it points at a message).
+     * Null when the sentence is not a translate command after all (for example a search that mentions a translation).
+     */
+    private fun parseTranslate(text: String): AsstIntent.Translate? {
+        val s = text.take(MAX_INPUT)
+        val w = wordsOf(s)
+        var vi = -1
+        for (i in 0 until minOf(4, w.size)) {
+            if (startsF(w[i].f, SEARCH_VERBS)) return null
+            if (startsF(w[i].f, TRANSLATE_WORDS)) {
+                vi = i
+                break
+            }
+        }
+        if (vi < 0) return null
+        val rest = s.substring(w[vi].end)
+
+        // 1) the text is in quotes: it is exactly what is inside; the language is named outside
+        val open = rest.indexOfFirst { c -> c in QUOTE_OPEN }
+        if (open >= 0) {
+            val close = when (rest[open]) {
+                '"' -> rest.indexOf('"', open + 1)
+                '«' -> rest.lastIndexOf('»')
+                '“' -> rest.lastIndexOf('”')
+                else -> maxOf(rest.lastIndexOf('“'), rest.lastIndexOf('”'))
+            }
+            if (close > open) {
+                val inside = cleanTranslateText(rest.substring(open + 1, close))
+                val outside = rest.substring(0, open) + " " + rest.substring(close + 1)
+                val lang = wordsOf(outside).firstNotNullOfOrNull { x -> anyLang(x.f) }
+                return AsstIntent.Translate(inside, lang?.code ?: "")
+            }
+        }
+
+        val rw = wordsOf(rest)
+        // 2) the language comes first: "into Russian: …", "на английский …", "ռուսերեն՝ …"
+        var i = 0
+        while (i < rw.size && (rw[i].f.isEmpty() || rw[i].f in TR_FILLERS)) i++
+        if (i < rw.size) {
+            val lead = anyLang(rw[i].f)
+            if (lead != null) return AsstIntent.Translate(cleanTranslateText(rest.substring(rw[i].end)), lead.code)
+        }
+        // 3) the language comes last: "… to Russian", "… ռուսերեն"
+        var j = rw.size - 1
+        while (j >= 0 && rw[j].f.isEmpty()) j--
+        if (j >= 0) {
+            val filler = j > 0 && rw[j - 1].f in TR_FILLERS
+            val last = langOf(rw[j].f, withAdverbs = true)
+            val plain = langOf(rw[j].f, withAdverbs = false)
+            // "I like English" is a sentence; "… to English" or "… ռուսերեն" names the language
+            if (last != null && (filler || plain == null)) {
+                val cut = if (filler) rw[j - 1].start else rw[j].start
+                return AsstIntent.Translate(cleanTranslateText(rest.substring(0, cut)), last.code)
+            }
+        }
+        // 4) no language: the text is all that follows
+        return AsstIntent.Translate(cleanTranslateText(rest), "")
+    }
+
+    private fun startsF(f: String, prefixes: Array<String>): Boolean {
+        for (p in prefixes) if (f.startsWith(p)) return true
+        return false
+    }
     private val MARKERS = setOf("ժամը", "ժամին", "at", "в", "во", "к", "around")
 
     private val STOP = setOf(
@@ -135,6 +267,12 @@ object AssistantParser {
         var toks = tokenize(text)
         if (toks.isEmpty()) return AsstIntent.Help
         if (isHelp(toks)) return AsstIntent.Help
+        // "translate …" at the start is a translation even when the text after it holds words like "new" or "task"
+        val tv = toks.take(3).indexOfFirst { x -> starts(x, TRANSLATE_WORDS) }
+        if (tv >= 0 && toks.take(tv).none { x -> x.f in REMIND_EXACT || starts(x, REMIND_START) }) {
+            val early = parseTranslate(text)
+            if (early != null) return early
+        }
         val addKind = addKind(toks)
         if (addKind != 0) {
             val a = parseAdd(toks, now, addKind == 1)
@@ -144,7 +282,10 @@ object AssistantParser {
         }
         val head = toks.take(5)
         if (head.any { x -> starts(x, SUMMARY_WORDS) }) return AsstIntent.Later(LaterKind.SUMMARY)
-        if (head.any { x -> starts(x, TRANSLATE_WORDS) }) return AsstIntent.Later(LaterKind.TRANSLATE)
+        if (head.any { x -> starts(x, TRANSLATE_WORDS) }) {
+            val trans = parseTranslate(text)
+            if (trans != null) return trans
+        }
         val search = toks.any { x -> starts(x, SEARCH_VERBS) }
         val tasky = toks.any { x -> starts(x, TASK_NOUNS) } || asksWhatIHave(toks)
         if (!search && tasky) return parseList(toks, now)

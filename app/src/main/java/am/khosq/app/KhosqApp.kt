@@ -8,6 +8,8 @@ class KhosqApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
+        // the lock of the app: with the lock on, the app starts closed
+        AppLock.load()
         ProfileStore.init(this)
         am.khosq.app.update.Updater.cleanup(this)
         // KHOSQ Memory: the database of saved texts opens lazily; the list of chats with Memory on is read in the background

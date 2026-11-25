@@ -46,6 +46,8 @@ class KhosqMessagingService : FirebaseMessagingService() {
             if (shown) return
             body = am.khosq.app.tr("Նոր նամակ")
         }
+        // "hide the text in notifications" (an SOS stays readable: it holds only the word, never a place)
+        body = am.khosq.app.data.NotifyPrivacy.text(am.khosq.app.AppLock.hideTextNow(), body, am.khosq.app.tr("Նոր նամակ"))
         val tap = PendingIntent.getActivity(
             this,
             chatId.hashCode(),

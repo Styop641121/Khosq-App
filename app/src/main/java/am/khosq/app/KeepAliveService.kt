@@ -200,13 +200,16 @@ class KeepAliveService : Service() {
     }
 
     private fun postMessage(d: DocumentSnapshot, me: String, members: List<*>, names: Map<*, *>?, raw: String) {
-        val last = previewOf(d.getString("lastKind") ?: "", raw)
+        val preview = previewOf(d.getString("lastKind") ?: "", raw)
+        // "hide the text in notifications" (an SOS stays readable: it holds only the word, never a place)
+        val hide = am.khosq.app.data.NotifyPrivacy.hidden(AppLock.hideTextNow(), preview)
+        val last = if (hide) tr("Նոր նամակ") else preview
         val name: String
         val text: String
         if (d.getBoolean("group") == true) {
             val from = (names?.get(d.getString("lastFrom") ?: "") as? String) ?: ""
             name = d.getString("title") ?: "KHOSQ"
-            text = if (from.isEmpty()) last else "$from: $last"
+            text = if (from.isEmpty() || hide) last else "$from: $last"
         } else {
             val peer = members.firstOrNull { it != me } as? String ?: return
             name = (names?.get(peer) as? String) ?: "KHOSQ"

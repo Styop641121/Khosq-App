@@ -24,6 +24,7 @@ import am.khosq.app.ui.HomeScreen
 import am.khosq.app.ui.InviteJoinHost
 import am.khosq.app.ui.MemoryScreen
 import am.khosq.app.ui.KhosqTheme
+import am.khosq.app.ui.LockScreen
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.StarredScreen
 import am.khosq.app.ui.TasksScreen
@@ -105,6 +106,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // "no screenshots" when the person switched it on in the security centre
+        AppLock.applyScreen(window)
         // the window shows this colour until the first frame is drawn, so a light-theme start does not flash dark
         val lightNow = when (AppTheme.mode) {
             "light" -> true
@@ -152,12 +155,18 @@ class MainActivity : ComponentActivity() {
         AppState.inForeground = true
         AppState.started()
         CallManager.appVisible(true)
+        // the app may have to close again after a long absence (never in the middle of a call)
+        AppLock.back(System.currentTimeMillis(), callIsOn(CallManager.ui.value.phase))
     }
 
     override fun onStop() {
         AppState.inForeground = false
         // the camera pauses only when the call screen is not on show either
-        if (AppState.stopped()) CallManager.appVisible(false)
+        if (AppState.stopped()) {
+            CallManager.appVisible(false)
+            // turning the phone over also stops and starts the screen: that is not leaving
+            if (!isChangingConfigurations) AppLock.left(System.currentTimeMillis())
+        }
         super.onStop()
     }
 
@@ -195,8 +204,13 @@ private fun Root(vm: AppViewModel = viewModel()) {
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
     val pip by AppState.inPip.collectAsStateWithLifecycle()
+    val locked by AppLock.locked.collectAsStateWithLifecycle()
+    val screenGuard by AppLock.screenGuard.collectAsStateWithLifecycle()
     val callOn = callIsOn(call.phase)
     val showBar = callOn && CallUiState.minimized && !pip
+
+    // the switch "no screenshots" works at once
+    LaunchedEffect(screenGuard) { AppLock.applyScreen((ctx as? Activity)?.window) }
 
     // the floating window has nothing left to show once the call is over
     LaunchedEffect(pip, callOn) {
@@ -253,7 +267,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
                     .fillMaxWidth()
                     .then(if (showBar) Modifier.consumeWindowInsets(WindowInsets.statusBars) else Modifier),
             ) {
-                when (val b = boot) {
+                // while the app is locked nothing of it is shown (and nothing of it is even built): only the unlock screen
+                if (locked) {
+                    LockScreen()
+                } else when (val b = boot) {
                     is Boot.Loading -> SplashScreen()
                     is Boot.Failed -> EmptyState(
                         icon = KIcons.Info,
@@ -267,7 +284,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
                     is Boot.Ready -> MainNav(vm, b.me)
                 }
 
-                val n = notice
+                val n = if (locked) null else notice
                 if (n != null) {
                     val kc = KTheme.colors
                     Text(
@@ -289,10 +306,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
 
         if (pip && callOn) CallPip() else CallOverlay()
-        if (boot is Boot.Ready) UpdateDialog()
+        if (boot is Boot.Ready && !locked) UpdateDialog()
     }
 
-    if (askFullScreen) {
+    if (askFullScreen && !locked) {
         val done = {
             ctx.getSharedPreferences("khosq", Context.MODE_PRIVATE).edit().putBoolean("fsi_asked", true).apply()
             askFullScreen = false
@@ -317,7 +334,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
         )
     }
 
-    if (askBattery) {
+    if (askBattery && !locked) {
         AlertDialog(
             onDismissRequest = {
                 markBatteryAsked(ctx)

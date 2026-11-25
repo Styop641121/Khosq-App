@@ -45,6 +45,8 @@ class CallActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         showAboveLockScreen()
+        // "no screenshots" covers the call screen too
+        AppLock.applyScreen(window)
         CallManager.init(applicationContext)
         answerIfAsked(intent)
         setContent {

@@ -142,7 +142,7 @@ private fun openSoundSettings(ctx: Context) {
 
 /** A titled group of rows on one soft card, the way system settings screens are built. */
 @Composable
-private fun SettingsGroup(title: String?, content: @Composable () -> Unit) {
+internal fun SettingsGroup(title: String?, content: @Composable () -> Unit) {
     val k = KTheme.colors
     val shape = RoundedCornerShape(Corner.l)
     Column(Modifier.fillMaxWidth()) {
@@ -162,7 +162,7 @@ private fun SettingsGroup(title: String?, content: @Composable () -> Unit) {
 
 /** One row of a settings card: a tinted icon, a title, an optional second line and something at the end. */
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     icon: ImageVector,
     title: String,
     modifier: Modifier = Modifier,
@@ -205,7 +205,7 @@ private fun SettingsRow(
 
 /** Pick one of a few options. The chosen one rises out of the track. */
 @Composable
-private fun Segmented(
+internal fun Segmented(
     options: List<Pair<String, String>>,
     selected: String,
     modifier: Modifier = Modifier,
@@ -269,7 +269,7 @@ internal fun kSwitchColors() = SwitchDefaults.colors(
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit, onAssistant: () -> Unit, onSos: () -> Unit) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit, onAssistant: () -> Unit, onSos: () -> Unit, onSecurity: () -> Unit) {
     val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
@@ -566,6 +566,13 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
             }
         }
         SettingsGroup(tr("Անվտանգություն")) {
+            SettingsRow(
+                icon = KIcons.Shield,
+                title = tr("Անվտանգության կենտրոն"),
+                subtitle = tr("Ինչն է պաշտպանված, հավելվածի կողպում, էկրանի և ծանուցումների գաղտնիություն, արգելափակվածներ"),
+                onClick = onSecurity,
+            )
+            KDivider(inset = 62.dp)
             SettingsRow(
                 icon = KIcons.Alert,
                 title = tr("SOS և վստահելի շրջան"),

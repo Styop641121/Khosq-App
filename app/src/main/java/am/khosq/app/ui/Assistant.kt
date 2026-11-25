@@ -499,6 +499,7 @@ private fun FindBody(
     }
     val total = turn.hits.size + turn.tasks.size
     CardText(if (total > 0) trf("Գտա {0}", total.toString()) else tr("Ոչինչ չգտա"), bold = true)
+    if (total == 0) CardText(tr("Հիշեցում ավելացնելու համար սկսիր «հիշեցրու» բառով, օրինակ՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել»։"), secondary = true)
     if (intent.words.isNotEmpty()) CardText(trf("Որոնեցի՝ {0}", intent.words.joinToString(", ")), secondary = true)
     val range = intent.range
     if (range != null) CardText(trf("Ժամանակահատված՝ {0}", rangeLabel(range)), secondary = true)

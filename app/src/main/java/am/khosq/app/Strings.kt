@@ -400,6 +400,7 @@ object Strings {
     }
 
     private fun part9() {
+        map["Հիշեցում ավելացնելու համար սկսիր «հիշեցրու» բառով, օրինակ՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել»։"] = arrayOf("To add a reminder, start with “remind me”, for example: “remind me tomorrow at 10 to call”.", "Чтобы добавить напоминание, начните со слова «напомни», например: «напомни завтра в 10 позвонить».")
         map["Ավելացնում եմ…"] = arrayOf("Adding…", "Добавляю…")
         map["Հետարկել"] = arrayOf("Undo", "Отменить")
         map["Առաջադրանքը ջնջվեց"] = arrayOf("Task deleted", "Задача удалена")

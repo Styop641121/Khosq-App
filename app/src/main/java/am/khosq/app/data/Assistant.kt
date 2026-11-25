@@ -84,7 +84,7 @@ object AssistantParser {
     private val HELP_ONE = arrayOf("օգնիր", "помоги", "օգնել")
     private val GREETINGS = arrayOf("բարև", "բարեվ", "բարի", "ողջույն", "հայ", "hello", "hi", "hey", "привет", "здравств", "добрый")
     private val REMIND_EXACT = setOf("remind", "напомни", "напомните", "напомнить")
-    private val REMIND_START = arrayOf("հիշեցր", "հիշեցն")
+    private val REMIND_START = arrayOf("հիշեցր", "հիշացր", "հիշեցն", "հիշացն", "հիշցր")
     private val ADD_VERBS = arrayOf("ավելացր", "ավելաց", "ստեղծ", "նոր", "add", "create", "new", "set", "нов", "добав", "созда", "постав", "установ")
     private val ADD_NOUNS = arrayOf("առաջադրանք", "հիշեցում", "task", "reminder", "задач", "напоминани")
     private val SEARCH_VERBS = arrayOf("գտ", "որոն", "փնտր", "որտեղ", "find", "search", "look", "where", "найд", "найти", "поищ", "ищи", "искат", "где")
@@ -348,6 +348,8 @@ object AssistantParser {
             x.used = true
             if (marker) t[i - 1].used = true
             if (podTok != null) podTok.used = true
+            // written apart: "05:14 ին"
+            if (i + 1 < t.size && !t[i + 1].used && t[i + 1].f == "ին") t[i + 1].used = true
             return hour to min
         }
         if (pod != null && podTok != null) {

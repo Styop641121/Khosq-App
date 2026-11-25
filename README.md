@@ -59,3 +59,15 @@ Native Android messenger: Kotlin, Jetpack Compose (Material 3), Firebase (Auth +
 - Nothing is sent to Firebase or the Worker; `firestore.rules`, the Worker and the signing key did not change.
 - Jump to a message: a search result (chat-list search, or "Open the chat" in the Memory sheet), a task made from a message, and a starred message open their chat scrolled to that message, which flashes for about 2 seconds (`AppState.jump`, taken by `ChatScreen`; a request older than 15 seconds is ignored; a message that is no longer in the chat just opens the chat).
 - Not in 4b: photos/voice, history older than what the chat has loaded, the assistant screen that will use this search (4c).
+
+## Phase 4c (KHOSQ Assistant)
+
+- Where: the sparkle button in the chat-list top bar, and Settings -> "Assistant" -> "KHOSQ Assistant" (route `assistant`, `ui/Assistant.kt`).
+- No language model, no network: `data/Assistant.kt` reads a sentence in Armenian, Russian or English with plain rules (`AssistantParser`) and finds one of: help, **tasks** ("what do I have tomorrow", "unfinished / done / overdue / all tasks", with a day or period), **reminder / new task** ("remind me tomorrow at 10 to call Arman", "in 2 hours", "on Friday evening", "add task buy bread"), **find** ("find the address sent last week"; also any sentence with no other meaning is taken as a search). Summaries and translation are recognised and answered honestly as "not yet" (they need a model; translation is 4d).
+- Days and periods: today, tomorrow, day after tomorrow, yesterday, a weekday (future for tasks, past for searches), this / last / next week (Monday to Sunday), this / last month, "last N days". The answer always writes out the period it understood, with dates. Times: `10:30`, `at 10`, `ժամը 10-ին`, `в 10`, `5pm`, morning/evening words; plain hours are a 24-hour clock; "in N minutes/hours".
+- Where answers come from (and only there): the tasks of this phone (`TaskStore`) and the saved texts of chats with Memory on (`MemoryStore.find`). With Memory on in no chat, nothing is searched in messages and the answer says so, with a button to the Memory screen. Every answer ends with a source line (tasks: "only on this phone"; messages: the chats searched); a found message opens its chat at that message.
+- Search: words are folded like Memory search, stop words and the period words are dropped, long words are shortened by two letters (`AssistantLogic.stem`, so "հասցեն" finds "հասցե"), and a word may also be in the sender's or chat's name. All words must match; if nothing does and there are three or more words, results missing one word are shown and marked as such. Newest / best match first, at most 30.
+- A reminder is never added silently: the assistant shows the task it understood (title, date, time, "no reminder" warnings) with Add / Change (the normal task form) / Cancel.
+- The talk is kept only while the app runs (30 questions), never saved; the trash button clears it.
+- No change to Firebase, `firestore.rules`, the Worker, the manifest or the signing key.
+- Not in 4c: summaries (need a model), translation (4d), voice (4e), "important" marks on tasks, group tasks.

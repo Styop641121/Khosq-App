@@ -8,6 +8,7 @@ import am.khosq.app.ui.CallPip
 import am.khosq.app.ui.CallUiState
 import am.khosq.app.ui.callIsOn
 import am.khosq.app.ui.AppViewModel
+import am.khosq.app.ui.AssistantScreen
 import am.khosq.app.ui.Boot
 import am.khosq.app.ui.ChatScreen
 import am.khosq.app.ui.Corner
@@ -399,6 +400,16 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
                 onStarred = { nav.navigate("starred") },
                 onTasks = { nav.navigate("tasks") { launchSingleTop = true } },
                 onMemory = { nav.navigate("memory") { launchSingleTop = true } },
+                onAssistant = { nav.navigate("assistant") { launchSingleTop = true } },
+            )
+        }
+        composable("assistant") {
+            AssistantScreen(
+                vm = vm,
+                onBack = { nav.popBackStack() },
+                onOpenChat = { id -> nav.navigate("chat/$id") },
+                onOpenTasks = { nav.navigate("tasks") { launchSingleTop = true } },
+                onOpenMemory = { nav.navigate("memory") { launchSingleTop = true } },
             )
         }
         composable("memory") {

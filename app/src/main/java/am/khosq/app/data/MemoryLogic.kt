@@ -102,6 +102,13 @@ object MemoryLogic {
         return true
     }
 
+    /** How many of the words are somewhere in the text. */
+    fun score(foldedText: String, words: List<String>): Int {
+        var n = 0
+        for (w in words) if (foldedText.contains(w)) n++
+        return n
+    }
+
     /** A short piece of [text] around the first found word, with … where it was cut. */
     fun snippet(text: String, words: List<String>): String {
         val flat = text.replace('\n', ' ')

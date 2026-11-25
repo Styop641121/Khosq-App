@@ -332,6 +332,53 @@ object MemoryStore {
         }
     }
 
+    /**
+     * For the assistant: saved messages from [from] to [to] that have at least [need] of the [words] (already folded and
+     * shortened) in their text, the sender's name or the chat's name. Best match first, then newest first.
+     * With no words, every saved message of that time. Never more than [AssistantLogic.MAX_ROWS].
+     */
+    fun find(words: List<String>, from: Long, to: Long, need: Int): List<MemoryHit> {
+        return synchronized(lock) {
+            val k = key()
+            val names = state.value
+            val got = ArrayList<Pair<Int, MemoryHit>>()
+            val c = db().rawQuery(
+                "SELECT chat_id, msg_id, ts, mine, who, body, state FROM mem_items " +
+                    "WHERE state != $REMOVED AND ts >= $from AND ts <= $to ORDER BY ts DESC",
+                null,
+            )
+            try {
+                while (c.moveToNext() && got.size < 400) {
+                    val chatId = c.getString(0)
+                    val msgId = c.getString(1)
+                    val text = MemorySeal.open(k, chatId, msgId, c.getBlob(5)) ?: continue
+                    val who = c.getString(4) ?: ""
+                    val chatName = names[chatId]?.name ?: ""
+                    val score = if (words.isEmpty()) 1 else MemoryLogic.score(MemoryLogic.fold(text + "\n" + who + "\n" + chatName), words)
+                    if (score < need || score == 0) continue
+                    got.add(
+                        score to MemoryHit(
+                            chatId = chatId,
+                            chatName = chatName,
+                            msgId = msgId,
+                            ts = c.getLong(2),
+                            mine = c.getInt(3) != 0,
+                            who = who,
+                            text = text,
+                            edited = c.getInt(6) == EDITED,
+                        ),
+                    )
+                }
+            } finally {
+                c.close()
+            }
+            got
+                .sortedWith(compareByDescending<Pair<Int, MemoryHit>> { p -> p.first }.thenByDescending { p -> p.second.ts })
+                .map { p -> p.second }
+                .take(AssistantLogic.MAX_ROWS)
+        }
+    }
+
     /** Changes the saved copy of a message (the real message in the chat stays as it is). False when it is empty. */
     fun edit(chatId: String, msgId: String, text: String): Boolean {
         val t = text.trim().take(MemoryLogic.MAX_TEXT)

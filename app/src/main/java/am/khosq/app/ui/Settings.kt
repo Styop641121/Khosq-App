@@ -267,7 +267,7 @@ internal fun kSwitchColors() = SwitchDefaults.colors(
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit, onAssistant: () -> Unit) {
     val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
@@ -419,6 +419,13 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
         // ---- my tasks
         SettingsGroup(tr("Օգնական")) {
             val open = myTasks.count { x -> !x.done }
+            SettingsRow(
+                icon = KIcons.Assistant,
+                title = tr("KHOSQ Օգնական"),
+                subtitle = tr("Հարցեր և հրամաններ՝ առանց լեզվական մոդելի"),
+                onClick = onAssistant,
+            )
+            KDivider(inset = 62.dp)
             SettingsRow(
                 icon = KIcons.Tasks,
                 title = tr("Առաջադրանքներ և հիշեցումներ"),

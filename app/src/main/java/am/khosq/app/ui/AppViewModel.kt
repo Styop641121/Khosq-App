@@ -14,6 +14,10 @@ import am.khosq.app.data.MemEntry
 import am.khosq.app.data.MemoryHit
 import am.khosq.app.data.MemoryLogic
 import am.khosq.app.data.MemoryStore
+import am.khosq.app.data.AsstIntent
+import am.khosq.app.data.AsstTurn
+import am.khosq.app.data.AssistantLogic
+import am.khosq.app.data.AssistantParser
 import am.khosq.app.data.Task
 import am.khosq.app.data.TaskStore
 import am.khosq.app.Reminders
@@ -40,6 +44,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.retryWhen
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -897,6 +902,108 @@ class AppViewModel : ViewModel() {
     fun deleteTask(id: Long) = taskWork { Reminders.delete(id) }
 
     fun clearDoneTasks() = taskWork { Reminders.clearDone() }
+
+    // ---- KHOSQ Assistant: answers from my tasks and the Memory by plain rules (no language model). The talk is kept only while the app runs.
+
+    private val _asst = MutableStateFlow<List<AsstTurn>>(emptyList())
+    val assistant: StateFlow<List<AsstTurn>> = _asst.asStateFlow()
+    private var asstSeq = 0L
+
+    private fun asstChange(id: Long, change: (AsstTurn) -> AsstTurn) {
+        _asst.update { list -> list.map { x -> if (x.id == id) change(x) else x } }
+    }
+
+    fun assistantClear() {
+        _asst.value = emptyList()
+    }
+
+    /** Reads the question, finds the answer in what the person allowed (own tasks; chats with Memory on) and adds both to the talk. */
+    fun assistantAsk(text: String) {
+        val q = text.trim().take(AssistantParser.MAX_INPUT)
+        if (q.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val intent = AssistantParser.parse(q, now)
+        val id = ++asstSeq
+        var turn = AsstTurn(id = id, question = q, at = now, intent = intent)
+        if (intent is AsstIntent.ListTasks) {
+            val got = AssistantLogic.pickTasks(TaskStore.tasks.value, intent.filter, intent.range, now)
+            turn = turn.copy(tasks = got.first, moreTasks = got.second - got.first.size)
+        } else if (intent is AsstIntent.AddTask) {
+            if (intent.title.isNotEmpty()) turn = turn.copy(proposal = Task(title = intent.title, due = intent.due, remind = intent.remind))
+        } else if (intent is AsstIntent.Find) {
+            turn = turn.copy(busy = true)
+        }
+        val shown = turn
+        _asst.update { list -> (list + shown).takeLast(30) }
+        if (intent is AsstIntent.Find) assistantFind(id, intent)
+    }
+
+    private fun assistantFind(id: Long, f: AsstIntent.Find) {
+        val range = f.range
+        val from = range?.from ?: 0L
+        val to = range?.to ?: Long.MAX_VALUE
+        val stems = AssistantLogic.stems(f.words)
+        val mine = TaskStore.tasks.value
+        val chatNames = MemoryStore.chats.value.values.map { c -> c.name }
+        viewModelScope.launch {
+            var loose = false
+            var tasksFound = AssistantLogic.findTasks(mine, f.words, range, stems.size)
+            var hits: List<MemoryHit> = emptyList()
+            if (chatNames.isNotEmpty()) {
+                hits = withContext(Dispatchers.IO) {
+                    try {
+                        MemoryStore.find(stems, from, to, stems.size)
+                    } catch (e: Exception) {
+                        emptyList<MemoryHit>()
+                    }
+                }
+            }
+            if (hits.isEmpty() && tasksFound.isEmpty() && stems.size >= 3) {
+                // nothing has every word: show what has all but one, and say so
+                loose = true
+                val need = AssistantLogic.need(stems.size, true)
+                tasksFound = AssistantLogic.findTasks(mine, f.words, range, need)
+                if (chatNames.isNotEmpty()) {
+                    hits = withContext(Dispatchers.IO) {
+                        try {
+                            MemoryStore.find(stems, from, to, need)
+                        } catch (e: Exception) {
+                            emptyList<MemoryHit>()
+                        }
+                    }
+                }
+            }
+            val found = tasksFound
+            val seen = hits
+            val approx = loose && (found.isNotEmpty() || seen.isNotEmpty())
+            asstChange(id) { x -> x.copy(busy = false, tasks = found, hits = seen, memChats = chatNames, memOff = chatNames.isEmpty(), approx = approx) }
+        }
+    }
+
+    /** The person agreed to the offered task (as it was, or after changing it): it is saved, once. */
+    fun assistantAddTask(turnId: Long, changed: Task? = null) {
+        val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
+        if (turn.proposalState != 0) return
+        val t = changed ?: turn.proposal ?: return
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                try {
+                    Reminders.save(t)
+                } catch (e: Exception) {
+                    false
+                }
+            }
+            if (ok) {
+                asstChange(turnId) { x -> x.copy(proposal = t, proposalState = 1) }
+            } else {
+                flash(tr("Առաջադրանքը չհաջողվեց պահպանել"))
+            }
+        }
+    }
+
+    fun assistantCancelTask(turnId: Long) {
+        asstChange(turnId) { x -> if (x.proposalState == 0) x.copy(proposalState = 2) else x }
+    }
 
     private fun isTaken(e: Throwable?): Boolean {
         var t = e

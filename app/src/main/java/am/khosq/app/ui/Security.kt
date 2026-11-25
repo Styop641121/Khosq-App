@@ -1,6 +1,7 @@
 package am.khosq.app.ui
 
 import am.khosq.app.AppLock
+import am.khosq.app.Prefs
 import am.khosq.app.DeviceLock
 import am.khosq.app.crypto.E2E
 import am.khosq.app.data.AppLockLogic
@@ -32,6 +33,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -210,6 +212,9 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
     val shieldOn by vm.shieldOn.collectAsStateWithLifecycle()
     val circle by SosEngine.circle.collectAsStateWithLifecycle()
     val epoch by E2E.verifyEpoch.collectAsStateWithLifecycle()
+    val accountEmail by vm.accountEmail.collectAsStateWithLifecycle()
+    val linkedMail: String? = accountEmail
+    var backupAt by remember { mutableStateOf(Prefs.getLong(KEY_BACKUP_AT)) }
 
     // the phone's own settings can change while this sheet is open (the person goes there and comes back)
     var tick by remember { mutableStateOf(0) }
@@ -230,7 +235,7 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
     val states = remember(people, epoch) { people.associate { c -> c.peerUid to E2E.verifyState(c.peerUid) } }
     val verified = states.values.count { s -> s == VerifyState.VERIFIED }
     val changedPeople = people.filter { c -> states[c.peerUid] == VerifyState.CHANGED }
-    val report = remember(phoneLock, lockOn, shieldOn, circleCount, people.size, verified, changedPeople.size, batteryFree) {
+    val report = remember(phoneLock, lockOn, shieldOn, circleCount, people.size, verified, changedPeople.size, batteryFree, linkedMail, backupAt) {
         SecurityLogic.report(
             SecInput(
                 phoneLock = phoneLock,
@@ -241,6 +246,8 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
                 verified = verified,
                 changed = changedPeople.size,
                 batteryFree = batteryFree,
+                accountLinked = linkedMail != null,
+                keyFile = backupAt > 0L,
             ),
         )
     }
@@ -273,7 +280,7 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
 
     KSheet(onDismiss = onClose) {
         Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = Space.xl),
+            modifier = Modifier.fillMaxWidth().imePadding().verticalScroll(rememberScrollState()).padding(horizontal = Space.xl),
             verticalArrangement = Arrangement.spacedBy(Space.s),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -351,6 +358,24 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
                                 else -> tr("Ոչ ոք դեռ հաստատված չէ. բացիր կոնտակտի քարտը և համեմատիր 8 նկարը։")
                             },
                         )
+                        SecPoint.ACCOUNT -> PointRow(
+                            level = item.level,
+                            title = tr("Հաշվի վերականգնում (էլ. փոստ)"),
+                            subtitle = if (linkedMail != null) {
+                                trf("Հաշիվը կապված է՝ {0}", linkedMail)
+                            } else {
+                                tr("Կապված չէ. հեռախոսը փոխելիս կամ հավելվածը ջնջելիս հաշիվդ և չաթերդ կկորչեն։ Լրացրու ներքևի «Հաշիվ և պահուստ» բաժինը։")
+                            },
+                        )
+                        SecPoint.KEY_FILE -> PointRow(
+                            level = item.level,
+                            title = tr("Բանալու ֆայլ"),
+                            subtitle = if (backupAt > 0L) {
+                                tr("Ստեղծված է. նոր հեռախոսում հին նամակները կբացվեն։")
+                            } else {
+                                tr("Չկա. նոր հեռախոսում հին նամակները չեն բացվի։ Ստեղծիր ներքևի «Հաշիվ և պահուստ» բաժնում։")
+                            },
+                        )
                         SecPoint.BATTERY -> PointRow(
                             level = item.level,
                             title = tr("Աշխատանք ֆոնում"),
@@ -372,6 +397,9 @@ fun SecurityCenterSheet(vm: AppViewModel, me: Profile, chats: List<Chat>, onSos:
                     )
                 }
             }
+
+            // ---- the account and the key file
+            AccountBackupCard(vm = vm, me = me, backupAt = backupAt, onBackedUp = { backupAt = Prefs.getLong(KEY_BACKUP_AT) })
 
             // ---- the lock of the app
             Column(

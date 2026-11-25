@@ -25,6 +25,7 @@ import am.khosq.app.ui.InviteJoinHost
 import am.khosq.app.ui.MemoryScreen
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.LockScreen
+import am.khosq.app.ui.RecoverScreen
 import am.khosq.app.ui.SetupScreen
 import am.khosq.app.ui.StarredScreen
 import am.khosq.app.ui.TasksScreen
@@ -203,6 +204,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val call by CallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
+    var showRecover by remember { mutableStateOf(false) }
     val pip by AppState.inPip.collectAsStateWithLifecycle()
     val locked by AppLock.locked.collectAsStateWithLifecycle()
     val screenGuard by AppLock.screenGuard.collectAsStateWithLifecycle()
@@ -280,7 +282,11 @@ private fun Root(vm: AppViewModel = viewModel()) {
                             GradientButton(text = tr("Նորից փորձել"), onClick = { vm.start() }, modifier = Modifier.width(220.dp))
                         },
                     )
-                    is Boot.NeedSetup -> SetupScreen(vm)
+                    is Boot.NeedSetup -> if (showRecover) {
+                        RecoverScreen(vm = vm, onBack = { showRecover = false }, onDone = { showRecover = false })
+                    } else {
+                        SetupScreen(vm, onRecover = { showRecover = true })
+                    }
                     is Boot.Ready -> MainNav(vm, b.me)
                 }
 

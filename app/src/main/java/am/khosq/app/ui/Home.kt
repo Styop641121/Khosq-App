@@ -47,6 +47,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -85,7 +86,7 @@ internal fun cleanHandle(s: String): String =
 /* ---------------- first start: name and ID ---------------- */
 
 @Composable
-fun SetupScreen(vm: AppViewModel) {
+fun SetupScreen(vm: AppViewModel, onRecover: () -> Unit) {
     val k = KTheme.colors
     var name by remember { mutableStateOf("") }
     var handle by remember { mutableStateOf("") }
@@ -173,6 +174,9 @@ fun SetupScreen(vm: AppViewModel) {
                         }
                     },
                 )
+                TextButton(enabled = !busy, onClick = onRecover, modifier = Modifier.fillMaxWidth()) {
+                    Text(tr("Ես արդեն ունեմ հաշիվ"))
+                }
             }
         }
     }

@@ -3,6 +3,8 @@ package am.khosq.app.ui
 import am.khosq.app.tr
 import am.khosq.app.trf
 
+import am.khosq.app.data.AccountLogic
+import am.khosq.app.data.AuthKind
 import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
@@ -131,6 +133,64 @@ class AppViewModel : ViewModel() {
         start()
     }
 
+    private val _accountEmail = MutableStateFlow<String?>(null)
+
+    /** The email of this account, or null while it has none (then the account cannot be opened on another phone). */
+    val accountEmail: StateFlow<String?> = _accountEmail.asStateFlow()
+
+    fun refreshAccount() {
+        _accountEmail.value = repo.accountEmail()
+    }
+
+    suspend fun linkEmail(email: String, password: String): AuthKind {
+        val k = repo.linkEmail(AccountLogic.normEmail(email), password)
+        if (k == AuthKind.OK) refreshAccount()
+        return k
+    }
+
+    suspend fun resetPassword(email: String): AuthKind = repo.resetPassword(AccountLogic.normEmail(email))
+
+    // ---- a new phone: opening the account that was made on the old one
+    private var recovering: Profile? = null
+
+    /** Signs in with the email and password. Nothing of the app starts yet: the key file may still have to be put back first. */
+    suspend fun recoverSignIn(email: String, password: String): AuthKind {
+        val k = repo.signInEmail(AccountLogic.normEmail(email), password)
+        if (k != AuthKind.OK) return k
+        return try {
+            uid = repo.currentUid()
+            recovering = repo.loadProfile(uid)
+            AuthKind.OK
+        } catch (e: Exception) {
+            AuthKind.NETWORK
+        }
+    }
+
+    /** After a key file was put back: the restored public key goes to my profile again (the next start of the app would do it too). */
+    fun republishKey() {
+        val id = uid
+        if (id.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                repo.publishKey(id)
+            } catch (e: Exception) {
+                // tried again at the next start
+            }
+        }
+    }
+
+    /** The id of the account that was just opened. */
+    fun recoverUid(): String = uid
+
+    fun recoverHasProfile(): Boolean = recovering != null
+
+    /** The app starts with the opened account (or asks for a name, when that account has no profile). */
+    fun recoverFinish() {
+        val p = recovering
+        recovering = null
+        if (p == null) _boot.value = Boot.NeedSetup else ready(p)
+    }
+
     fun start() {
         _boot.value = Boot.Loading
         viewModelScope.launch {
@@ -146,6 +206,7 @@ class AppViewModel : ViewModel() {
 
     private fun ready(p: Profile) {
         _boot.value = Boot.Ready(p)
+        refreshAccount()
         am.khosq.app.call.CallManager.listen(p.uid)
         beatJob?.cancel()
         beatJob = viewModelScope.launch {

@@ -3,7 +3,11 @@ package am.khosq.app.data
 import am.khosq.app.Prefs
 import am.khosq.app.crypto.E2E
 import am.khosq.app.tr
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
@@ -37,6 +41,49 @@ class Repository {
         if (current != null) return current.uid
         val result = auth.signInAnonymously().await()
         return result.user?.uid ?: throw IllegalStateException("sign-in failed")
+    }
+
+    /** The email of this account; null while the account has no email and password yet (it was made without them). */
+    fun accountEmail(): String? = auth.currentUser?.takeIf { u -> !u.isAnonymous }?.email
+
+    fun currentUid(): String = auth.currentUser?.uid ?: ""
+
+    private fun kindOf(e: Exception): AuthKind =
+        AuthErrors.kind((e as? FirebaseAuthException)?.errorCode, e is FirebaseNetworkException, e is FirebaseTooManyRequestsException)
+
+    /** Gives this account an email and a password, so it can be opened again on another phone. The id of the account does not change. */
+    suspend fun linkEmail(email: String, password: String): AuthKind = try {
+        val u = auth.currentUser
+        if (u == null) {
+            AuthKind.OTHER
+        } else {
+            u.linkWithCredential(EmailAuthProvider.getCredential(email, password)).await()
+            AuthKind.OK
+        }
+    } catch (e: Exception) {
+        kindOf(e)
+    }
+
+    /** Opens an existing account on this phone. The empty account made at the first start of the app is thrown away afterwards. */
+    suspend fun signInEmail(email: String, password: String): AuthKind = try {
+        val empty = auth.currentUser?.takeIf { u -> u.isAnonymous }
+        auth.signInWithEmailAndPassword(email, password).await()
+        try {
+            empty?.delete()?.await()
+        } catch (e: Exception) {
+            // an unused empty account does no harm
+        }
+        AuthKind.OK
+    } catch (e: Exception) {
+        kindOf(e)
+    }
+
+    /** Asks Firebase to send the mail with which the password is chosen again. */
+    suspend fun resetPassword(email: String): AuthKind = try {
+        auth.sendPasswordResetEmail(email).await()
+        AuthKind.OK
+    } catch (e: Exception) {
+        kindOf(e)
     }
 
     suspend fun loadProfile(uid: String): Profile? {

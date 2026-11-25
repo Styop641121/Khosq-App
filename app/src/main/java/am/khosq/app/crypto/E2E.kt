@@ -18,6 +18,7 @@ import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.SecureRandom
+import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
@@ -51,7 +52,12 @@ object E2E {
 
     private class Mine(val priv: PrivateKey, val pub: PublicKey, val pubText: String)
 
-    private val mine: Mine by lazy { loadOrCreate() }
+    // the identity of this phone; it is replaced only when a saved key file is put back (importIdentity)
+    @Volatile
+    private var cur: Mine? = null
+
+    private val mine: Mine
+        get() = cur ?: synchronized(this) { cur ?: loadOrCreate().also { cur = it } }
 
     /** Message keys of the chats opened so far (chat id -> key). */
     private val keys = ConcurrentHashMap<String, ByteArray>()
@@ -82,6 +88,47 @@ object E2E {
         Prefs.putStringSync(P_SK, encode(wrap(pair.private.encoded)))
         Prefs.putStringSync(P_PK, pubText)
         return Mine(pair.private, pair.public, pubText)
+    }
+
+    /** For the key file: my private key (PKCS#8) and my public key as text. */
+    fun exportIdentity(): Pair<ByteArray, String> = mine.priv.encoded to mine.pubText
+
+    /**
+     * Puts a saved identity in the place of the one this phone made (a new phone, or the app was removed). False when the two halves do
+     * not belong together or cannot be read. Everything worked out from the old identity is forgotten; the public key is sent again.
+     */
+    fun importIdentity(privBytes: ByteArray, pubText: String): Boolean {
+        try {
+            val kf = KeyFactory.getInstance("EC")
+            val priv = kf.generatePrivate(PKCS8EncodedKeySpec(privBytes))
+            val pub = kf.generatePublic(X509EncodedKeySpec(decode(pubText)))
+            // the two halves must belong together: what one signs, the other verifies
+            val probe = ByteArray(32).also { b -> random.nextBytes(b) }
+            val signer = Signature.getInstance("SHA256withECDSA")
+            signer.initSign(priv)
+            signer.update(probe)
+            val sig = signer.sign()
+            val checker = Signature.getInstance("SHA256withECDSA")
+            checker.initVerify(pub)
+            checker.update(probe)
+            if (!checker.verify(sig)) return false
+            val text = encode(pub.encoded)
+            Prefs.putStringSync(P_SK, encode(wrap(priv.encoded)))
+            Prefs.putStringSync(P_PK, text)
+            synchronized(this) {
+                cur = Mine(priv, pub, text)
+                selfCache = null
+            }
+            keys.clear()
+            pairKeys.clear()
+            pubs.clear()
+            missUntil.clear()
+            // so that the next start of the profile publishes this key again
+            Prefs.putStringSync("pk_sent", "")
+            return true
+        } catch (e: Exception) {
+            return false
+        }
     }
 
     private fun wrapKey(): SecretKey {
@@ -140,9 +187,10 @@ object E2E {
         return k
     }
 
-    private val selfK: ByteArray by lazy { derive(mine.pub, "self") }
+    @Volatile
+    private var selfCache: ByteArray? = null
 
-    private fun selfKey(): ByteArray = selfK
+    private fun selfKey(): ByteArray = selfCache ?: derive(mine.pub, "self").also { selfCache = it }
 
     private fun derive(peerPub: PublicKey, salt: String): ByteArray {
         val agreement = KeyAgreement.getInstance("ECDH")

@@ -4,7 +4,7 @@ package am.khosq.app.data
 enum class SecLevel { GOOD, TODO, NOTE }
 
 /** The points of the security centre, in the order they are shown. */
-enum class SecPoint { PHONE_LOCK, APP_LOCK, SHIELD, CIRCLE, VERIFIED, BATTERY }
+enum class SecPoint { PHONE_LOCK, APP_LOCK, SHIELD, CIRCLE, VERIFIED, ACCOUNT, KEY_FILE, BATTERY }
 
 /** What the screen knows about the phone and the app right now. */
 data class SecInput(
@@ -23,6 +23,10 @@ data class SecInput(
     val changed: Int,
     /** The phone does not stop KHOSQ in the background to save battery. */
     val batteryFree: Boolean,
+    /** The account has an email and a password, so it can be opened again on another phone. */
+    val accountLinked: Boolean = false,
+    /** A key file was made (and kept by the person), so old messages can be opened on another phone. */
+    val keyFile: Boolean = false,
 )
 
 data class SecItem(val point: SecPoint, val level: SecLevel)
@@ -45,6 +49,8 @@ object SecurityLogic {
             SecItem(SecPoint.SHIELD, if (i.shield) SecLevel.GOOD else SecLevel.TODO),
             SecItem(SecPoint.CIRCLE, if (i.circleCount > 0) SecLevel.GOOD else SecLevel.TODO),
             SecItem(SecPoint.VERIFIED, verifiedLevel),
+            SecItem(SecPoint.ACCOUNT, if (i.accountLinked) SecLevel.GOOD else SecLevel.TODO),
+            SecItem(SecPoint.KEY_FILE, if (i.keyFile) SecLevel.GOOD else SecLevel.TODO),
             SecItem(SecPoint.BATTERY, if (i.batteryFree) SecLevel.GOOD else SecLevel.TODO),
         )
         val counted = items.filter { x -> x.level != SecLevel.NOTE }

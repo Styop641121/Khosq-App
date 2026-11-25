@@ -4,6 +4,7 @@
 //   API_KEY  - Firebase Web API key (from google-services.json, "current_key")
 //   INVITE_KEY - any long random text (Secret). Signs group invite links. Without it, invite links are off.
 //   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation and voice transcription are off.
+//   (The Trust Shield link check needs nothing: no binding, no key.)
 //   Either Cloudflare Realtime TURN:
 //     TURN_KEY_ID    - TURN key id (text variable)
 //     TURN_KEY_TOKEN - TURN key API token (Secret)
@@ -423,6 +424,100 @@ async function transcribeRoute(req, env, idToken) {
   return json({ text: out.text, from: lang, via: out.via, empty: out.text === "" });
 }
 
+// ---------------------------------------------------------------------------------------------- link check (Trust Shield)
+// POST /ai/linkcheck  { hosts: ["example.com", ...] }  ->  { results: { "example.com": "ok" | "blocked" | "unknown" } }
+// Only the NAMES of sites go out (never a whole link, a message or the person's name or address). Each name is asked of
+// Cloudflare's malware-blocking DNS (security.cloudflare-dns.com, DNS over HTTPS, no key): a site on its list of dangerous
+// sites is answered with the address 0.0.0.0. "ok" does not mean safe, only "not on that list"; "unknown" = no answer.
+const MAX_HOSTS = 5;
+const SECURITY_DOH = "https://security.cloudflare-dns.com/dns-query";
+
+function validHost(h) {
+  if (typeof h !== "string" || h.length < 4 || h.length > 253 || !h.includes(".")) return false;
+  if (/^[0-9.]+$/.test(h)) return false; // an address, not a name
+  return h.split(".").every((l) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(l));
+}
+
+// a DNS question for the A record of a name, as RFC 1035 writes it
+function dnsQuestion(host) {
+  const out = [0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0]; // id 0, recursion wanted, one question
+  for (const l of host.split(".")) {
+    out.push(l.length);
+    for (let i = 0; i < l.length; i++) out.push(l.charCodeAt(i));
+  }
+  out.push(0, 0, 1, 0, 1); // end of name, type A, class IN
+  return new Uint8Array(out);
+}
+
+function skipName(buf, pos) {
+  while (pos < buf.length) {
+    const n = buf[pos];
+    if (n === 0) return pos + 1;
+    if ((n & 0xc0) === 0xc0) return pos + 2;
+    pos += 1 + n;
+  }
+  return -1;
+}
+
+// the answer: its status code and whether one of its addresses is 0.0.0.0 (Cloudflare's way to say "blocked")
+function readDns(buf) {
+  if (buf.length < 12) return null;
+  const rcode = buf[3] & 15;
+  const qd = (buf[4] << 8) | buf[5];
+  const an = (buf[6] << 8) | buf[7];
+  let pos = 12;
+  for (let i = 0; i < qd; i++) {
+    pos = skipName(buf, pos);
+    if (pos < 0) return null;
+    pos += 4;
+  }
+  let blocked = false;
+  for (let i = 0; i < an; i++) {
+    pos = skipName(buf, pos);
+    if (pos < 0 || pos + 10 > buf.length) return null;
+    const type = (buf[pos] << 8) | buf[pos + 1];
+    const len = (buf[pos + 8] << 8) | buf[pos + 9];
+    pos += 10;
+    if (pos + len > buf.length) return null;
+    if (type === 1 && len === 4 && buf[pos] === 0 && buf[pos + 1] === 0 && buf[pos + 2] === 0 && buf[pos + 3] === 0) blocked = true;
+    pos += len;
+  }
+  return { rcode, blocked };
+}
+
+async function checkHost(host) {
+  const r = await fetch(SECURITY_DOH + "?dns=" + b64u(dnsQuestion(host)), {
+    headers: { accept: "application/dns-message" },
+    signal: AbortSignal.timeout(4000),
+  });
+  if (!r.ok) return "unknown";
+  const a = readDns(new Uint8Array(await r.arrayBuffer()));
+  if (!a) return "unknown";
+  if (a.blocked) return "blocked";
+  return a.rcode === 0 ? "ok" : "unknown";
+}
+
+async function linkcheckRoute(body) {
+  const raw = Array.isArray(body && body.hosts) ? body.hosts : null;
+  if (!raw || raw.length === 0 || raw.length > MAX_HOSTS) return new Response("bad request", { status: 400 });
+  const hosts = [];
+  for (const h of raw) {
+    const x = typeof h === "string" ? h.trim().toLowerCase().replace(/\.$/, "") : "";
+    if (!validHost(x)) return new Response("bad request", { status: 400 });
+    if (!hosts.includes(x)) hosts.push(x);
+  }
+  const done = await Promise.all(
+    hosts.map(async (h) => {
+      try {
+        return [h, await checkHost(h)];
+      } catch (e) {
+        return [h, "unknown"];
+      }
+    }),
+  );
+  return json({ results: Object.fromEntries(done) });
+}
+
 // The page a link opens in a browser. It only holds a button that opens the app; it does not look at the group at all.
 function invitePage(token) {
   const html = `<!doctype html><html lang="hy"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -467,6 +562,10 @@ export default {
       if (path === "/ai/translate") {
         if (limited(uid, "ai", 12)) return new Response("slow down", { status: 429 });
         return await translateRoute(body, env);
+      }
+      if (path === "/ai/linkcheck") {
+        if (limited(uid, "lnk", 20)) return new Response("slow down", { status: 429 });
+        return await linkcheckRoute(body);
       }
       if (path === "/group/invite" || path === "/group/join") {
         if (limited(uid, "grp", 20)) return new Response("slow down", { status: 429 });

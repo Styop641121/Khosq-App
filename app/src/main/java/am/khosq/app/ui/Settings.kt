@@ -274,6 +274,8 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
     val memChats by vm.memoryChats.collectAsStateWithLifecycle()
     val translateOn by vm.translateOn.collectAsStateWithLifecycle()
     val transcribeOn by vm.transcribeOn.collectAsStateWithLifecycle()
+    val shieldOn by vm.shieldOn.collectAsStateWithLifecycle()
+    val shieldLinks by vm.shieldLinks.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -568,6 +570,34 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                     Switch(checked = !me.hideSeen, onCheckedChange = { on -> vm.setHideSeen(!on) }, colors = kSwitchColors())
                 },
             )
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Shield,
+                title = "Trust Shield",
+                subtitle = if (shieldOn) {
+                    tr("Միացված է. ստացված նամակները ստուգվում են քո հեռախոսում՝ խաբեության նշանների համար։ Ոչինչ չի ուղարկվում սերվեր։")
+                } else {
+                    tr("Անջատված է. նամակները չեն ստուգվում։")
+                },
+                trailing = {
+                    Switch(checked = shieldOn, onCheckedChange = { on -> vm.setShieldOn(on) }, colors = kSwitchColors())
+                },
+            )
+            if (shieldOn) {
+                KDivider(inset = 62.dp)
+                SettingsRow(
+                    icon = KIcons.Shield,
+                    title = tr("Հղումների ստուգում ցանկով"),
+                    subtitle = if (shieldLinks) {
+                        tr("Միացված է. ստացված հղումների կայքերի անունները (ոչ նամակը) ստուգվում են Cloudflare-ի վտանգավոր կայքերի ցանկով։")
+                    } else {
+                        tr("Անջատված է. ոչ մի հղում սերվեր չի ուղարկվում։")
+                    },
+                    trailing = {
+                        Switch(checked = shieldLinks, onCheckedChange = { on -> vm.setShieldLinks(on) }, colors = kSwitchColors())
+                    },
+                )
+            }
         }
         UpdateSection()
         Spacer(Modifier.height(Space.m))

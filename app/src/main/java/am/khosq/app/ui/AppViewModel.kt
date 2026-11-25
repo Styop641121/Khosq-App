@@ -18,12 +18,14 @@ import am.khosq.app.data.AsstIntent
 import am.khosq.app.data.AsstTurn
 import am.khosq.app.data.AssistantLogic
 import am.khosq.app.data.AssistantParser
+import am.khosq.app.data.ShieldLogic
 import am.khosq.app.data.TranscribeCache
 import am.khosq.app.data.TranscribeLogic
 import am.khosq.app.data.TranscribeResult
 import am.khosq.app.data.TranslateCache
 import am.khosq.app.data.TranslateLogic
 import am.khosq.app.data.TranslateResult
+import am.khosq.app.push.LinkCheckClient
 import am.khosq.app.push.TranscribeClient
 import am.khosq.app.push.TranslateClient
 import am.khosq.app.Lang
@@ -1137,6 +1139,62 @@ class AppViewModel : ViewModel() {
         transcribeCache.put(messageId, lang, r)
         return r
     }
+
+    // ---- Trust Shield: received messages are looked at on the phone (nothing leaves it). Only when the person has also allowed
+    // the link check, the NAMES of the sites in received links go to the server; see LinkCheckClient.
+
+    private val _shieldOn = MutableStateFlow(Prefs.getString("shield_on") != "0")
+    val shieldOn: StateFlow<Boolean> = _shieldOn.asStateFlow()
+    private val _shieldLinks = MutableStateFlow(Prefs.getString("shield_link_ok") == "1")
+    val shieldLinks: StateFlow<Boolean> = _shieldLinks.asStateFlow()
+    private val _hostVerdicts = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** What the server said about the sites of links seen in this run of the app (site to "blocked" / "ok" / "unknown"). Never saved. */
+    val hostVerdicts: StateFlow<Map<String, String>> = _hostVerdicts.asStateFlow()
+    private val hostsAsked = HashSet<String>()
+
+    fun setShieldOn(on: Boolean) {
+        Prefs.putString("shield_on", if (on) "1" else "0")
+        _shieldOn.value = on
+    }
+
+    /** The switch in Settings and the "Allow" button of the Trust Shield sheet. Switching it off forgets the answers kept for this run. */
+    fun setShieldLinks(on: Boolean) {
+        Prefs.putString("shield_link_ok", if (on) "1" else "0")
+        _shieldLinks.value = on
+        if (!on) {
+            _hostVerdicts.value = emptyMap()
+            synchronized(hostsAsked) { hostsAsked.clear() }
+        }
+    }
+
+    /** Asks the server about sites not asked yet (at most 10 at a time, in groups of five). A failure is remembered as "unknown", so nothing is asked over and over. */
+    fun shieldCheckHosts(hosts: List<String>) {
+        if (!_shieldOn.value || !_shieldLinks.value) return
+        val fresh = synchronized(hostsAsked) { hosts.filter { h -> h !in hostsAsked }.distinct().take(10).also { l -> hostsAsked.addAll(l) } }
+        if (fresh.isEmpty()) return
+        viewModelScope.launch {
+            for (chunk in fresh.chunked(LinkCheckClient.BATCH)) {
+                val got = try {
+                    LinkCheckClient.check(chunk)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    chunk.associateWith { "unknown" }
+                }
+                if (_shieldLinks.value) _hostVerdicts.value = _hostVerdicts.value + got
+            }
+        }
+    }
+
+    /** The sites in the links of the received text messages among [list] (the most recent 40), for [shieldCheckHosts]. */
+    fun shieldHostsOf(list: List<am.khosq.app.data.Message>, myUid: String): List<String> =
+        list.asReversed().asSequence()
+            .filter { m -> m.kind == "text" && !m.deleted && m.from != myUid }
+            .take(40)
+            .flatMap { m -> ShieldLogic.links(m.text).asSequence().map { l -> l.host } }
+            .distinct()
+            .toList()
 
     private fun isTaken(e: Throwable?): Boolean {
         var t = e

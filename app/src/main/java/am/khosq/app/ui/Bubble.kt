@@ -136,6 +136,7 @@ internal fun NoticeBar(
     onPrimary: () -> Unit,
     secondary: String? = null,
     onSecondary: () -> Unit = {},
+    note: String? = null,
 ) {
     val k = KTheme.colors
     val shape = RoundedCornerShape(Corner.l)
@@ -150,6 +151,10 @@ internal fun NoticeBar(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(text = text, color = k.text, style = TextStyle(fontSize = 15.sp, lineHeight = 21.sp))
+        if (note != null) {
+            Spacer(Modifier.height(Space.xs))
+            Text(text = note, color = k.warning, style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp))
+        }
         Spacer(Modifier.height(Space.m))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.s)) {
             GradientButton(text = primary, onClick = onPrimary, modifier = Modifier.weight(1f))
@@ -289,6 +294,7 @@ internal fun Bubble(
     onSwipe: () -> Unit,
     onLong: () -> Unit,
     onVote: (Int) -> Unit = {},
+    shield: ShieldEnv? = null,
 ) {
     val k = KTheme.colors
     if (m.kind == "call" || m.kind == "sys") {
@@ -473,6 +479,7 @@ internal fun Bubble(
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
                             val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }
                             Text(text = rich, color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp))
+                            if (shield != null && !mine && !m.deleted) ShieldStrip(messageId = m.id, text = m.text, env = shield)
                         }
                     }
                     if (m.reactions.isNotEmpty()) {

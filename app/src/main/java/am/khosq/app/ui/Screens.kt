@@ -154,6 +154,23 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val chat = chats.firstOrNull { c -> c.id == chatId }
     val peerUid = chat?.peerUid ?: chatId.split("_").firstOrNull { p -> p != me.uid } ?: ""
     val pendingForMe = chat != null && chat.status == "pending" && chat.requester != me.uid
+    val shieldOn by vm.shieldOn.collectAsStateWithLifecycle()
+    val shieldLinks by vm.shieldLinks.collectAsStateWithLifecycle()
+    val hostVerdicts by vm.hostVerdicts.collectAsStateWithLifecycle()
+    // a received message whose Trust Shield explanation is open
+    var shieldFor by remember { mutableStateOf<Message?>(null) }
+    val messagesNow by rememberUpdatedState(messages)
+    val shieldEnv = remember(shieldOn, pendingForMe, hostVerdicts) {
+        if (!shieldOn) {
+            null
+        } else {
+            ShieldEnv(stranger = pendingForMe, verdicts = hostVerdicts, onWhy = { id -> shieldFor = messagesNow.firstOrNull { x -> x.id == id } })
+        }
+    }
+    // the sites in received links are asked about only when the person has allowed the link check
+    LaunchedEffect(messages, shieldOn, shieldLinks) {
+        if (shieldOn && shieldLinks) vm.shieldCheckHosts(vm.shieldHostsOf(messages, me.uid))
+    }
     val waiting = chat != null && chat.status == "pending" && chat.requester == me.uid
     val iBlocked = chat != null && me.uid in chat.blockedBy
     // an announcement group: the rules let only the admins write, so the others get a note instead of the input
@@ -387,6 +404,17 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     menuFor = null
                 })
             }
+            if (shieldOn && mm.kind == "text" && !mm.deleted && mm.from != me.uid && mm.text.isNotBlank()) {
+                SheetRow(
+                    icon = KIcons.Shield,
+                    label = tr("Ստուգել Trust Shield-ով"),
+                    subtitle = tr("Ստուգվում է քո հեռախոսում"),
+                    onClick = {
+                        shieldFor = mm
+                        menuFor = null
+                    },
+                )
+            }
             if (mm.kind == "voice" && !mm.deleted && mm.data != null) {
                 SheetRow(
                     icon = KIcons.Transcribe,
@@ -528,6 +556,19 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val tf = translateFor
     if (tf != null) {
         TranslateSheet(vm = vm, text = tf, onClose = { translateFor = null })
+    }
+    val sh = shieldFor
+    if (sh != null) {
+        ShieldSheet(
+            vm = vm,
+            text = sh.text,
+            ts = sh.ts,
+            stranger = pendingForMe,
+            fromName = chat?.memberNames?.get(sh.from) ?: chat?.peerName ?: "",
+            canBlock = chat != null && !chat.isGroup && !iBlocked,
+            onBlock = { vm.setBlocked(chatId, true) },
+            onClose = { shieldFor = null },
+        )
     }
     val trv = transcribeFor
     val trvData = trv?.data
@@ -812,6 +853,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             onSwipe = { vm.setReply(m) },
                             onLong = { if (!m.deleted && !m.pending && m.kind != "call" && m.kind != "sys") menuFor = m },
                             onVote = { i -> if (!m.deleted) vm.vote(chatId, m, i) },
+                            shield = shieldEnv,
                         )
                     }
                 }
@@ -928,6 +970,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     onPrimary = { vm.acceptChat(chatId) },
                     secondary = tr("Արգելափակել"),
                     onSecondary = { vm.setBlocked(chatId, true) },
+                    note = if (shieldOn) tr("Անծանոթ մարդ է. եթե նա փող, կոդ կամ գաղտնաբառ խնդրի կամ հղում ուղարկի, մի հավատա։") else null,
                 )
             } else if (iBlocked) {
                 NoticeBar(

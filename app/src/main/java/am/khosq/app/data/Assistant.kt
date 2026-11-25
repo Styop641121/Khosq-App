@@ -49,7 +49,10 @@ data class AsstTurn(
     /** True when the shown messages miss one of the words (no message had them all). */
     val approx: Boolean = false,
     val busy: Boolean = false,
-    /** The task the assistant offers to add, and what happened to the offer: 0 waiting, 1 added, 2 cancelled. */
+    /**
+     * The task the assistant added for the person (as stored, with its number once saved) and what became of it:
+     * 0 not saved (still saving, or saving failed), 1 added, 2 taken back by the person.
+     */
     val proposal: Task? = null,
     val proposalState: Int = 0,
 )

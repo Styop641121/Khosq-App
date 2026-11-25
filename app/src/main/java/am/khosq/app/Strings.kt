@@ -400,6 +400,9 @@ object Strings {
     }
 
     private fun part9() {
+        map["Ավելացնում եմ…"] = arrayOf("Adding…", "Добавляю…")
+        map["Հետարկել"] = arrayOf("Undo", "Отменить")
+        map["Առաջադրանքը ջնջվեց"] = arrayOf("Task deleted", "Задача удалена")
         map["KHOSQ Օգնական"] = arrayOf("KHOSQ Assistant", "Помощник KHOSQ")
         map["Հարցեր և հրամաններ՝ առանց լեզվական մոդելի"] = arrayOf("Questions and commands, no language model", "Вопросы и команды без языковой модели")
         map["Գրիր հարց կամ հրաման…"] = arrayOf("Ask or give a command…", "Задайте вопрос или команду…")
@@ -412,7 +415,7 @@ object Strings {
         map["Գտիր հասցեն անցյալ շաբաթ"] = arrayOf("Find the address from last week", "Найди адрес за прошлую неделю")
         map["Ինչ կարող եմ անել"] = arrayOf("What I can do", "Что я умею")
         map["Առաջադրանքներ՝ «ի՞նչ առաջադրանքներ ունեմ վաղը», «անավարտ առաջադրանքներ», «ուշացած առաջադրանքներ»։"] = arrayOf("Tasks: “what tasks do I have tomorrow”, “unfinished tasks”, “overdue tasks”.", "Задачи: «какие у меня задачи на завтра», «невыполненные задачи», «просроченные задачи».")
-        map["Հիշեցում՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել Արմանին»։ Նախ ցույց եմ տալիս, թե ինչ եմ հասկացել, և ավելացնում եմ միայն քո համաձայնությամբ։"] = arrayOf("Reminder: “remind me tomorrow at 10 to call Arman”. I first show what I understood and add it only if you agree.", "Напоминание: «напомни завтра в 10 позвонить Арману». Сначала я показываю, что понял, и добавляю только с вашего согласия.")
+        map["Հիշեցում՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել Արմանին»։ Ավելացնում եմ անմիջապես և ցույց եմ տալիս, թե ինչ եմ հասկացել. սխալի դեպքում սեղմիր «Փոխել» կամ «Հետարկել»։"] = arrayOf("Reminder: “remind me tomorrow at 10 to call Arman”. I add it at once and show what I understood; if it is wrong, press “Change” or “Undo”.", "Напоминание: «напомни завтра в 10 позвонить Арману». Я добавляю сразу и показываю, что понял; если не так — нажмите «Изменить» или «Отменить».")
         map["Որոնում՝ «գտիր հասցեն անցյալ շաբաթ», «գտիր Արման ժամ»։ Փնտրում եմ քո առաջադրանքներում և այն զրույցներում, որտեղ Հիշողությունը միացված է։"] = arrayOf("Search: “find the address from last week”, “find Arman time”. I look in your tasks and in the chats where Memory is on.", "Поиск: «найди адрес за прошлую неделю», «найди Арман время». Я ищу в ваших задачах и в чатах, где включена Память.")
         map["Օրեր՝ այսօր, վաղը, երեկ, այս / անցյալ / հաջորդ շաբաթ, այս / անցյալ ամիս, երկուշաբթի…, «վերջին 7 օրը»։"] = arrayOf("Days: today, tomorrow, yesterday, this / last / next week, this / last month, Monday…, “last 7 days”.", "Дни: сегодня, завтра, вчера, на этой / прошлой / следующей неделе, в этом / прошлом месяце, понедельник…, «последние 7 дней».")
         map["Ամփոփում և թարգմանություն՝ դեռ չեմ կարող, դրանք լեզվական մոդել են պահանջում։ Եթե չեմ հասկանում, ասում եմ և ոչինչ չեմ կռահում քո փոխարեն։"] = arrayOf("Summaries and translation: I cannot do these yet, they need a language model. When I do not understand, I say so and do not guess for you.", "Сводки и перевод: пока не умею, для них нужна языковая модель. Если я не понял, я так и скажу и ничего не буду угадывать за вас.")
@@ -441,12 +444,10 @@ object Strings {
         map["Բացել Հիշողությունը"] = arrayOf("Open Memory", "Открыть Память")
         map["Աղբյուր՝ Հիշողություն (զրույցներ՝ {0})"] = arrayOf("Source: Memory (chats: {0})", "Источник: Память (чаты: {0})")
         map["և ևս {0}"] = arrayOf("and {0} more", "и ещё {0}")
-        map["Այսպե՞ս ավելացնեմ առաջադրանքներին"] = arrayOf("Add it to your tasks like this?", "Добавить в задачи так?")
         map["Ժամ չկա՝ հիշեցում չի լինի"] = arrayOf("No time given, so there will be no reminder", "Время не указано, напоминания не будет")
         map["Այդ ժամանակն արդեն անցել է, հիշեցում չի լինի"] = arrayOf("That time has already passed, so there will be no reminder", "Это время уже прошло, напоминания не будет")
         map["Ինչի՞ մասին հիշեցնեմ։ Գրիր, օրինակ՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել»։"] = arrayOf("What should I remind you about? Write, for example: “remind me tomorrow at 10 to call”.", "О чём напомнить? Напишите, например: «напомни завтра в 10 позвонить».")
         map["Փոխել"] = arrayOf("Change", "Изменить")
-        map["Չեղարկվեց"] = arrayOf("Cancelled", "Отменено")
         map["Զրույցի ամփոփումը լեզվական մոդել է պահանջում, իսկ ես այն դեռ չեմ օգտագործում։ Սա կավելանա առանձին քայլով և միայն քո թույլտվությամբ։"] = arrayOf("Summaries need a language model, which I do not use yet. That will come as a separate step, only with your permission.", "Для сводок нужна языковая модель, которую я пока не использую. Это появится отдельным шагом и только с вашего разрешения.")
         map["Թարգմանությունը առանձին հնարավորություն է, որը դեռ պատրաստ չէ։ Կավելանա հաջորդ քայլերով։"] = arrayOf("Translation is a separate feature that is not ready yet. It will come in a later step.", "Перевод — отдельная функция, она пока не готова. Она появится на одном из следующих шагов.")
     }

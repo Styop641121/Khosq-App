@@ -90,20 +90,23 @@ object Reminders {
 
     // ---- what the app and the notification buttons do
 
-    /** Saves a new or changed task. False when it has no title or the list is full. */
-    fun save(t: Task): Boolean {
-        val c = app ?: return false
-        val p = TaskLogic.prepare(t, System.currentTimeMillis()) ?: return false
+    /** Saves a new or changed task and returns it as stored (with its number). Null when it has no title or the list is full. */
+    fun store(t: Task): Task? {
+        val c = app ?: return null
+        val p = TaskLogic.prepare(t, System.currentTimeMillis()) ?: return null
         val stored: Task
         if (p.id == 0L) {
-            stored = TaskStore.insert(p) ?: return false
+            stored = TaskStore.insert(p) ?: return null
         } else {
             TaskStore.update(p)
             stored = p
         }
         sync(c, stored)
-        return true
+        return stored
     }
+
+    /** Saves a new or changed task. False when it has no title or the list is full. */
+    fun save(t: Task): Boolean = store(t) != null
 
     fun setDone(id: Long, done: Boolean) {
         val c = app ?: return

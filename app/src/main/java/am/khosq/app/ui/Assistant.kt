@@ -197,7 +197,7 @@ fun AssistantScreen(
                         onOpenMemory = onOpenMemory,
                         onAdd = { vm.assistantAddTask(t.id) },
                         onChange = { p -> changing = t.id to p },
-                        onCancel = { vm.assistantCancelTask(t.id) },
+                        onUndo = { vm.assistantUndoTask(t.id) },
                     )
                 }
             }
@@ -238,7 +238,7 @@ fun AssistantScreen(
             start = c.second,
             onClose = { changing = null },
             onSave = { t ->
-                vm.assistantAddTask(c.first, t)
+                vm.assistantChangeTask(c.first, t)
                 changing = null
             },
         )
@@ -349,7 +349,7 @@ private fun AnswerCard(
     onOpenMemory: () -> Unit,
     onAdd: () -> Unit,
     onChange: (Task) -> Unit,
-    onCancel: () -> Unit,
+    onUndo: () -> Unit,
 ) {
     val k = KTheme.colors
     val now = System.currentTimeMillis()
@@ -400,7 +400,7 @@ private fun AnswerCard(
                 if (p == null) {
                     CardText(tr("Ինչի՞ մասին հիշեցնեմ։ Գրիր, օրինակ՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել»։"))
                 } else {
-                    ProposalBody(turn = turn, p = p, now = now, onAdd = onAdd, onChange = { onChange(p) }, onCancel = onCancel, onOpenTasks = onOpenTasks)
+                    ProposalBody(turn = turn, p = p, now = now, onAdd = onAdd, onChange = { onChange(p) }, onUndo = onUndo, onOpenTasks = onOpenTasks)
                 }
             }
             is AsstIntent.Find -> FindBody(turn = turn, intent = intent, now = now, onOpenChat = onOpenChat, onOpenTasks = onOpenTasks, onOpenMemory = onOpenMemory)
@@ -412,13 +412,14 @@ private fun AnswerCard(
 private fun HelpBody() {
     CardText(tr("Ինչ կարող եմ անել"), bold = true)
     CardText(tr("Առաջադրանքներ՝ «ի՞նչ առաջադրանքներ ունեմ վաղը», «անավարտ առաջադրանքներ», «ուշացած առաջադրանքներ»։"))
-    CardText(tr("Հիշեցում՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել Արմանին»։ Նախ ցույց եմ տալիս, թե ինչ եմ հասկացել, և ավելացնում եմ միայն քո համաձայնությամբ։"))
+    CardText(tr("Հիշեցում՝ «հիշեցրու վաղը ժամը 10-ին զանգահարել Արմանին»։ Ավելացնում եմ անմիջապես և ցույց եմ տալիս, թե ինչ եմ հասկացել. սխալի դեպքում սեղմիր «Փոխել» կամ «Հետարկել»։"))
     CardText(tr("Որոնում՝ «գտիր հասցեն անցյալ շաբաթ», «գտիր Արման ժամ»։ Փնտրում եմ քո առաջադրանքներում և այն զրույցներում, որտեղ Հիշողությունը միացված է։"))
     CardText(tr("Օրեր՝ այսօր, վաղը, երեկ, այս / անցյալ / հաջորդ շաբաթ, այս / անցյալ ամիս, երկուշաբթի…, «վերջին 7 օրը»։"))
     CardText(tr("Ամփոփում և թարգմանություն՝ դեռ չեմ կարող, դրանք լեզվական մոդել են պահանջում։ Եթե չեմ հասկանում, ասում եմ և ոչինչ չեմ կռահում քո փոխարեն։"), secondary = true)
     Spacer(Modifier.height(Space.xs))
 }
 
+/** The task the assistant added at the person's word: what it understood, and "Change" / "Undo" in case it understood wrongly. */
 @Composable
 private fun ProposalBody(
     turn: AsstTurn,
@@ -426,11 +427,20 @@ private fun ProposalBody(
     now: Long,
     onAdd: () -> Unit,
     onChange: () -> Unit,
-    onCancel: () -> Unit,
+    onUndo: () -> Unit,
     onOpenTasks: () -> Unit,
 ) {
     val k = KTheme.colors
-    CardText(tr("Այսպե՞ս ավելացնեմ առաջադրանքներին"), bold = true)
+    val state = turn.proposalState
+    CardText(
+        when {
+            state == 1 -> tr("Ավելացվեց առաջադրանքներին")
+            state == 2 -> tr("Առաջադրանքը ջնջվեց")
+            turn.busy -> tr("Ավելացնում եմ…")
+            else -> tr("Առաջադրանքը չհաջողվեց պահպանել")
+        },
+        bold = true,
+    )
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
         verticalAlignment = Alignment.Top,
@@ -438,7 +448,7 @@ private fun ProposalBody(
         Icon(imageVector = KIcons.Tasks, contentDescription = null, tint = k.accent, modifier = Modifier.size(20.dp).padding(top = 1.dp))
         Spacer(Modifier.width(Space.s))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text = p.title, color = k.text, style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp))
+            Text(text = p.title, color = if (state == 2) k.textSecondary else k.text, style = TextStyle(fontSize = 16.sp, lineHeight = 22.sp))
             if (p.due > 0L) {
                 val past = p.due <= now
                 Text(
@@ -446,26 +456,29 @@ private fun ProposalBody(
                     color = if (past) k.danger else k.textSecondary,
                     style = TextStyle(fontSize = 13.sp),
                 )
-                if (past) CardText(tr("Այդ ժամանակն արդեն անցել է, հիշեցում չի լինի"), secondary = true)
+                if (past && state != 2) CardText(tr("Այդ ժամանակն արդեն անցել է, հիշեցում չի լինի"), secondary = true)
             } else {
                 Text(text = tr("Ժամ չկա՝ հիշեցում չի լինի"), color = k.textSecondary, style = TextStyle(fontSize = 13.sp))
             }
         }
     }
-    when (turn.proposalState) {
-        1 -> SourceLine(tr("Ավելացվեց առաջադրանքներին"), onOpenTasks)
-        2 -> SourceLine(tr("Չեղարկվեց"))
-        else -> {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
-                verticalArrangement = Arrangement.spacedBy(Space.s),
-            ) {
-                GradientButton(text = tr("Ավելացնել"), onClick = onAdd, modifier = Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(Space.s)) {
-                    SoftButton(text = tr("Փոխել"), onClick = onChange, modifier = Modifier.weight(1f))
-                    SoftButton(text = tr("Չեղարկել"), onClick = onCancel, modifier = Modifier.weight(1f))
-                }
-            }
+    if (state == 1) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
+            horizontalArrangement = Arrangement.spacedBy(Space.s),
+        ) {
+            SoftButton(text = tr("Փոխել"), onClick = onChange, modifier = Modifier.weight(1f))
+            SoftButton(text = tr("Հետարկել"), onClick = onUndo, modifier = Modifier.weight(1f))
+        }
+        SourceLine(tr("Աղբյուր՝ քո առաջադրանքները (միայն այս հեռախոսում)"), onOpenTasks)
+    } else if (state == 0 && !turn.busy) {
+        // saving failed: the person can try again or let it go
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = Space.xs),
+            verticalArrangement = Arrangement.spacedBy(Space.s),
+        ) {
+            GradientButton(text = tr("Ավելացնել"), onClick = onAdd, modifier = Modifier.fillMaxWidth())
+            SoftButton(text = tr("Չեղարկել"), onClick = onUndo, modifier = Modifier.fillMaxWidth())
         }
     }
 }

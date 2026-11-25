@@ -929,13 +929,34 @@ class AppViewModel : ViewModel() {
             val got = AssistantLogic.pickTasks(TaskStore.tasks.value, intent.filter, intent.range, now)
             turn = turn.copy(tasks = got.first, moreTasks = got.second - got.first.size)
         } else if (intent is AsstIntent.AddTask) {
-            if (intent.title.isNotEmpty()) turn = turn.copy(proposal = Task(title = intent.title, due = intent.due, remind = intent.remind))
+            if (intent.title.isNotEmpty()) turn = turn.copy(proposal = Task(title = intent.title, due = intent.due, remind = intent.remind), busy = true)
         } else if (intent is AsstIntent.Find) {
             turn = turn.copy(busy = true)
         }
         val shown = turn
         _asst.update { list -> (list + shown).takeLast(30) }
         if (intent is AsstIntent.Find) assistantFind(id, intent)
+        val offered = shown.proposal
+        if (intent is AsstIntent.AddTask && offered != null) assistantAdd(id, offered)
+    }
+
+    /** The person asked for it, so the task is added at once; "Change" and "Undo" stay on the answer. If saving fails the person can still press "Add". */
+    private fun assistantAdd(turnId: Long, t: Task) {
+        viewModelScope.launch {
+            val stored = withContext(Dispatchers.IO) {
+                try {
+                    Reminders.store(t)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (stored != null) {
+                asstChange(turnId) { x -> x.copy(busy = false, proposal = stored, proposalState = 1) }
+            } else {
+                asstChange(turnId) { x -> x.copy(busy = false) }
+                flash(tr("Առաջադրանքը չհաջողվեց պահպանել"))
+            }
+        }
     }
 
     private fun assistantFind(id: Long, f: AsstIntent.Find) {
@@ -980,29 +1001,41 @@ class AppViewModel : ViewModel() {
         }
     }
 
-    /** The person agreed to the offered task (as it was, or after changing it): it is saved, once. */
-    fun assistantAddTask(turnId: Long, changed: Task? = null) {
+    /** Saving failed the first time: the person presses "Add" to try again. */
+    fun assistantAddTask(turnId: Long) {
         val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
-        if (turn.proposalState != 0) return
-        val t = changed ?: turn.proposal ?: return
+        val t = turn.proposal ?: return
+        if (turn.proposalState != 0 || turn.busy) return
+        asstChange(turnId) { x -> x.copy(busy = true) }
+        assistantAdd(turnId, t)
+    }
+
+    /** The person changed the added task in the task form. */
+    fun assistantChangeTask(turnId: Long, changed: Task) {
+        val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
+        if (turn.proposal == null) return
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
+            val stored = withContext(Dispatchers.IO) {
                 try {
-                    Reminders.save(t)
+                    Reminders.store(changed)
                 } catch (e: Exception) {
-                    false
+                    null
                 }
             }
-            if (ok) {
-                asstChange(turnId) { x -> x.copy(proposal = t, proposalState = 1) }
+            if (stored != null) {
+                asstChange(turnId) { x -> x.copy(proposal = stored, proposalState = 1) }
             } else {
                 flash(tr("Առաջադրանքը չհաջողվեց պահպանել"))
             }
         }
     }
 
-    fun assistantCancelTask(turnId: Long) {
-        asstChange(turnId) { x -> if (x.proposalState == 0) x.copy(proposalState = 2) else x }
+    /** "Undo": the task the assistant added is deleted again. Without a saved task it just closes the offer. */
+    fun assistantUndoTask(turnId: Long) {
+        val turn = _asst.value.firstOrNull { x -> x.id == turnId } ?: return
+        val t = turn.proposal ?: return
+        if (turn.proposalState == 1 && t.id != 0L) deleteTask(t.id)
+        asstChange(turnId) { x -> x.copy(proposalState = 2) }
     }
 
     private fun isTaken(e: Throwable?): Boolean {

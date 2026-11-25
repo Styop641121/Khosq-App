@@ -6,6 +6,7 @@ import am.khosq.app.Lang
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Profile
 import am.khosq.app.data.VerifyState
+import am.khosq.app.sos.SosEngine
 import am.khosq.app.tr
 import am.khosq.app.trf
 import am.khosq.app.update.UpState
@@ -268,7 +269,7 @@ internal fun kSwitchColors() = SwitchDefaults.colors(
 
 /** Third tab: my photo, name, "about", ID and the app settings. */
 @Composable
-fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit, onAssistant: () -> Unit) {
+fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: () -> Unit, onMemory: () -> Unit, onAssistant: () -> Unit, onSos: () -> Unit) {
     val k = KTheme.colors
     val stars by vm.stars.collectAsStateWithLifecycle()
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
@@ -277,6 +278,8 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
     val transcribeOn by vm.transcribeOn.collectAsStateWithLifecycle()
     val shieldOn by vm.shieldOn.collectAsStateWithLifecycle()
     val shieldLinks by vm.shieldLinks.collectAsStateWithLifecycle()
+    val sosRec by SosEngine.rec.collectAsStateWithLifecycle()
+    val sosCircle by SosEngine.circle.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -561,6 +564,19 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                     onClick = { openFullScreenSettings(ctx) },
                 )
             }
+        }
+        SettingsGroup(tr("Անվտանգություն")) {
+            SettingsRow(
+                icon = KIcons.Alert,
+                title = tr("SOS և վստահելի շրջան"),
+                subtitle = when {
+                    sosRec != null -> tr("Ժամանակաչափը կամ SOS-ը աշխատում է հիմա")
+                    sosCircle.isEmpty() -> tr("Ընտրիր մինչև 5 մարդ, ում կուղարկվի քո SOS-ը")
+                    else -> trf("Շրջանում՝ {0} մարդ. SOS կոճակ և «Կգրեմ, որ ամեն ինչ լավ է» ժամանակաչափ", sosCircle.size.toString())
+                },
+                tone = KTheme.colors.danger,
+                onClick = onSos,
+            )
         }
         SettingsGroup(tr("Գաղտնիություն")) {
             SettingsRow(

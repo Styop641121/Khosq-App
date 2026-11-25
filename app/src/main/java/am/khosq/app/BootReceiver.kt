@@ -19,6 +19,8 @@ class BootReceiver : BroadcastReceiver() {
                 try {
                     Reminders.init(c)
                     Reminders.rescheduleAll()
+                    // a timer of the SOS circle that was running: its alarms are set again
+                    am.khosq.app.sos.SosEngine.reschedule(c)
                 } catch (e: Exception) {
                     // the next app start tries again
                 } finally {

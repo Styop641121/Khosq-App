@@ -108,6 +108,7 @@ fun previewOf(kind: String, text: String): String = when (kind) {
     "img" -> "📷 " + tr("Նկար")
     "voice" -> "🎤 " + tr("Ձայնային նամակ")
     "loc" -> "📍 " + tr("Տեղադրություն")
+    "sos" -> "🆘 SOS"
     // a poll shows its question when the message is open, otherwise just the word
     "poll" -> "📊 " + (PollCodec.decode(text)?.question ?: tr("Հարցում"))
     "call_missed" -> "📵 " + tr("Բաց թողնված զանգ")

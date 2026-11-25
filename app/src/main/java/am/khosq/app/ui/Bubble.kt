@@ -474,6 +474,7 @@ internal fun Bubble(
                         "img" -> ImageBody(m)
                         "voice" -> VoiceBody(m, mine, onLong)
                         "loc" -> LocationBody(m, mine, ink, soft, onLong)
+                        "sos" -> SosBody(m, mine, peerName, ink, soft, onLong)
                         "poll" -> PollBody(m, mine, myUid, ink, soft, onVote, onLong)
                         else -> {
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
@@ -502,7 +503,7 @@ internal fun Bubble(
                     modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (m.edited && !m.deleted) {
+                    if (m.edited && !m.deleted && m.kind != "sos") {
                         Text(text = tr("փոխված"), color = soft, style = TextStyle(fontSize = 11.sp, fontStyle = FontStyle.Italic))
                         Spacer(Modifier.width(5.dp))
                     }

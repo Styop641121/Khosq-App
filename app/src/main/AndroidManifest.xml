@@ -9,9 +9,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- one-time location in a chat: asked when the user taps "Send location", never in the background -->
+    <!-- location: asked when the user sends a place, or starts the SOS timer (while the app is open) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- the SOS timer records where the person goes while it runs: a foreground service of the location kind with a notification that stays visible -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-feature android:name="android.hardware.location" android:required="false" />
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -89,6 +91,12 @@
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
 
+        <!-- the SOS timer and live SOS of the trusted circle -->
+        <service
+            android:name=".sos.SosService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <service
             android:name=".call.CallService"
             android:exported="false"
@@ -110,6 +118,11 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- the alarms of the SOS timer and the buttons of its notifications -->
+        <receiver
+            android:name=".sos.SosReceiver"
+            android:exported="false" />
 
         <!-- the alarm of a task reminder and the two buttons of its notification -->
         <receiver

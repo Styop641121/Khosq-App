@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 
 class HandleTaken : Exception("handle taken")
@@ -558,6 +559,7 @@ class Repository {
         "voice" -> am.khosq.app.REPLY_VOICE
         "loc" -> am.khosq.app.REPLY_LOC
         "poll" -> "📊 " + (PollCodec.decode(m.text)?.question ?: "").take(70)
+        "sos" -> "🆘 SOS"
         else -> m.text.take(80)
     }
 
@@ -567,6 +569,7 @@ class Repository {
         "voice" -> "🎤"
         "loc" -> "📍"
         "poll" -> "📊"
+        "sos" -> "🆘"
         else -> text.take(80)
     }
 
@@ -611,6 +614,57 @@ class Repository {
         batch.commit().addOnSuccessListener {
             if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
         }
+    }
+
+    /** What [sendSos] tells the caller: the id of the card in that chat, whether it was sealed, and whether the server has it already. */
+    class SosSent(val msgId: String, val sealed: Boolean, val confirmed: Boolean)
+
+    /**
+     * An SOS card: a message of kind "sos" whose sealed text holds the places (see SosCodec). The chat list only gets the 🆘 sign.
+     * The push carries the word "SOS" and nothing else (never the places). Returns null when the write failed; when the phone is
+     * offline the write waits in Firestore's own queue and goes out when the network is back (confirmed = false then).
+     */
+    suspend fun sendSos(chatId: String, me: Profile, others: List<String>, payload: String): SosSent? {
+        val chat = db.collection("chats").document(chatId)
+        val msg = chat.collection("messages").document()
+        val batch = db.batch()
+        val seal = E2E.begin(chatId, msg.id, me.uid, others)
+        val key = seal?.key
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to (if (key != null) E2E.sealText(key, chatId, me.uid, "t", payload) else payload),
+            "kind" to "sos",
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        if (seal != null) markSealed(body, seal)
+        batch.set(msg, body)
+        batch.update(
+            chat,
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to lastOf("sos", ""),
+                    "lastEnc" to false,
+                    "lastW" to FieldValue.delete(),
+                    "lastKind" to "sos",
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
+            ),
+        )
+        val commit = batch.commit()
+        val done = try {
+            withTimeoutOrNull(15_000L) { commit.await() } != null || commit.isSuccessful
+        } catch (e: Exception) {
+            return null
+        }
+        if (done && others.isNotEmpty()) am.khosq.app.push.PushClient.notify(chatId, "msg", me.name, "🆘 SOS")
+        return SosSent(msg.id, key != null, done)
+    }
+
+    /** Replaces the places on an SOS card I sent earlier. [sealed] is what [sendSos] said about that card. */
+    fun updateSos(chatId: String, msgId: String, payload: String, sealed: Boolean) {
+        editMessage(chatId, msgId, payload, false, sealed)
     }
 
     /**

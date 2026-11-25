@@ -391,18 +391,21 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 vm.setReply(mm)
                 menuFor = null
             })
-            SheetRow(icon = KIcons.Forward, label = tr("Փոխանցել"), onClick = {
-                forwardMsg = mm
-                menuFor = null
-            })
-            SheetRow(
-                icon = if (isStarred) KIcons.StarFill else KIcons.Star,
-                label = if (isStarred) tr("Հանել աստղը") else tr("Աստղանշել"),
-                onClick = {
-                    vm.toggleStar(chatId, mm)
+            // an SOS card is not forwarded or starred: it is only meaningful where it was sent, while it is live
+            if (mm.kind != "sos") {
+                SheetRow(icon = KIcons.Forward, label = tr("Փոխանցել"), onClick = {
+                    forwardMsg = mm
                     menuFor = null
-                },
-            )
+                })
+                SheetRow(
+                    icon = if (isStarred) KIcons.StarFill else KIcons.Star,
+                    label = if (isStarred) tr("Հանել աստղը") else tr("Աստղանշել"),
+                    onClick = {
+                        vm.toggleStar(chatId, mm)
+                        menuFor = null
+                    },
+                )
+            }
             val pinnedHere = chat?.pinId == mm.id
             // in an announcement group only the admins pin
             if (!adminOnlyBlocked) {

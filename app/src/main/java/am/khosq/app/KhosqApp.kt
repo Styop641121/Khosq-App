@@ -14,6 +14,8 @@ class KhosqApp : Application() {
         am.khosq.app.data.MemoryStore.init(this)
         // task reminders: the phone forgets alarms on restart/update, so they are set again whenever the app starts
         Reminders.init(this)
+        // the trusted circle: a timer or an SOS that was running when the app stopped is picked up again
+        am.khosq.app.sos.SosEngine.load(this)
         Thread {
             try {
                 Reminders.rescheduleAll()

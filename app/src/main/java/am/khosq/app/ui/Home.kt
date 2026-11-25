@@ -198,6 +198,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
         if (homeSearch) homeFocus.requestFocus()
     }
     var showMe by remember { mutableStateOf(false) }
+    var showSos by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val calls by vm.calls.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(0) }
@@ -256,6 +257,12 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                     )
                 }
                 if (tab == 0) {
+                    KIconButton(
+                        icon = KIcons.Alert,
+                        onClick = { showSos = true },
+                        description = tr("SOS"),
+                        tint = k.danger,
+                    )
                     KIconButton(
                         icon = KIcons.Assistant,
                         onClick = onAssistant,
@@ -390,7 +397,7 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                         }
                     }
                     1 -> CallsTab(me = me, calls = calls, chats = chats, onOpenChat = onOpen)
-                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred, onTasks = onTasks, onMemory = onMemory, onAssistant = onAssistant)
+                    else -> SettingsTab(vm = vm, me = me, onStarred = onStarred, onTasks = onTasks, onMemory = onMemory, onAssistant = onAssistant, onSos = { showSos = true })
                 }
             }
         }
@@ -510,6 +517,9 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
     val owner = viewing
     if (owner != null) {
         StoryViewer(ownerId = owner, me = me, vm = vm, onClose = { viewing = null })
+    }
+    if (showSos) {
+        SosHubSheet(me = me, chats = chats, onClose = { showSos = false })
     }
     if (showMe) {
         KSheet(onDismiss = { showMe = false }) {

@@ -223,6 +223,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     var attachOpen by remember { mutableStateOf(false) }
     var locAsk by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var pollOpen by remember { mutableStateOf(false) }
+    var stickersOpen by remember { mutableStateOf(false) }
     // a message I am turning into a task: the form opens with its text
     var taskSeed by remember { mutableStateOf<Task?>(null) }
     var translateFor by remember { mutableStateOf<String?>(null) }
@@ -547,6 +548,15 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 },
             )
             SheetRow(
+                icon = KIcons.Sticker,
+                label = tr("Սթիքերներ"),
+                subtitle = tr("Պատրաստի հայերեն սթիքերներ"),
+                onClick = {
+                    attachOpen = false
+                    stickersOpen = true
+                },
+            )
+            SheetRow(
                 icon = KIcons.Poll,
                 label = tr("Հարցում"),
                 subtitle = tr("Հարց և 2–6 տարբերակ, բոլորը կարող են ձայն տալ"),
@@ -614,6 +624,12 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                 transcribeFor = null
                 translateFor = words
             },
+        )
+    }
+    if (stickersOpen) {
+        StickerSheet(
+            onClose = { stickersOpen = false },
+            onPick = { id -> vm.sendSticker(chatId, peerUid, id) },
         )
     }
     if (pollOpen) {
@@ -1124,6 +1140,24 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                             modifier = Modifier.fillMaxWidth().padding(horizontal = Space.l, vertical = 11.dp),
                         )
+                        // the sticker button sits in the empty field and goes away as soon as something is typed
+                        if (text.isEmpty() && editing == null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .size(Dim.composerField)
+                                    .clip(CircleShape)
+                                    .clickable { stickersOpen = true },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = KIcons.Sticker,
+                                    contentDescription = tr("Սթիքերներ"),
+                                    tint = k.textSecondary,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                        }
                     }
                     AnimatedContent(
                         targetState = text.isBlank() && editing == null,

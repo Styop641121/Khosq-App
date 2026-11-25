@@ -607,8 +607,12 @@ class Repository {
         "loc" -> am.khosq.app.REPLY_LOC
         "poll" -> "📊 " + (PollCodec.decode(m.text)?.question ?: "").take(70)
         "sos" -> "🆘 SOS"
+        "sticker" -> StickerLogic.find(m.text)?.let { st -> st.emoji + " " + st.text } ?: am.khosq.app.REPLY_STICKER
         else -> m.text.take(80)
     }
+
+    /** Kinds whose chat-list line is a sign and a word, never the message text itself. */
+    private fun isCardKind(kind: String): Boolean = kind == "img" || kind == "voice" || kind == "loc" || kind == "poll" || kind == "sticker"
 
     /** Short text kept in the chat document (older app versions show it as it is). Language-neutral kind goes to lastKind. */
     private fun lastOf(kind: String, text: String): String = when (kind) {
@@ -617,6 +621,7 @@ class Repository {
         "loc" -> "📍"
         "poll" -> "📊"
         "sos" -> "🆘"
+        "sticker" -> "🙂"
         else -> text.take(80)
     }
 
@@ -742,6 +747,45 @@ class Repository {
                     "lastEnc" to false,
                     "lastW" to FieldValue.delete(),
                     "lastKind" to "poll",
+                    "lastTs" to System.currentTimeMillis(),
+                    "lastFrom" to me.uid,
+                ),
+                others,
+            ),
+        )
+        batch.commit().addOnSuccessListener {
+            if (others.isNotEmpty()) pushMsg(chatId, me, groupTitle, preview, key != null)
+        }
+    }
+
+    /**
+     * A sticker: only its id travels, as the sealed text of a message of kind "sticker" (every phone draws the sticker itself). The
+     * chat list only gets a smile sign. [id] must be a sticker that this version knows.
+     */
+    fun sendSticker(chatId: String, me: Profile, others: List<String>, id: String, groupTitle: String = "") {
+        if (StickerLogic.find(id) == null) return
+        val chat = db.collection("chats").document(chatId)
+        val msg = chat.collection("messages").document()
+        val batch = db.batch()
+        val seal = E2E.begin(chatId, msg.id, me.uid, others)
+        val key = seal?.key
+        val body = hashMapOf<String, Any>(
+            "from" to me.uid,
+            "text" to (if (key != null) E2E.sealText(key, chatId, me.uid, "t", id) else id),
+            "kind" to "sticker",
+            "ts" to FieldValue.serverTimestamp(),
+        )
+        if (seal != null) markSealed(body, seal)
+        batch.set(msg, body)
+        val preview = lastOf("sticker", "")
+        batch.update(
+            chat,
+            bump(
+                hashMapOf<String, Any>(
+                    "lastText" to preview,
+                    "lastEnc" to false,
+                    "lastW" to FieldValue.delete(),
+                    "lastKind" to "sticker",
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),
@@ -960,7 +1004,7 @@ class Repository {
         if (bytes != null) body["data"] = Blob.fromBytes(if (key != null) E2E.sealBytes(key, target.id, me.uid, "d", bytes) else bytes)
         if (m.wave.isNotEmpty()) body["wave"] = m.wave
         val prev = lastOf(m.kind, m.text)
-        val prevIsText = m.kind != "img" && m.kind != "voice" && m.kind != "loc" && m.kind != "poll"
+        val prevIsText = !isCardKind(m.kind)
         val sealedPrev = key != null && prevIsText && prev.isNotEmpty()
         val b = db.batch()
         b.set(msg, body)
@@ -971,7 +1015,7 @@ class Repository {
                     "lastText" to (if (sealedPrev) E2E.sealText(key!!, target.id, me.uid, "l", prev) else prev),
                     "lastEnc" to sealedPrev,
                     "lastW" to (if (sealedPrev) (seal?.wraps ?: FieldValue.delete()) else FieldValue.delete()),
-                    "lastKind" to (if (m.kind == "img" || m.kind == "voice" || m.kind == "loc" || m.kind == "poll") m.kind else "text"),
+                    "lastKind" to (if (isCardKind(m.kind)) m.kind else "text"),
                     "lastTs" to System.currentTimeMillis(),
                     "lastFrom" to me.uid,
                 ),

@@ -1,6 +1,7 @@
 package am.khosq.app
 
 import am.khosq.app.data.PollCodec
+import am.khosq.app.data.StickerLogic
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
@@ -109,6 +110,8 @@ fun previewOf(kind: String, text: String): String = when (kind) {
     "voice" -> "🎤 " + tr("Ձայնային նամակ")
     "loc" -> "📍 " + tr("Տեղադրություն")
     "sos" -> "🆘 SOS"
+    // an open sticker shows its phrase; the chat list only knows the kind, so it shows the word
+    "sticker" -> StickerLogic.find(text)?.let { st -> st.emoji + " " + st.text } ?: ("🙂 " + tr("Սթիքեր"))
     // a poll shows its question when the message is open, otherwise just the word
     "poll" -> "📊 " + (PollCodec.decode(text)?.question ?: tr("Հարցում"))
     "call_missed" -> "📵 " + tr("Բաց թողնված զանգ")
@@ -120,11 +123,13 @@ fun previewOf(kind: String, text: String): String = when (kind) {
 const val REPLY_IMG = "\uE000img"
 const val REPLY_VOICE = "\uE000voice"
 const val REPLY_LOC = "\uE000loc"
+const val REPLY_STICKER = "\uE000sticker"
 
 fun replyText(reply: String): String = when (reply) {
     REPLY_IMG -> previewOf("img", "")
     REPLY_VOICE -> previewOf("voice", "")
     REPLY_LOC -> previewOf("loc", "")
+    REPLY_STICKER -> previewOf("sticker", "")
     else -> previewOf("", reply)
 }
 

@@ -203,6 +203,9 @@ object KIcons {
         )
     }
     val Poll: ImageVector by lazy { line("poll", listOf("M18 20V10", "M12 20V4", "M6 20v-6")) }
+    val Sticker: ImageVector by lazy {
+        line("sticker", listOf("M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M8 14s1.5 2 4 2 4-2 4-2", "M9 9h.01", "M15 9h.01"))
+    }
     val Location: ImageVector by lazy {
         line("location", listOf("M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z", "M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"))
     }

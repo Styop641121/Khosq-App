@@ -795,6 +795,17 @@ object Strings {
         map["Չհաջողվեց հաստատել։ Փորձիր նորից։"] = arrayOf("Verification failed. Try again.", "Не удалось подтвердить. Попробуйте снова.")
     }
 
+    private fun part19() {
+        map["Սթիքեր"] = arrayOf("Sticker", "Стикер")
+        map["Սթիքերներ"] = arrayOf("Stickers", "Стикеры")
+        map["Պատրաստի հայերեն սթիքերներ"] = arrayOf("Ready-made Armenian stickers", "Готовые армянские стикеры")
+        map["Սթիքեր։ այն տեսնելու համար թարմացրու հավելվածը"] = arrayOf("A sticker. Update the app to see it.", "Стикер. Обновите приложение, чтобы увидеть его.")
+        map["Վերջինները"] = arrayOf("Recent", "Недавние")
+        map["Ողջույններ"] = arrayOf("Greetings", "Приветствия")
+        map["Զգացմունքներ"] = arrayOf("Feelings", "Чувства")
+        map["Պատասխաններ"] = arrayOf("Replies", "Ответы")
+    }
+
     init {
         part0()
         part1()
@@ -815,5 +826,6 @@ object Strings {
         part16()
         part17()
         part18()
+        part19()
     }
 }

@@ -482,6 +482,7 @@ internal fun Bubble(
                         "loc" -> LocationBody(m, mine, ink, soft, onLong)
                         "sos" -> SosBody(m, mine, peerName, ink, soft, onLong)
                         "poll" -> PollBody(m, mine, myUid, ink, soft, onVote, onLong)
+                        "sticker" -> StickerBody(m, soft)
                         else -> {
                             val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
                             val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }

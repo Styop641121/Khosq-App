@@ -9,6 +9,7 @@ import am.khosq.app.data.CallRecord
 import am.khosq.app.data.Chat
 import am.khosq.app.data.Message
 import am.khosq.app.data.PollCodec
+import am.khosq.app.data.StickerLogic
 import am.khosq.app.data.Profile
 import am.khosq.app.data.QrLogic
 import am.khosq.app.data.QrVerdict
@@ -643,7 +644,7 @@ class AppViewModel : ViewModel() {
     fun editMessage(chatId: String, m: Message, text: String) {
         val t = text.trim()
         if (m.from != uid || m.kind != "text" || t.isEmpty() || t == m.text) return
-        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" || x.kind == "loc" || x.kind == "poll" }
+        val lastReal = _messages.value.lastOrNull { x -> x.kind == "text" || x.kind == "img" || x.kind == "voice" || x.kind == "loc" || x.kind == "poll" || x.kind == "sticker" }
         repo.editMessage(chatId, m.id, t, lastReal?.id == m.id, m.enc)
     }
 
@@ -684,6 +685,17 @@ class AppViewModel : ViewModel() {
         return true
     }
 
+    /** Sends a sticker of the built-in set and remembers it in the list of recent ones. False when this version does not know the id. */
+    fun sendSticker(chatId: String, peerUid: String, id: String): Boolean {
+        if (StickerLogic.find(id) == null) return false
+        val me = (_boot.value as? Boot.Ready)?.me ?: return false
+        val to = recipients(chatId, peerUid)
+        val title = groupTitle(chatId)
+        Prefs.putString(StickerLogic.RECENT_KEY, StickerLogic.pushRecent(Prefs.getString(StickerLogic.RECENT_KEY), id))
+        withKey(chatId) { repo.sendSticker(chatId, me, to, id, title) }
+        return true
+    }
+
     /** Votes for an option; choosing the option I already chose takes my vote back. */
     fun vote(chatId: String, m: Message, option: Int) {
         val poll = PollCodec.decode(m.text) ?: return
@@ -718,7 +730,8 @@ class AppViewModel : ViewModel() {
                 fromName = from,
                 mine = m.from == me.uid,
                 kind = m.kind,
-                text = if (m.kind == "text") m.text.take(600) else "",
+                // a sticker keeps its short id, so the list of starred messages can show its phrase
+                text = if (m.kind == "text") m.text.take(600) else if (m.kind == "sticker") m.text.take(40) else "",
                 ts = m.ts,
                 at = System.currentTimeMillis(),
             ),

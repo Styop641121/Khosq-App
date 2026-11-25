@@ -18,9 +18,13 @@ import am.khosq.app.data.AsstIntent
 import am.khosq.app.data.AsstTurn
 import am.khosq.app.data.AssistantLogic
 import am.khosq.app.data.AssistantParser
+import am.khosq.app.data.TranscribeCache
+import am.khosq.app.data.TranscribeLogic
+import am.khosq.app.data.TranscribeResult
 import am.khosq.app.data.TranslateCache
 import am.khosq.app.data.TranslateLogic
 import am.khosq.app.data.TranslateResult
+import am.khosq.app.push.TranscribeClient
 import am.khosq.app.push.TranslateClient
 import am.khosq.app.Lang
 import am.khosq.app.data.Task
@@ -1103,6 +1107,34 @@ class AppViewModel : ViewModel() {
         translateCache.get(text, to)?.let { return it }
         val r = TranslateClient.translate(text, to)
         translateCache.put(text, to, r)
+        return r
+    }
+
+    // ---- Voice transcription: one voice note at a time, only when the person asks for it, and only after they allowed it once
+    // (a separate permission from translation: here it is sound that leaves the phone, not text).
+
+    private val _transcribeOn = MutableStateFlow(Prefs.getString("transcribe_ok") == "1")
+    val transcribeOn: StateFlow<Boolean> = _transcribeOn.asStateFlow()
+    private val transcribeCache = TranscribeCache()
+
+    /** The switch in Settings and the "Allow" button of the transcription sheet. Switching it off also forgets the transcripts kept for this run. */
+    fun setTranscribeOn(on: Boolean) {
+        Prefs.putString("transcribe_ok", if (on) "1" else "0")
+        _transcribeOn.value = on
+        if (!on) transcribeCache.clear()
+    }
+
+    /**
+     * The words of one voice note ([messageId] only names it for the cache; [audio] is the opened sound). Nothing is saved on the phone
+     * or in the chat. Throws when the server says no: see [TranscribeClient.explain].
+     */
+    suspend fun transcribeVoice(messageId: String, audio: ByteArray, lang: String): TranscribeResult {
+        if (!TranscribeLogic.isLang(lang)) throw TranscribeClient.Failure(400)
+        if (audio.size > TranscribeLogic.MAX_BYTES) throw TranscribeClient.Failure(413)
+        if (audio.size < TranscribeLogic.MIN_BYTES) throw TranscribeClient.Failure(400)
+        transcribeCache.get(messageId, lang)?.let { return it }
+        val r = TranscribeClient.transcribe(audio, lang)
+        transcribeCache.put(messageId, lang, r)
         return r
     }
 

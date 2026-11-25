@@ -273,6 +273,7 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
     val myTasks by vm.tasks.collectAsStateWithLifecycle()
     val memChats by vm.memoryChats.collectAsStateWithLifecycle()
     val translateOn by vm.translateOn.collectAsStateWithLifecycle()
+    val transcribeOn by vm.transcribeOn.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -451,6 +452,19 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                 },
                 trailing = {
                     Switch(checked = translateOn, onCheckedChange = { on -> vm.setTranslateOn(on) }, colors = kSwitchColors())
+                },
+            )
+            KDivider(inset = 62.dp)
+            SettingsRow(
+                icon = KIcons.Transcribe,
+                title = tr("Ձայնի տառադարձում"),
+                subtitle = if (transcribeOn) {
+                    tr("Միացված է. ձայնային նամակը տառադարձվում է միայն երբ ընտրում ես «Տառադարձել», և միայն այդ նամակի ձայնն է ուղարկվում սերվեր։")
+                } else {
+                    tr("Անջատված է. ոչ մի ձայն չի ուղարկվում սերվեր։")
+                },
+                trailing = {
+                    Switch(checked = transcribeOn, onCheckedChange = { on -> vm.setTranscribeOn(on) }, colors = kSwitchColors())
                 },
             )
         }

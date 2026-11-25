@@ -3,7 +3,7 @@
 //   SA_JSON  - the whole Firebase service-account JSON (Secret)
 //   API_KEY  - Firebase Web API key (from google-services.json, "current_key")
 //   INVITE_KEY - any long random text (Secret). Signs group invite links. Without it, invite links are off.
-//   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation is off.
+//   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation and voice transcription are off.
 //   Either Cloudflare Realtime TURN:
 //     TURN_KEY_ID    - TURN key id (text variable)
 //     TURN_KEY_TOKEN - TURN key API token (Secret)
@@ -343,6 +343,86 @@ async function translateRoute(body, env) {
   return json({ text: out, from, to, via });
 }
 
+// ---------------------------------------------------------------------------------------------- voice transcription (Workers AI)
+// POST /ai/transcribe?lang=auto|hy|ru|en   body = the voice note as it is (AAC in an MP4 file, what the app records)
+//   ->  { text, from, via, empty }.  One voice note at a time, only when the person asks. Nothing is stored or logged.
+// Whisper on Workers Free costs about 47 Neurons per audio minute out of the 10 000 a day, and stops by itself when they are
+// used. The note is at most ~900 KB (about 3.7 minutes); the Worker takes 1 MB, 6 requests a minute per user.
+const MAX_AUDIO = 1000000;
+const STT_LANGS = ["hy", "ru", "en"];
+const STT_MAIN = "@cf/openai/whisper-large-v3-turbo";
+const STT_BACKUP = "@cf/openai/whisper";
+
+function toBase64(bytes) {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+function sttText(r) {
+  let t = r?.text ?? r?.result?.text ?? "";
+  if (typeof t !== "string") return null;
+  return t.trim();
+}
+
+function shortReason(e) {
+  return String((e && e.message) || e || "").replace(/\s+/g, " ").slice(0, 160);
+}
+
+// The turbo model takes the audio as base64 text; the older model takes a list of byte values. Asks with the options that
+// help most (no looping on silence, the language when the person named it), and with fewer when the platform refuses them.
+async function transcribeAudio(env, bytes, lang, st) {
+  const b64 = toBase64(bytes);
+  const withLang = lang ? { language: lang } : {};
+  const mainForms = [
+    { audio: b64, task: "transcribe", condition_on_previous_text: false, ...withLang },
+    { audio: b64, ...withLang },
+    { audio: b64 },
+  ];
+  for (const args of mainForms) {
+    try {
+      const t = sttText(await env.AI.run(STT_MAIN, args));
+      if (t !== null) return { text: t, via: "whisper-turbo" };
+    } catch (e) {
+      if (DAILY_LIMIT.test(shortReason(e))) {
+        st.limit = true;
+        return null;
+      }
+      st.reason = shortReason(e);
+    }
+  }
+  try {
+    const t = sttText(await env.AI.run(STT_BACKUP, { audio: Array.from(bytes), ...withLang }));
+    if (t !== null) return { text: t, via: "whisper" };
+  } catch (e) {
+    if (DAILY_LIMIT.test(shortReason(e))) st.limit = true;
+    else st.reason = st.reason || shortReason(e);
+  }
+  return null;
+}
+
+async function transcribeRoute(req, env, idToken) {
+  // the person is checked before the body is read, so nobody can make the Worker read megabytes without logging in
+  const uid = await verifyUser(idToken, env.API_KEY);
+  if (!uid) return new Response("unauthorized", { status: 401 });
+  if (limited(uid, "stt", 6)) return new Response("slow down", { status: 429 });
+  if (!env.AI) return new Response("transcription is off", { status: 501 });
+  const declared = Number(req.headers.get("Content-Length") || 0);
+  if (declared > MAX_AUDIO) return new Response("too big", { status: 413 });
+  const lang = new URL(req.url).searchParams.get("lang") || "auto";
+  if (lang !== "auto" && !STT_LANGS.includes(lang)) return new Response("bad request", { status: 400 });
+  const bytes = new Uint8Array(await req.arrayBuffer());
+  if (bytes.length > MAX_AUDIO) return new Response("too big", { status: 413 });
+  if (bytes.length < 200) return new Response("bad request", { status: 400 });
+  const st = { limit: false, reason: "" };
+  const out = await transcribeAudio(env, bytes, lang === "auto" ? "" : lang, st);
+  if (!out) {
+    if (st.limit) return new Response("daily limit", { status: 503 });
+    return new Response("transcription failed: " + (st.reason || "no answer"), { status: 502 });
+  }
+  return json({ text: out.text, from: lang, via: out.via, empty: out.text === "" });
+}
+
 // The page a link opens in a browser. It only holds a button that opens the app; it does not look at the group at all.
 function invitePage(token) {
   const html = `<!doctype html><html lang="hy"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -376,6 +456,8 @@ export default {
     if (req.method !== "POST") return new Response("KHOSQ push ok");
     try {
       const idToken = (req.headers.get("Authorization") || "").replace("Bearer ", "");
+      // a voice note is binary and bigger than any JSON body, so it is read by its own route
+      if (new URL(req.url).pathname === "/ai/transcribe") return await transcribeRoute(req, env, idToken);
       const raw = await req.text();
       if (raw.length > MAX_BODY) return new Response("too big", { status: 413 });
       const body = JSON.parse(raw);

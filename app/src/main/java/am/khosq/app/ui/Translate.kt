@@ -53,6 +53,8 @@ internal fun langName(code: String): String = when (code) {
 internal fun viaName(via: String): String = when (via) {
     "gemma" -> "Gemma"
     "m2m100" -> "M2M100"
+    "whisper-turbo" -> "Whisper large-v3 turbo"
+    "whisper" -> "Whisper"
     else -> via
 }
 

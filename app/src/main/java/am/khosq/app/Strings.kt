@@ -465,7 +465,7 @@ object Strings {
         map["Թարգմանիչ՝"] = arrayOf("Translator:", "Переводчик:")
         map["Թարգմանել"] = arrayOf("Translate", "Перевести")
         map["Ուղարկվում է միայն այս նամակի տեքստը"] = arrayOf("Only this message’s text is sent", "Отправляется только текст этого сообщения")
-        map["Պատասխանում եմ քո առաջադրանքներից և այն զրույցներից, որոնցում միացրել ես Հիշողությունը։ Այդ պատասխանների համար ոչինչ չի ուղարկվում սերվեր, և ամեն պատասխանի տակ ցույց եմ տալիս աղբյուրը։ Միակ բացառությունը թարգմանությունն է՝ միայն երբ դու ես խնդրում, և միայն քո թույլտվությամբ։"] = arrayOf("I answer from your tasks and from the chats where you switched Memory on. Nothing is sent to a server for those answers, and under every answer I show where it came from. The one exception is translation: only when you ask, and only with your permission.", "Я отвечаю по вашим задачам и по чатам, где включена Память. Для таких ответов ничего не отправляется на сервер, а под каждым ответом я показываю источник. Единственное исключение — перевод: только по вашей просьбе и только с вашего разрешения.")
+        map["Պատասխանում եմ քո առաջադրանքներից և այն զրույցներից, որոնցում միացրել ես Հիշողությունը։ Այդ պատասխանների համար ոչինչ չի ուղարկվում սերվեր, և ամեն պատասխանի տակ ցույց եմ տալիս աղբյուրը։ Միակ բացառությունները թարգմանությունն ու ձայնային նամակի տառադարձումն են՝ միայն երբ դու ես խնդրում, և միայն քո թույլտվությամբ։"] = arrayOf("I answer from your tasks and from the chats where you switched Memory on. Nothing is sent to a server for those answers, and under every answer I show where it came from. The only exceptions are translation and voice-note transcription: only when you ask, and only with your permission.", "Я отвечаю по вашим задачам и по чатам, где включена Память. Для таких ответов ничего не отправляется на сервер, а под каждым ответом я показываю источник. Единственные исключения — перевод и расшифровка голосовых сообщений: только по вашей просьбе и только с вашего разрешения.")
         map["Թարգմանություն՝ «թարգմանիր ռուսերեն՝ բարի լույս»։ Թարգմանվող տեքստն ուղարկվում է սերվեր՝ միայն քո թույլտվությամբ։ Նամակը թարգմանելու համար երկար սեղմիր այն և ընտրիր «Թարգմանել»։"] = arrayOf("Translation: “translate into Russian: good morning”. The text to translate is sent to a server, only with your permission. To translate a message, long-press it and choose “Translate”.", "Перевод: «переведи на русский: доброе утро». Переводимый текст отправляется на сервер только с вашего разрешения. Чтобы перевести сообщение, нажмите на него и удерживайте, затем выберите «Перевести».")
         map["Ամփոփում՝ դեռ չեմ կարող, դա լեզվական մոդել է պահանջում։ Եթե չեմ հասկանում, ասում եմ և ոչինչ չեմ կռահում քո փոխարեն։"] = arrayOf("Summaries: I cannot do these yet, they need a language model. When I do not understand, I say so and do not guess for you.", "Сводки: пока не умею, для них нужна языковая модель. Если я не понял, я так и скажу и ничего не буду угадывать за вас.")
         map["Ասա, թե ինչ թարգմանեմ"] = arrayOf("Tell me what to translate", "Скажите, что перевести")
@@ -485,6 +485,27 @@ object Strings {
         map["Հարցեր, հրամաններ, թարգմանություն"] = arrayOf("Questions, commands, translation", "Вопросы, команды, перевод")
     }
 
+    private fun part11() {
+        map["Տառադարձել"] = arrayOf("Transcribe", "Расшифровать")
+        map["Ուղարկվում է միայն այս ձայնային նամակի ձայնը"] = arrayOf("Only the sound of this voice note is sent", "Отправляется только звук этого голосового сообщения")
+        map["Տառադարձում"] = arrayOf("Transcription", "Расшифровка")
+        map["Ավտոմատ"] = arrayOf("Auto", "Авто")
+        map["Տառադարձելու համար միայն այս մեկ ձայնային նամակի ձայնը կուղարկվի KHOSQ-ի սերվեր և այնտեղից՝ Cloudflare AI. այդ պահին այն չգաղտնագրված է։ KHOSQ-ի սերվերը ձայնը և տեքստը չի պահում և չի գրանցում։ Մյուս նամակները չեն ուղարկվում, և ոչինչ չի տառադարձվում առանց քո բացելու այս պատուհանը։ Եթե ձայնը քո զրուցակցինն է, տառադարձիր միայն եթե դա հարմար է նաև նրան։ Թույլտվությունը կարելի է հանել Կարգավորումներում։"] = arrayOf("To transcribe, only the sound of this one voice note is sent to the KHOSQ server and from there to Cloudflare AI; at that moment it is not end-to-end encrypted. The KHOSQ server does not store or log the sound or the text. Other messages are not sent, and nothing is transcribed unless you open this window yourself. If the voice is your contact’s, transcribe it only if that is fine with them too. You can withdraw permission in Settings.", "Для расшифровки на сервер KHOSQ, а оттуда в Cloudflare AI отправляется только звук этого одного голосового сообщения; в этот момент он не защищён сквозным шифрованием. Сервер KHOSQ не хранит и не записывает ни звук, ни текст. Другие сообщения не отправляются, и ничего не расшифровывается, пока вы сами не откроете это окно. Если это голос вашего собеседника, расшифровывайте его, только если это удобно и ему. Разрешение можно отозвать в настройках.")
+        map["Թույլատրել և տառադարձել"] = arrayOf("Allow and transcribe", "Разрешить и расшифровать")
+        map["Տառադարձում եմ…"] = arrayOf("Transcribing…", "Расшифровываю…")
+        map["Խոսք չի գտնվել. փորձիր նշել լեզուն"] = arrayOf("No speech found. Try choosing the language", "Речь не найдена. Попробуйте выбрать язык")
+        map["Ավտոմատ տառադարձումը կարող է սխալներ պարունակել, հատկապես հայերենի դեպքում։"] = arrayOf("Automatic transcription may contain errors, especially for Armenian.", "Автоматическая расшифровка может содержать ошибки, особенно для армянского языка.")
+        map["Տառադարձիչ՝"] = arrayOf("Transcriber:", "Расшифровщик:")
+        map["Ձայնային նամակը չափազանց մեծ է տառադարձելու համար"] = arrayOf("The voice note is too large to transcribe", "Голосовое сообщение слишком большое для расшифровки")
+        map["Ձայնագրությունը չի ճանաչվել"] = arrayOf("The recording was not recognised", "Запись не распознана")
+        map["Տառադարձումը սերվերում դեռ միացված չէ"] = arrayOf("Transcription is not switched on at the server yet", "Расшифровка на сервере ещё не включена")
+        map["Տառադարձիչը չկարողացավ մշակել այս ձայնագրությունը"] = arrayOf("The transcriber could not process this recording", "Расшифровщик не смог обработать эту запись")
+        map["Ձայնի տառադարձում"] = arrayOf("Voice transcription", "Расшифровка голоса")
+        map["Միացված է. ձայնային նամակը տառադարձվում է միայն երբ ընտրում ես «Տառադարձել», և միայն այդ նամակի ձայնն է ուղարկվում սերվեր։"] = arrayOf("On. A voice note is transcribed only when you choose “Transcribe”, and only that note’s sound is sent to the server.", "Включена. Голосовое сообщение расшифровывается только когда вы выбираете «Расшифровать», и на сервер отправляется только звук этого сообщения.")
+        map["Անջատված է. ոչ մի ձայն չի ուղարկվում սերվեր։"] = arrayOf("Off. No sound is sent to a server.", "Выключена. Никакой звук не отправляется на сервер.")
+        map["Ձայնային նամակ՝ երկար սեղմիր այն և ընտրիր «Տառադարձել»։ Ձայնը ուղարկվում է սերվեր՝ միայն քո թույլտվությամբ, և արդյունքը կարելի է պատճենել կամ թարգմանել։"] = arrayOf("Voice note: long-press it and choose “Transcribe”. The sound is sent to a server only with your permission, and the result can be copied or translated.", "Голосовое сообщение: нажмите и удерживайте его, затем выберите «Расшифровать». Звук отправляется на сервер только с вашего разрешения, а результат можно скопировать или перевести.")
+    }
+
     init {
         part0()
         part1()
@@ -497,5 +518,6 @@ object Strings {
         part8()
         part9()
         part10()
+        part11()
     }
 }

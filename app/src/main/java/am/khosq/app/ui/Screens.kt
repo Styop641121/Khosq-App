@@ -189,6 +189,8 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     // a message I am turning into a task: the form opens with its text
     var taskSeed by remember { mutableStateOf<Task?>(null) }
     var translateFor by remember { mutableStateOf<String?>(null) }
+    // a voice note whose words I want written down
+    var transcribeFor by remember { mutableStateOf<Message?>(null) }
     // KHOSQ Memory for this chat: 1 = asking to switch it on, 2 = asking to switch it off
     var memAsk by remember { mutableStateOf(0) }
     val memChats by vm.memoryChats.collectAsStateWithLifecycle()
@@ -385,6 +387,17 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     menuFor = null
                 })
             }
+            if (mm.kind == "voice" && !mm.deleted && mm.data != null) {
+                SheetRow(
+                    icon = KIcons.Transcribe,
+                    label = tr("Տառադարձել"),
+                    subtitle = tr("Ուղարկվում է միայն այս ձայնային նամակի ձայնը"),
+                    onClick = {
+                        transcribeFor = mm
+                        menuFor = null
+                    },
+                )
+            }
             if (mm.kind == "text" && !mm.deleted && mm.text.isNotBlank()) {
                 SheetRow(
                     icon = KIcons.Translate,
@@ -515,6 +528,20 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     val tf = translateFor
     if (tf != null) {
         TranslateSheet(vm = vm, text = tf, onClose = { translateFor = null })
+    }
+    val trv = transcribeFor
+    val trvData = trv?.data
+    if (trv != null && trvData != null) {
+        TranscribeSheet(
+            vm = vm,
+            messageId = trv.id,
+            audio = trvData,
+            onClose = { transcribeFor = null },
+            onTranslate = { words ->
+                transcribeFor = null
+                translateFor = words
+            },
+        )
     }
     if (pollOpen) {
         CreatePollSheet(

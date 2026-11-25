@@ -276,7 +276,10 @@ private fun StatusTicks(pending: Boolean, delivered: Boolean, read: Boolean, sof
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * One message of a chat. A call or an event of the group is a small line in the middle ([SystemLine]); everything else is a bubble
+ * ([MessageBubble]). They are two separate functions so that neither is one very long piece of code.
+ */
 @Composable
 internal fun Bubble(
     m: Message,
@@ -297,30 +300,80 @@ internal fun Bubble(
     shield: ShieldEnv? = null,
     onImage: () -> Unit = {},
 ) {
-    val k = KTheme.colors
     if (m.kind == "call" || m.kind == "sys") {
-        val isCall = m.kind == "call"
-        val bad = isCall && m.code != "call_done"
-        Box(Modifier.fillMaxWidth().padding(vertical = Space.xs), contentAlignment = Alignment.Center) {
-            FrostedPill {
-                if (isCall) {
-                    Icon(
-                        imageVector = if (bad) KIcons.PhoneMissed else if (m.vid) KIcons.VideoLine else KIcons.PhoneLine,
-                        contentDescription = null,
-                        tint = if (bad) k.danger else k.success,
-                        modifier = Modifier.size(15.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(
-                    text = systemLine(m, names[m.from] ?: peerName) + "  " + formatTime(m.ts),
-                    color = k.textSecondary,
-                    style = KType.Pill,
-                )
-            }
-        }
-        return
+        SystemLine(m = m, names = names, peerName = peerName)
+    } else {
+        MessageBubble(
+            m = m,
+            mine = mine,
+            peerRead = peerRead,
+            peerDelivered = peerDelivered,
+            showTicks = showTicks,
+            sender = sender,
+            senderKey = senderKey,
+            myUid = myUid,
+            names = names,
+            peerName = peerName,
+            starred = starred,
+            joinedOlder = joinedOlder,
+            onSwipe = onSwipe,
+            onLong = onLong,
+            onVote = onVote,
+            shield = shield,
+            onImage = onImage,
+        )
     }
+}
+
+/** A call (took place, missed, declined) or an event of a group, as a small frosted line in the middle of the chat. */
+@Composable
+private fun SystemLine(m: Message, names: Map<String, String>, peerName: String) {
+    val k = KTheme.colors
+    val isCall = m.kind == "call"
+    val bad = isCall && m.code != "call_done"
+    val icon = if (bad) KIcons.PhoneMissed else if (m.vid) KIcons.VideoLine else KIcons.PhoneLine
+    val line = systemLine(m, names[m.from] ?: peerName) + "  " + formatTime(m.ts)
+    Box(Modifier.fillMaxWidth().padding(vertical = Space.xs), contentAlignment = Alignment.Center) {
+        // the same capsule as FrostedPill, written out here so that no extra block of code is made for it
+        Row(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(k.glass.copy(alpha = 0.74f))
+                .border(1.dp, k.glassEdge, CircleShape)
+                .padding(horizontal = Space.m, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (isCall) {
+                Icon(imageVector = icon, contentDescription = null, tint = if (bad) k.danger else k.success, modifier = Modifier.size(15.dp))
+                Spacer(Modifier.width(6.dp))
+            }
+            Text(text = line, color = k.textSecondary, style = KType.Pill)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MessageBubble(
+    m: Message,
+    mine: Boolean,
+    peerRead: Long,
+    peerDelivered: Long,
+    showTicks: Boolean,
+    sender: String?,
+    senderKey: String,
+    myUid: String,
+    names: Map<String, String>,
+    peerName: String,
+    starred: Boolean,
+    joinedOlder: Boolean,
+    onSwipe: () -> Unit,
+    onLong: () -> Unit,
+    onVote: (Int) -> Unit,
+    shield: ShieldEnv?,
+    onImage: () -> Unit,
+) {
+    val k = KTheme.colors
     val big = Corner.bubble
     val small = Corner.bubbleTail
     val shape = if (mine) {
@@ -432,91 +485,125 @@ internal fun Bubble(
                         Text(text = tr("Նամակը ջնջված է"), color = soft, style = TextStyle(fontSize = 15.sp, fontStyle = FontStyle.Italic))
                     }
                 } else {
-                    if (m.reply.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier
-                                .padding(bottom = 6.dp)
-                                .clip(RoundedCornerShape(Corner.s))
-                                .background(if (mine) Color(0x26FFFFFF) else k.accentSoft)
-                                .height(IntrinsicSize.Min),
-                        ) {
-                            Box(
-                                Modifier
-                                    .width(3.dp)
-                                    .fillMaxHeight()
-                                    .background(if (mine) Color.White.copy(alpha = 0.85f) else k.accent),
-                            )
-                            Column(Modifier.padding(horizontal = Space.s, vertical = 5.dp)) {
-                                Text(
-                                    text = when {
-                                        m.replyFrom.isEmpty() -> m.replyName
-                                        m.replyFrom == myUid -> tr("Դու")
-                                        else -> names[m.replyFrom] ?: peerName
-                                    },
-                                    color = if (mine) Color.White else k.accent,
-                                    style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    text = replyText(m.reply),
-                                    color = soft,
-                                    style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                        }
-                    }
-                    when (m.kind) {
-                        "img" -> ImageBody(m, onOpen = onImage, onLong = onLong)
-                        "voice" -> VoiceBody(m, mine, onLong)
-                        "loc" -> LocationBody(m, mine, ink, soft, onLong)
-                        "sos" -> SosBody(m, mine, peerName, ink, soft, onLong)
-                        "poll" -> PollBody(m, mine, myUid, ink, soft, onVote, onLong)
-                        "sticker" -> StickerBody(m, soft)
-                        else -> {
-                            val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
-                            val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }
-                            Text(text = rich, color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 23.sp))
-                            if (shield != null && !mine && !m.deleted) ShieldStrip(messageId = m.id, text = m.text, env = shield)
-                        }
-                    }
-                    if (m.reactions.isNotEmpty()) {
-                        Row(Modifier.padding(top = 5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                            for ((e, n) in m.reactions.values.groupingBy { it }.eachCount()) {
-                                Text(
-                                    text = if (n > 1) "$e $n" else e,
-                                    color = ink,
-                                    style = TextStyle(fontSize = 13.sp),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(Corner.m))
-                                        .background(if (mine) Color(0x2EFFFFFF) else k.surfaceHighest)
-                                        .padding(horizontal = 7.dp, vertical = 2.dp),
-                                )
-                            }
-                        }
-                    }
+                    if (m.reply.isNotEmpty()) ReplyQuote(m, mine, myUid, names, peerName, soft)
+                    BubbleBody(m, mine, myUid, peerName, ink, soft, shield, onVote, onLong, onImage)
+                    if (m.reactions.isNotEmpty()) ReactionsRow(m, mine, ink)
                 }
-                Row(
-                    modifier = Modifier.align(Alignment.End).padding(top = 1.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (m.edited && !m.deleted && m.kind != "sos") {
-                        Text(text = tr("փոխված"), color = soft, style = TextStyle(fontSize = 11.sp, fontStyle = FontStyle.Italic))
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    if (starred) {
-                        Icon(imageVector = KIcons.StarFill, contentDescription = null, tint = soft, modifier = Modifier.size(12.dp))
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Text(text = formatTime(m.ts), color = soft, style = KType.Micro)
-                    if (mine && showTicks) {
-                        Spacer(Modifier.width(4.dp))
-                        StatusTicks(pending = m.pending, delivered = delivered, read = read, soft = soft)
-                    }
-                }
+                BubbleFooter(m, mine, starred, showTicks, delivered, read, soft, Modifier.align(Alignment.End).padding(top = 1.dp))
             }
+        }
+    }
+}
+
+/** The strip with the quoted message at the top of a bubble that answers another message. */
+@Composable
+private fun ReplyQuote(m: Message, mine: Boolean, myUid: String, names: Map<String, String>, peerName: String, soft: Color) {
+    val k = KTheme.colors
+    Row(
+        modifier = Modifier
+            .padding(bottom = 6.dp)
+            .clip(RoundedCornerShape(Corner.s))
+            .background(if (mine) Color(0x26FFFFFF) else k.accentSoft)
+            .height(IntrinsicSize.Min),
+    ) {
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(if (mine) Color.White.copy(alpha = 0.85f) else k.accent),
+        )
+        Column(Modifier.padding(horizontal = Space.s, vertical = 5.dp)) {
+            Text(
+                text = when {
+                    m.replyFrom.isEmpty() -> m.replyName
+                    m.replyFrom == myUid -> tr("Դու")
+                    else -> names[m.replyFrom] ?: peerName
+                },
+                color = if (mine) Color.White else k.accent,
+                style = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = replyText(m.reply),
+                color = soft,
+                style = TextStyle(fontSize = 13.sp, lineHeight = 18.sp),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** What a message holds: a photo, a voice note, a place, a poll, a sticker or the text. */
+@Composable
+private fun BubbleBody(
+    m: Message,
+    mine: Boolean,
+    myUid: String,
+    peerName: String,
+    ink: Color,
+    soft: Color,
+    shield: ShieldEnv?,
+    onVote: (Int) -> Unit,
+    onLong: () -> Unit,
+    onImage: () -> Unit,
+) {
+    val k = KTheme.colors
+    when (m.kind) {
+        "img" -> ImageBody(m, onOpen = onImage, onLong = onLong)
+        "voice" -> VoiceBody(m, mine, onLong)
+        "loc" -> LocationBody(m, mine, ink, soft, onLong)
+        "sos" -> SosBody(m, mine, peerName, ink, soft, onLong)
+        "poll" -> PollBody(m, mine, myUid, ink, soft, onVote, onLong)
+        "sticker" -> StickerBody(m, soft)
+        else -> {
+            val linkColor = if (mine) Color(0xFFE3E8FF) else k.accent
+            val rich = remember(m.text, linkColor) { richText(m.text, linkColor) }
+            Text(text = rich, color = ink, style = TextStyle(fontSize = 16.sp, lineHeight = 23.sp))
+            if (shield != null && !mine && !m.deleted) ShieldStrip(messageId = m.id, text = m.text, env = shield)
+        }
+    }
+}
+
+/** The little reactions under a message, with a count when several people chose the same one. */
+@Composable
+private fun ReactionsRow(m: Message, mine: Boolean, ink: Color) {
+    val k = KTheme.colors
+    Row(Modifier.padding(top = 5.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        for ((e, n) in m.reactions.values.groupingBy { it }.eachCount()) {
+            Text(
+                text = if (n > 1) "$e $n" else e,
+                color = ink,
+                style = TextStyle(fontSize = 13.sp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Corner.m))
+                    .background(if (mine) Color(0x2EFFFFFF) else k.surfaceHighest)
+                    .padding(horizontal = 7.dp, vertical = 2.dp),
+            )
+        }
+    }
+}
+
+/** The line at the bottom of a bubble: "edited", the star, the time and (for my messages) the ticks. */
+@Composable
+private fun BubbleFooter(m: Message, mine: Boolean, starred: Boolean, showTicks: Boolean, delivered: Boolean, read: Boolean, soft: Color, modifier: Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (m.edited && !m.deleted && m.kind != "sos") {
+            Text(text = tr("փոխված"), color = soft, style = TextStyle(fontSize = 11.sp, fontStyle = FontStyle.Italic))
+            Spacer(Modifier.width(5.dp))
+        }
+        if (starred) {
+            Icon(imageVector = KIcons.StarFill, contentDescription = null, tint = soft, modifier = Modifier.size(12.dp))
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(text = formatTime(m.ts), color = soft, style = KType.Micro)
+        if (mine && showTicks) {
+            Spacer(Modifier.width(4.dp))
+            StatusTicks(pending = m.pending, delivered = delivered, read = read, soft = soft)
         }
     }
 }

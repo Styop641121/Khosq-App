@@ -23,7 +23,7 @@ import java.util.Locale
  */
 object CrashLog {
     private const val FILE = "last_crash.txt"
-    private const val MAX = 6000
+    private const val MAX = 9000
 
     /** Called first thing when the app starts. Keeps the system's own handler and passes the error on to it afterwards. */
     fun install(app: Context) {
@@ -117,7 +117,8 @@ object CrashLog {
             t = cur.cause
         }
         val last = chain.last()
-        sb.append("ROOT: ").append(last.javaClass.name).append(": ").append(cut(last.message)).append('\n')
+        // the whole message of the root: for a "verifier rejected" error it holds the reason, so it is not cut short
+        sb.append("ROOT: ").append(last.javaClass.name).append(": ").append(cut(last.message, 3500)).append('\n')
         // the lines that belong to this app, from anywhere in the chain: they say where in the code it happened
         val own = ArrayList<String>()
         for (c in chain.reversed()) {
@@ -131,12 +132,12 @@ object CrashLog {
         }
         sb.append("\nFULL CHAIN:\n")
         for ((i, c) in chain.withIndex()) {
-            sb.append(if (i == 0) "" else "Caused by: ").append(c.javaClass.name).append(": ").append(cut(c.message)).append('\n')
+            sb.append(if (i == 0) "" else "Caused by: ").append(c.javaClass.name).append(": ").append(cut(c.message, 700)).append('\n')
             val st = c.stackTrace
             for (j in 0 until minOf(st.size, if (i == 0) 10 else 16)) sb.append("    at ").append(st[j]).append('\n')
         }
         return if (sb.length > MAX) sb.substring(0, MAX) + "\n…" else sb.toString()
     }
 
-    private fun cut(s: String?): String = (s ?: "").replace('\n', ' ').take(300)
+    private fun cut(s: String?, max: Int): String = (s ?: "").replace('\n', ' ').take(max)
 }

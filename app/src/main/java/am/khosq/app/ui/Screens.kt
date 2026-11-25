@@ -1264,7 +1264,7 @@ private fun ComposerButton(icon: ImageVector, description: String, filled: Boole
                 if (filled) {
                     Modifier
                         .background(Brush.linearGradient(BrandColors))
-                        .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.34f), Color.White.copy(alpha = 0.05f))), CircleShape)
+                        .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
                 } else {
                     Modifier.background(k.accentSoft)
                 },

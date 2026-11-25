@@ -7,6 +7,8 @@ import android.app.Application
 class KhosqApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // first of all: if the app ever stops with an error, the reason is kept on the phone and shown at the next start
+        CrashLog.install(this)
         Prefs.init(this)
         // the lock of the app: with the lock on, the app starts closed
         AppLock.load()

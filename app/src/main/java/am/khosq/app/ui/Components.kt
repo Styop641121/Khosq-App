@@ -124,20 +124,23 @@ fun Avatar(
                 .clip(CircleShape)
                 .background(mesh.base)
                 .drawBehind {
-                    drawRect(
-                        Brush.radialGradient(
-                            colors = listOf(mesh.cloudA.copy(alpha = 0.78f), Color.Transparent),
-                            center = Offset(this.size.width * 0.2f, this.size.height * 0.15f),
-                            radius = this.size.minDimension * 0.95f,
-                        ),
-                    )
-                    drawRect(
-                        Brush.radialGradient(
-                            colors = listOf(mesh.cloudB.copy(alpha = 0.62f), Color.Transparent),
-                            center = Offset(this.size.width * 0.88f, this.size.height * 0.92f),
-                            radius = this.size.minDimension * 0.9f,
-                        ),
-                    )
+                    // a radial gradient with no radius is an error on Android, so nothing is drawn for an empty box
+                    if (this.size.minDimension > 1f) {
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(mesh.cloudA.copy(alpha = 0.78f), Color.Transparent),
+                                center = Offset(this.size.width * 0.2f, this.size.height * 0.15f),
+                                radius = this.size.minDimension * 0.95f,
+                            ),
+                        )
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(mesh.cloudB.copy(alpha = 0.62f), Color.Transparent),
+                                center = Offset(this.size.width * 0.88f, this.size.height * 0.92f),
+                                radius = this.size.minDimension * 0.9f,
+                            ),
+                        )
+                    }
                 }
                 .border(1.dp, Color(0x1FFFFFFF), CircleShape)
                 .then(if (canZoom) Modifier.clickable { big = true } else Modifier),

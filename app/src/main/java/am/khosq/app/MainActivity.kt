@@ -114,6 +114,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // "no screenshots" when the person switched it on in the security centre
         AppLock.applyScreen(window)
+        // if the last run ended with a crash, its reason is shown once (stays on the phone; the person may copy it)
+        CrashLog.showIfAny(this)
         // the window shows this colour until the first frame is drawn, so a light-theme start does not flash dark
         val lightNow = when (AppTheme.mode) {
             "light" -> true

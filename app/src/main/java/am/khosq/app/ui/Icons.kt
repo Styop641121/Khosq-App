@@ -21,7 +21,16 @@ import androidx.compose.ui.unit.dp
 
 /** Small vector icon set drawn from path data, so the app does not need the big icon library. */
 object KIcons {
-    private fun vec(name: String, d: String, slash: Boolean = false): ImageVector {
+    /** An icon that could not be built (a bad path) must never take the screen down: it is simply empty. */
+    private fun empty(name: String): ImageVector = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).build()
+
+    private fun vec(name: String, d: String, slash: Boolean = false): ImageVector = try {
+        vecUnsafe(name, d, slash)
+    } catch (e: Exception) {
+        empty(name)
+    }
+
+    private fun vecUnsafe(name: String, d: String, slash: Boolean): ImageVector {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         if (slash) {
             // keep the icon everywhere except a diagonal band, then draw the slash inside that band
@@ -69,7 +78,13 @@ object KIcons {
      * icon (degrees), [scale] makes it smaller and [dy] moves it down (both only for the turned handset of "hang up", whose length
      * would otherwise leave the 24 by 24 square). The line is widened by 1 / [scale], so it still comes out 1.75 wide.
      */
-    private fun line(name: String, strokes: List<String>, fill: String? = null, rotate: Float = 0f, scale: Float = 1f, dy: Float = 0f): ImageVector {
+    private fun line(name: String, strokes: List<String>, fill: String? = null, rotate: Float = 0f, scale: Float = 1f, dy: Float = 0f): ImageVector = try {
+        lineUnsafe(name, strokes, fill, rotate, scale, dy)
+    } catch (e: Exception) {
+        empty(name)
+    }
+
+    private fun lineUnsafe(name: String, strokes: List<String>, fill: String?, rotate: Float, scale: Float, dy: Float): ImageVector {
         val b = ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f)
         val moved = rotate != 0f || scale != 1f || dy != 0f
         if (moved) b.addGroup(rotate = rotate, pivotX = 12f, pivotY = 12f, scaleX = scale, scaleY = scale, translationY = dy)

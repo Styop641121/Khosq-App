@@ -50,17 +50,21 @@ import androidx.compose.ui.unit.sp
 /** A soft coloured light around a shape. Phones older than Android 9 cannot colour a shadow, so there it is left out (a black halo would look dirty). */
 @Composable
 fun Modifier.glow(color: Color, radius: Dp = 16.dp, shape: Shape = CircleShape, strength: Float = 0.5f): Modifier {
-    if (Build.VERSION.SDK_INT < 28 || radius.value <= 0f) return this
     val k = KTheme.colors
     val a = (if (k.dark) strength else strength * 0.55f).coerceIn(0f, 1f)
-    return this.shadow(elevation = radius, shape = shape, clip = false, ambientColor = color.copy(alpha = a), spotColor = color.copy(alpha = a))
+    // one way out only (no early return in a composable): the shadow, or nothing on old phones
+    return if (Build.VERSION.SDK_INT >= 28 && radius.value > 0f) {
+        this.shadow(elevation = radius, shape = shape, clip = false, ambientColor = color.copy(alpha = a), spotColor = color.copy(alpha = a))
+    } else {
+        this
+    }
 }
 
 /** A soft shadow under a floating bar in the light theme. On the dark base a shadow cannot be seen, so there it is left out. */
 @Composable
 fun Modifier.floatShadow(shape: Shape): Modifier {
-    if (KTheme.colors.dark) return this
-    return this.shadow(elevation = 14.dp, shape = shape, clip = false, ambientColor = Color(0x33101426), spotColor = Color(0x33101426))
+    val dark = KTheme.colors.dark
+    return if (dark) this else this.shadow(elevation = 14.dp, shape = shape, clip = false, ambientColor = Color(0x33101426), spotColor = Color(0x33101426))
 }
 
 /** The look of a glass surface: the translucent fill, the sheen along the top edge and the hairline. [strong] is for floating things. */

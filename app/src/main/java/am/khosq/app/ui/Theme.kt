@@ -461,20 +461,23 @@ fun Modifier.appBackground(): Modifier {
     return this
         .background(Brush.verticalGradient(0f to top, 0.4f to base, 1f to base))
         .drawBehind {
-            drawRect(
-                Brush.radialGradient(
-                    colors = listOf(BrandColors[0].copy(alpha = a), Color.Transparent),
-                    center = Offset(size.width * 0.12f, 0f),
-                    radius = size.width * 0.9f,
-                ),
-            )
-            drawRect(
-                Brush.radialGradient(
-                    colors = listOf(BrandColors[1].copy(alpha = a * 0.8f), Color.Transparent),
-                    center = Offset(size.width * 0.95f, size.height * 0.08f),
-                    radius = size.width * 0.8f,
-                ),
-            )
+            // a radial gradient with no radius is an error on Android, so nothing is drawn for an empty box
+            if (size.width > 1f) {
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(BrandColors[0].copy(alpha = a), Color.Transparent),
+                        center = Offset(size.width * 0.12f, 0f),
+                        radius = size.width * 0.9f,
+                    ),
+                )
+                drawRect(
+                    Brush.radialGradient(
+                        colors = listOf(BrandColors[1].copy(alpha = a * 0.8f), Color.Transparent),
+                        center = Offset(size.width * 0.95f, size.height * 0.08f),
+                        radius = size.width * 0.8f,
+                    ),
+                )
+            }
         }
 }
 

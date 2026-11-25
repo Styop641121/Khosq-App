@@ -331,8 +331,8 @@ internal fun Bubble(
     val fill = if (mine) {
         Modifier
             .background(Brush.linearGradient(listOf(k.bubbleOutA, k.bubbleOutB)))
-            // a thin light along the upper edge, as if the bubble were a piece of lit glass
-            .border(1.dp, Brush.verticalGradient(listOf(k.bubbleOutEdge, Color(0x0DFFFFFF))), shape)
+            // a thin light along the edge, as if the bubble were a piece of lit glass
+            .border(1.dp, k.bubbleOutEdge.copy(alpha = k.bubbleOutEdge.alpha * 0.7f), shape)
     } else {
         Modifier.background(k.bubbleIn).border(1.dp, k.bubbleInLine, shape)
     }

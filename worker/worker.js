@@ -5,6 +5,7 @@
 //   INVITE_KEY - any long random text (Secret). Signs group invite links. Without it, invite links are off.
 //   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation and voice transcription are off.
 //   (The Trust Shield link check needs nothing: no binding, no key.)
+//   Real Estate Finder: add a Cron Trigger  */5 * * * *  (Settings -> Triggers -> Cron Triggers). Needs no key and no binding.
 //   Either Cloudflare Realtime TURN:
 //     TURN_KEY_ID    - TURN key id (text variable)
 //     TURN_KEY_TOKEN - TURN key API token (Secret)
@@ -542,6 +543,329 @@ a.b{display:block;margin:22px 0 10px;padding:14px;border-radius:14px;background:
   });
 }
 
+// ---------------------------------------------------------------------------------------------- Real Estate Finder (list.am)
+// Watches ONE list.am search (apartments for sale or rent) for a person and sends a push when a new listing appears.
+// The person's search lives in the Firestore document finder/{uid} (the app cannot read or write it: there is no rule for it, so
+// only this Worker, with the service account, can). Fields: cfg (the search), seen (ids already known), hits (the newest
+// matches), st (how the last run went). Routes (all POST, signed in): /finder/state, /finder/save, /finder/check, /finder/clear.
+// The check runs every 5 minutes from a Cron Trigger (Worker -> Settings -> Triggers -> Cron: */5 * * * *).
+// Politeness to list.am: one page request per distinct search per run, an honest User-Agent, a hard cap of users per run,
+// only the first part of the page is read, and the paid "Top Ads" block (which ignores filters) is skipped.
+const FINDER_CATS = { sale: 60, rent: 56 }; // list.am category numbers: apartments for sale / long term apartment rentals
+const FINDER_REGIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]); // 1 = all of Yerevan, the rest are its districts
+const FINDER_LANG = { hy: "", en: "/en", ru: "/ru" }; // list.am: Armenian has no prefix
+const FINDER_MAX_SEEN = 400;
+const FINDER_MAX_HITS = 30;
+const FINDER_MAX_CARDS = 40;
+const FINDER_READ_BYTES = 280000;
+const FINDER_MAX_USERS = 8; // per run: the free plan allows 50 outgoing calls per run and a person costs about 4
+const FINDER_MIN_GAP_MS = 4 * 60 * 1000;
+const FINDER_TXT = {
+  hy: { title: "KHOSQ Finder", one: "Նոր հայտարարություն", many: (n) => n + " նոր հայտարարություն" },
+  en: { title: "KHOSQ Finder", one: "New listing", many: (n) => n + " new listings" },
+  ru: { title: "KHOSQ Finder", one: "Новое объявление", many: (n) => n + " новых объявлений" },
+};
+
+function finderCfg(c) {
+  if (!c || typeof c !== "object") return null;
+  const num = (v, max) => {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, max) : 0;
+  };
+  const min = num(c.min, 1e9);
+  let max = num(c.max, 1e9);
+  if (max && min && max < min) max = min;
+  return {
+    on: c.on === true,
+    cat: c.cat === "rent" ? "rent" : "sale",
+    region: FINDER_REGIONS.has(Number(c.region)) ? Number(c.region) : 1,
+    min,
+    max,
+    cur: c.cur === "AMD" ? "AMD" : "USD",
+    rooms: num(c.rooms, 8),
+    lang: Object.prototype.hasOwnProperty.call(FINDER_LANG, c.lang) ? c.lang : "hy",
+  };
+}
+
+// The address of the search page. Filters on list.am: n = district, crc = currency (0 AMD, 1 USD), price1/price2, _a4[] = rooms
+// (99 is a studio), srt=3 = newest first.
+function finderUrl(cfg) {
+  const p = new URLSearchParams();
+  p.set("n", String(cfg.region));
+  p.set("crc", cfg.cur === "AMD" ? "0" : "1");
+  if (cfg.min) p.set("price1", String(cfg.min));
+  if (cfg.max) p.set("price2", String(cfg.max));
+  if (cfg.rooms) {
+    if (cfg.rooms <= 1) p.append("_a4[]", "99");
+    for (let r = cfg.rooms; r <= 8; r++) p.append("_a4[]", String(r));
+  }
+  p.set("srt", "3");
+  return "https://www.list.am" + FINDER_LANG[cfg.lang] + "/category/" + FINDER_CATS[cfg.cat] + "?" + p.toString();
+}
+
+const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+function finderText(s) {
+  return String(s || "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+      if (e[0] === "#") {
+        const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : "";
+      }
+      return ENTITIES[e.toLowerCase()] ?? m;
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Reads the cards of a search page. Each card is a <div class="category-data-list-grid-card"> with the link /item/ID, the
+// price (div.p), the title (div.l), "2 rm., 46 sq.m., 3/8 floor" (div.at), the district and the photo numbers (data-tslider).
+// A card that is cut off by the end of what was read, or has no price or title, is left out. The paid "Top Ads" cards have
+// ld_src=4 in their link and are left out too.
+function finderParse(html) {
+  const out = [];
+  const seen = new Set();
+  const M = '<div class="category-data-list-grid-card">';
+  let pos = html.indexOf(M);
+  while (pos !== -1 && out.length < FINDER_MAX_CARDS) {
+    const next = html.indexOf(M, pos + M.length);
+    const chunk = html.slice(pos, next === -1 ? pos + 4000 : next);
+    pos = next;
+    const link = /href="\/(?:[a-z]{2}\/)?item\/(\d+)([^"]*)"/.exec(chunk);
+    if (!link || seen.has(link[1])) continue;
+    if (/[?&]ld_src=4(?:&|$)/.test(link[2].replace(/&amp;/g, "&"))) continue;
+    const price = /<div class="p">([\s\S]*?)<\/div>/.exec(chunk);
+    const title = /<div class="l">([\s\S]*?)<\/div>/.exec(chunk);
+    if (!price || !title) continue;
+    const p = finderText(price[1]).replace(/([֏$€₽])(?=[^\s\d])/, "$1 ");
+    const t = finderText(title[1]);
+    if (!p || !t) continue;
+    const at = /<div class="at">([\s\S]*?)<\/div>/.exec(chunk);
+    const loc = /category-data-list-card__location">([\s\S]*?)<\/div>/.exec(chunk);
+    const ph = /data-tslider="([\d,]+)"/.exec(chunk);
+    let photos = ph ? ph[1].split(",").filter((x) => /^\d{4,12}$/.test(x)).slice(0, 6) : [];
+    if (!photos.length) {
+      const one = /img\.list\.am\/g\/\d{3}\/(\d+)\./.exec(chunk);
+      if (one) photos = [one[1]];
+    }
+    seen.add(link[1]);
+    out.push({ id: link[1], p: p.slice(0, 40), t: t.slice(0, 160), a: finderText(at && at[1]).slice(0, 60), l: finderText(loc && loc[1]).slice(0, 40), ph: photos });
+  }
+  return out;
+}
+
+// Reads the beginning of a page only (the cards of the newest listings come first), then lets go of the connection.
+async function finderFetch(url) {
+  const init = {
+    headers: { "User-Agent": "KHOSQ-Finder/1.0 (personal listing alerts; one request per search per 5 minutes)", Accept: "text/html" },
+  };
+  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) init.signal = AbortSignal.timeout(9000);
+  const r = await fetch(url, init);
+  if (!r.ok) return { ok: false, status: r.status, html: "" };
+  // a redirect to the home page means the address was not understood
+  if (r.url && !/\/category\/\d+/.test(r.url)) return { ok: false, status: 0, why: "redirect", html: "" };
+  let html = "";
+  if (r.body && r.body.getReader) {
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let n = 0;
+    while (n < FINDER_READ_BYTES) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      n += value.length;
+      html += dec.decode(value, { stream: true });
+    }
+    try {
+      await reader.cancel();
+    } catch (e) {
+      // already closed
+    }
+  } else {
+    html = (await r.text()).slice(0, FINDER_READ_BYTES);
+  }
+  return { ok: true, status: r.status, html };
+}
+
+async function finderCtx(env) {
+  const sa = JSON.parse(env.SA_JSON);
+  const at = await googleToken(sa);
+  return { pid: sa.project_id, fs: "https://firestore.googleapis.com/v1/projects/" + sa.project_id + "/databases/(default)/documents/", auth: { Authorization: "Bearer " + at } };
+}
+
+const parseJson = (t, d) => {
+  try {
+    const v = JSON.parse(t);
+    return v === null || v === undefined ? d : v;
+  } catch (e) {
+    return d;
+  }
+};
+
+async function finderLoad(f, uid) {
+  const r = await fetch(f.fs + "finder/" + encodeURIComponent(uid), { headers: f.auth });
+  if (r.status === 404) return { cfg: null, seen: [], hits: [], st: { run: 0 }, ut: "" };
+  if (!r.ok) throw new Error("firestore " + r.status);
+  const d = await r.json();
+  const fl = d.fields || {};
+  const cfg = finderCfg(parseJson(fl.cfg?.stringValue, null));
+  const seen = parseJson(fl.seen?.stringValue, []);
+  const hits = parseJson(fl.hits?.stringValue, []);
+  const st = parseJson(fl.st?.stringValue, { run: 0 });
+  return { cfg, seen: Array.isArray(seen) ? seen : [], hits: Array.isArray(hits) ? hits : [], st: st && typeof st === "object" ? st : { run: 0 }, ut: d.updateTime || "" };
+}
+
+// Writes the named fields. With [ut] (the time the document was read) it only writes if nobody changed it meanwhile.
+async function finderSave(f, uid, s, names, ut) {
+  const fields = {};
+  for (const n of names) fields[n] = str(JSON.stringify(s[n]));
+  let q = names.map((n) => "updateMask.fieldPaths=" + n).join("&");
+  if (ut) q += "&currentDocument.updateTime=" + encodeURIComponent(ut);
+  const r = await fetch(f.fs + "finder/" + encodeURIComponent(uid) + "?" + q, {
+    method: "PATCH",
+    headers: { ...f.auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+  return r.ok;
+}
+
+async function finderPush(f, uid, cfg, fresh) {
+  const tr = FINDER_TXT[cfg.lang] || FINDER_TXT.hy;
+  const first = fresh[0];
+  const one = first.p + (first.l ? " · " + first.l : "") + (first.a ? " · " + first.a.split(",")[0] : "");
+  const body = fresh.length === 1 ? tr.one + ": " + one : tr.many(fresh.length) + ". " + one;
+  const tokRes = await fetch(f.fs + "tokens/" + encodeURIComponent(uid), { headers: f.auth });
+  if (!tokRes.ok) return "no token";
+  const tok = (await tokRes.json()).fields?.fcmToken?.stringValue;
+  if (!tok) return "no token";
+  const r = await fetch("https://fcm.googleapis.com/v1/projects/" + f.pid + "/messages:send", {
+    method: "POST",
+    headers: { ...f.auth, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        token: tok,
+        data: { type: "finder", count: String(fresh.length), title: tr.title, body: body.slice(0, 140), id: first.id },
+        android: { priority: "HIGH", ttl: "86400s" },
+      },
+    }),
+  });
+  return r.ok ? "ok" : "fcm " + r.status;
+}
+
+// One look at list.am for one person. Never throws; says how it went in st. [cache] shares the page between people with the same search.
+async function finderCheck(f, uid, s, now, notify, cache) {
+  const cfg = s.cfg;
+  const st = { run: now, ok: false, note: "", found: 0, fresh: 0 };
+  const url = finderUrl(cfg);
+  let res;
+  try {
+    if (!cache.has(url)) cache.set(url, finderFetch(url));
+    res = await cache.get(url);
+  } catch (e) {
+    res = { ok: false, status: 0, why: "net", html: "" };
+  }
+  if (!res.ok) {
+    st.note = res.status ? "http " + res.status : res.why || "net";
+    return { ...s, st };
+  }
+  const cards = finderParse(res.html);
+  st.found = cards.length;
+  if (!cards.length) {
+    st.note = /cf-chl|challenge-platform|Just a moment/i.test(res.html) ? "challenge" : res.html.length < 20000 ? "short" : "parse 0";
+    return { ...s, st };
+  }
+  st.ok = true;
+  const known = new Set(s.seen);
+  if (!s.seen.length) {
+    // the first look: everything on the page is "known"; only the newest three are shown, as a proof that the search works
+    st.note = "baseline";
+    return { ...s, seen: cards.map((c) => c.id), hits: s.hits.length ? s.hits : cards.slice(0, 3).map((c) => ({ ...c, ts: now, b: 1 })), st };
+  }
+  const fresh = cards.filter((c) => !known.has(c.id));
+  st.fresh = fresh.length;
+  if (!fresh.length) return { ...s, st };
+  const out = {
+    ...s,
+    seen: [...fresh.map((c) => c.id), ...s.seen].slice(0, FINDER_MAX_SEEN),
+    hits: [...fresh.map((c) => ({ ...c, ts: now })), ...s.hits].slice(0, FINDER_MAX_HITS),
+    st,
+  };
+  if (notify) {
+    try {
+      st.push = await finderPush(f, uid, cfg, fresh);
+    } catch (e) {
+      st.push = "error";
+    }
+  }
+  return out;
+}
+
+const finderView = (s, now) => ({ cfg: s.cfg, hits: s.hits, st: s.st, now });
+
+async function finderRoute(path, body, uid, env) {
+  if (!env.SA_JSON) return new Response("finder is off", { status: 501 });
+  if (!UID_RE.test(uid)) return new Response("bad user", { status: 403 });
+  const f = await finderCtx(env);
+  const now = Date.now();
+  let s = await finderLoad(f, uid);
+  if (path === "/finder/state") return json(finderView(s, now));
+  if (path === "/finder/save") {
+    const cfg = finderCfg(body.cfg);
+    if (!cfg) return new Response("bad search", { status: 400 });
+    // The same search saved again (pause, resume, a tap on Save) keeps what it found. A different search starts over. A search that
+    // is switched on again after a pause forgets what it knew, so what appeared meanwhile is learned silently, not pushed in a heap.
+    const same = s.cfg && finderUrl(s.cfg) === finderUrl(cfg);
+    s = same ? { ...s, cfg, seen: cfg.on && !s.cfg.on ? [] : s.seen } : { cfg, seen: [], hits: [], st: { run: 0 }, ut: "" };
+    if (cfg.on && !s.seen.length) s = await finderCheck(f, uid, s, now, false, new Map());
+    if (!(await finderSave(f, uid, s, ["cfg", "seen", "hits", "st"], ""))) return new Response("firestore", { status: 502 });
+    return json(finderView(s, now));
+  }
+  if (path === "/finder/clear") {
+    // the person's own way to remove everything that is kept about the search
+    const r = await fetch(f.fs + "finder/" + encodeURIComponent(uid), { method: "DELETE", headers: f.auth });
+    if (!r.ok && r.status !== 404) return new Response("firestore", { status: 502 });
+    return json(finderView({ cfg: null, seen: [], hits: [], st: { run: 0 } }, now));
+  }
+  if (path === "/finder/check") {
+    if (!s.cfg) return json(finderView(s, now));
+    // a look the person asked for: the answer is shown in the app, so no push; no faster than once in 30 seconds
+    if (now - (s.st.run || 0) < 30000) return json({ ...finderView(s, now), throttled: true });
+    const ut = s.ut;
+    s = await finderCheck(f, uid, s, now, false, new Map());
+    await finderSave(f, uid, s, ["seen", "hits", "st"], ut);
+    return json(finderView(s, now));
+  }
+  return new Response("not found", { status: 404 });
+}
+
+// Cron: the people whose search is on and whose last look is old enough, oldest first, at most FINDER_MAX_USERS.
+async function finderCron(env) {
+  if (!env.SA_JSON) return;
+  const f = await finderCtx(env);
+  const r = await fetch(f.fs + "finder?pageSize=200&mask.fieldPaths=cfg&mask.fieldPaths=st", { headers: f.auth });
+  if (!r.ok) return;
+  const now = Date.now();
+  const due = [];
+  for (const d of (await r.json()).documents || []) {
+    const uid = String(d.name || "").split("/").pop();
+    const cfg = finderCfg(parseJson(d.fields?.cfg?.stringValue, null));
+    const st = parseJson(d.fields?.st?.stringValue, { run: 0 });
+    if (uid && UID_RE.test(uid) && cfg && cfg.on && now - (Number(st.run) || 0) >= FINDER_MIN_GAP_MS) due.push({ uid, run: Number(st.run) || 0 });
+  }
+  due.sort((a, b) => a.run - b.run);
+  const cache = new Map();
+  for (const u of due.slice(0, FINDER_MAX_USERS)) {
+    try {
+      let s = await finderLoad(f, u.uid);
+      if (!s.cfg || !s.cfg.on) continue;
+      const ut = s.ut;
+      s = await finderCheck(f, u.uid, s, Date.now(), true, cache);
+      await finderSave(f, u.uid, s, ["seen", "hits", "st"], ut);
+    } catch (e) {
+      // one person's trouble must not stop the others
+    }
+  }
+}
+
 export default {
   async fetch(req, env) {
     if (req.method === "GET") {
@@ -566,6 +890,10 @@ export default {
       if (path === "/ai/linkcheck") {
         if (limited(uid, "lnk", 20)) return new Response("slow down", { status: 429 });
         return await linkcheckRoute(body);
+      }
+      if (path.startsWith("/finder/")) {
+        if (limited(uid, "fin", 20)) return new Response("slow down", { status: 429 });
+        return await finderRoute(path, body, uid, env);
       }
       if (path === "/group/invite" || path === "/group/join") {
         if (limited(uid, "grp", 20)) return new Response("slow down", { status: 429 });
@@ -632,5 +960,10 @@ export default {
     } catch (e) {
       return new Response("error: " + e.message, { status: 500 });
     }
+  },
+
+  // Cron Trigger: the Real Estate Finder looks at list.am. Nothing else runs here, and a failure stays inside it.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(finderCron(env).catch(() => {}));
   },
 };

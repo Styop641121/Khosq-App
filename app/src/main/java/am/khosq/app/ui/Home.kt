@@ -357,6 +357,8 @@ fun HomeScreen(vm: AppViewModel, me: Profile, onOpen: (String) -> Unit, onStarre
                                 }
                             } else {
                                 LazyColumn(contentPadding = PaddingValues(bottom = 96.dp)) {
+                                    // the Real Estate Finder bot, only once a search has been set up (it shows nothing otherwise)
+                                    item(key = "finder-bot") { FinderChatRow(visible = !homeSearch && cat == 0) }
                                     items(shownChats, key = { c -> c.id }) { chat ->
                                         Column(Modifier.animateItem()) {
                                             ChatRow(

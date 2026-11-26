@@ -32,6 +32,10 @@ class KhosqMessagingService : FirebaseMessagingService() {
             FirebaseAuth.getInstance().currentUser?.uid?.let { CallManager.listen(it) }
             return
         }
+        if (type == "finder") {
+            showFinder(m)
+            return
+        }
         if (AppState.inForeground) return
         val chatId = m.data["chatId"] ?: return
         if (am.khosq.app.Prefs.isMuted(chatId)) return
@@ -72,6 +76,45 @@ class KhosqMessagingService : FirebaseMessagingService() {
             NotificationManagerCompat.from(this).notify(chatId.hashCode(), n)
         } catch (e: SecurityException) {
             // notifications not allowed
+        }
+    }
+
+    /**
+     * A new listing found by the Real Estate Finder (it has no chat). The app's own copy is refreshed; when the app is not on screen a
+     * notification is shown, and a tap on it opens the bot screen. Whatever goes wrong in here stays in here.
+     */
+    private fun showFinder(m: RemoteMessage) {
+        try {
+            am.khosq.app.data.FinderHub.load()
+            am.khosq.app.data.FinderHub.refresh()
+            if (AppState.inForeground) return
+            val title = m.data["title"] ?: "KHOSQ Finder"
+            val fallback = am.khosq.app.tr("Նոր հայտարարություն")
+            val body = am.khosq.app.data.NotifyPrivacy.text(am.khosq.app.AppLock.hideTextNow(), m.data["body"] ?: "", fallback)
+            val id = "khosq-finder".hashCode()
+            val tap = PendingIntent.getActivity(
+                this,
+                id,
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra("finder", true),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val n = NotificationCompat.Builder(this, KeepAliveService.CH_MSG)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle(title)
+                .setContentText(body.ifEmpty { fallback })
+                .setStyle(NotificationCompat.BigTextStyle().bigText(body.ifEmpty { fallback }))
+                .setContentIntent(tap)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            NotificationManagerCompat.from(this).notify(id, n)
+        } catch (e: SecurityException) {
+            // notifications not allowed
+        } catch (e: Exception) {
+            // a listing notification must never break the delivery of messages
         }
     }
 

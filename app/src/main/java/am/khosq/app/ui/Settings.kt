@@ -497,6 +497,8 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                     Switch(checked = transcribeOn, onCheckedChange = { on -> vm.setTranscribeOn(on) }, colors = kSwitchColors())
                 },
             )
+            KDivider(inset = 62.dp)
+            FinderSettingsRow()
         }
 
         // ---- chats

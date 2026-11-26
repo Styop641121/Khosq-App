@@ -19,6 +19,9 @@ object AppState {
     /** A tap on a reminder asked to show the task list. */
     val openTasks = MutableStateFlow(false)
 
+    /** A tap on the Real Estate Finder (the chat list row, the settings row or its notification) asked to show the bot screen. */
+    val openFinder = MutableStateFlow(false)
+
     /** The message the chat that is about to open should scroll to. The chat takes it (sets it back to null) and flashes the message. */
     val jump = MutableStateFlow<Jump?>(null)
 

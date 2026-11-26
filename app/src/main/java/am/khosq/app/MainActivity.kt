@@ -14,6 +14,7 @@ import am.khosq.app.ui.Boot
 import am.khosq.app.ui.ChatScreen
 import am.khosq.app.ui.Corner
 import am.khosq.app.ui.EmptyState
+import am.khosq.app.ui.FinderScreen
 import am.khosq.app.ui.KIcons
 import am.khosq.app.ui.KTheme
 import am.khosq.app.ui.LocalReduceMotion
@@ -153,6 +154,8 @@ class MainActivity : ComponentActivity() {
         if (id != null) AppState.pendingChat.value = id
         // a tap on a task reminder
         if (i?.getBooleanExtra(Reminders.EXTRA_OPEN_TASKS, false) == true) AppState.openTasks.value = true
+        // a tap on a Real Estate Finder notification
+        if (i?.getBooleanExtra("finder", false) == true) AppState.openFinder.value = true
         // a group invite link (khosq://join/TOKEN, or the https page of the Worker)
         val invite = am.khosq.app.push.InviteClient.tokenFrom(i?.data)
         if (invite != null) AppState.pendingInvite.value = invite
@@ -428,11 +431,19 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
     val nav = rememberNavController()
     val pending by AppState.pendingChat.collectAsStateWithLifecycle()
     val openTasks by AppState.openTasks.collectAsStateWithLifecycle()
+    val openFinder by AppState.openFinder.collectAsStateWithLifecycle()
 
     LaunchedEffect(openTasks) {
         if (openTasks) {
             nav.navigate("tasks") { launchSingleTop = true }
             AppState.openTasks.value = false
+        }
+    }
+
+    LaunchedEffect(openFinder) {
+        if (openFinder) {
+            nav.navigate("finder") { launchSingleTop = true }
+            AppState.openFinder.value = false
         }
     }
 
@@ -482,6 +493,9 @@ private fun MainNav(vm: AppViewModel, me: Profile) {
                 onOpenTasks = { nav.navigate("tasks") { launchSingleTop = true } },
                 onOpenMemory = { nav.navigate("memory") { launchSingleTop = true } },
             )
+        }
+        composable("finder") {
+            FinderScreen(vm = vm, onBack = { nav.popBackStack() })
         }
         composable("memory") {
             MemoryScreen(vm = vm, onBack = { nav.popBackStack() }, onOpenChat = { id -> nav.navigate("chat/$id") })

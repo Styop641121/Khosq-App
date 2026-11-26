@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark light">
 <meta name="referrer" content="no-referrer">
 <!-- The page holds a key: it may load scripts only from itself and from Google's Firebase address, and talk only to the KHOSQ Worker and Firebase. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.workers.dev https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob:; connect-src 'self' https://*.workers.dev https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; base-uri 'none'; form-action 'none'">
 <title>KHOSQ Web</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
@@ -42,22 +42,60 @@
   </section>
 </main>
 
-<main id="home" class="wrap" hidden>
-  <section class="card home">
-    <div class="me">
-      <div class="avatar" id="avatar" aria-hidden="true"></div>
-      <div>
-        <h1 id="name"></h1>
-        <p class="muted" id="handle"></p>
-      </div>
+<main id="app" class="app" hidden>
+  <aside class="side">
+    <div class="side-top">
+      <button class="mebtn" id="meBtn" type="button" data-i18n-title="about"></button>
     </div>
-    <h2 data-i18n="homeTitle"></h2>
-    <ul class="checks" id="checks"></ul>
-    <p class="muted" id="keyid"></p>
-    <p class="muted" data-i18n="homeNext"></p>
-    <button class="btn danger" id="logout" type="button" data-i18n="logout"></button>
+    <div class="search"><input id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search" data-i18n-aria="search"></div>
+    <div class="chips" id="chips" role="group"></div>
+    <p class="hint" id="listLoading" data-i18n="loadingChats"></p>
+    <ul class="list" id="list"></ul>
+    <p class="hint" id="listEmpty" hidden></p>
+  </aside>
+  <section class="pane">
+    <div class="pane-empty" id="paneEmpty">
+      <div class="big" aria-hidden="true">💬</div>
+      <h2 data-i18n="pickChat"></h2>
+      <p class="muted" data-i18n="paneNote"></p>
+    </div>
+    <div class="chat" id="chat" hidden>
+      <header class="chat-top">
+        <button class="icon-btn back" id="back" type="button" data-i18n-aria="back">‹</button>
+        <span id="chAv"></span>
+        <div class="who2"><b id="chName"></b><small id="chSub"></small></div>
+      </header>
+      <p class="warn" id="warn" role="alert" hidden></p>
+      <div class="msgs" id="msgs">
+        <button class="btn ghost more" id="older" type="button" data-i18n="older" hidden></button>
+        <p class="hint" id="msgLoading" data-i18n="loadingMsgs" hidden></p>
+        <p class="hint" id="noMsgs" hidden></p>
+        <div id="msgList"></div>
+      </div>
+      <footer class="ro" data-i18n="roNote"></footer>
+    </div>
   </section>
 </main>
+
+<dialog id="about" class="about">
+  <div class="me">
+    <div class="avatar" id="avatar" aria-hidden="true"></div>
+    <div>
+      <h1 id="name"></h1>
+      <p class="muted" id="handle"></p>
+    </div>
+  </div>
+  <h2 data-i18n="homeTitle"></h2>
+  <ul class="checks" id="checks"></ul>
+  <p class="muted" id="keyid"></p>
+  <p class="muted" data-i18n="homeNext"></p>
+  <div class="row spread">
+    <button class="btn danger" id="logout" type="button" data-i18n="logout"></button>
+    <button class="btn ghost" id="aboutClose" type="button" data-i18n="close"></button>
+  </div>
+</dialog>
+
+<dialog id="shot" class="shot"><img id="shotImg" alt=""></dialog>
 
 <dialog id="ask">
   <p id="askText"></p>

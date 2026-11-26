@@ -1,5 +1,7 @@
-// The words of the page in Armenian, English and Russian. Russian is the default when the browser speaks something else
-// (the same choice as in the app).
+// The words of the page in Armenian, English and Russian. Armenian (the app's own language) is the default when the browser speaks
+// something else. The words of the chat screens are in words.js.
+import { MORE } from "./words.js";
+
 const T = {
   hy: {
     tagline: "Քո զրույցները համակարգչում՝ նույն անվտանգ գաղտնագրմամբ",
@@ -90,6 +92,8 @@ const T = {
   },
 };
 
+for (const code of Object.keys(MORE)) Object.assign(T[code], MORE[code]);
+
 export const LANGS = [["hy", "Հայերեն"], ["en", "English"], ["ru", "Русский"]];
 let current = "hy";
 
@@ -119,3 +123,5 @@ export function setLang(code) {
 
 export const lang = () => current;
 export const t = (key) => T[current][key] ?? T.en[key] ?? key;
+/** A phrase with {0}, {1} filled in. */
+export const tf = (key, ...args) => t(key).replace(/\{(\d)\}/g, (m, i) => (args[Number(i)] ?? ""));

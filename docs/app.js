@@ -1,16 +1,20 @@
-// KHOSQ Web, stage 1: sign in by QR code. Shows a code, waits for the phone to answer, opens the phone's sealed packet (the identity key),
-// signs in to Firebase as the same account, keeps the key in this browser, and shows who is signed in.
-// Chats and messages come in the next stages.
+// KHOSQ Web: sign in by QR code (stage 1), then the chats and their messages, read only (stage 2). Shows a code, waits for the phone to
+// answer, opens the phone's sealed packet (the identity key), signs in to Firebase as the same account, keeps the key in this browser and
+// opens the chat screens (shell.js). Sending, groups, media and calls come in the next stages.
 import { WORKER, FIREBASE, QR_LIFETIME_MS, POLL_MS } from "./config.js";
 import { newSession, openPacket, importIdentityKey, b64u } from "./link.js";
 import { qrSvg } from "./qr.js";
 import { loadIdentity, saveIdentity, clearIdentity } from "./store.js";
 import { startLang, setLang, lang, t, LANGS } from "./i18n.js";
+import { startShell } from "./shell.js";
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const VIEWS = ["boot", "login", "home"];
-const show = (name) => VIEWS.forEach((v) => ($(v).hidden = v !== name));
+const VIEWS = ["boot", "login", "app"];
+const show = (name) => {
+  VIEWS.forEach((v) => ($(v).hidden = v !== name));
+  document.body.classList.toggle("in-app", name === "app");
+};
 
 /** A problem the person can be told about: [key] is a word of i18n.js. */
 class Failure extends Error {
@@ -32,11 +36,16 @@ function setStatus(key, kind = "") {
 }
 
 let homeState = null;
+let shell = null;
 function applyLang() {
   document.querySelectorAll("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n)));
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => (el.placeholder = t(el.dataset.i18nPh)));
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => (el.title = t(el.dataset.i18nTitle)));
   for (const b of $("langs").children) b.setAttribute("aria-pressed", String(b.dataset.lang === lang()));
   setStatus(statusKey, statusKind);
   if (homeState) renderHome(homeState);
+  if (shell) shell.relang();
 }
 
 function buildLangs() {
@@ -236,23 +245,29 @@ async function home(id) {
   run++; // stops any sign-in loop
   const f = await firebase();
   homeState = { name: "…", handle: "", fp: await fingerprint(id.pub), match: null };
-  show("home");
-  renderHome(homeState);
+  let d = {};
   try {
     const snap = await f.fsM.getDoc(f.fsM.doc(f.db, "users", id.uid));
-    const d = snap.exists() ? snap.data() : {};
+    d = snap.exists() ? snap.data() : {};
     homeState = { ...homeState, name: d.name || d.handle || "KHOSQ", handle: d.handle || "", match: typeof d.pk === "string" ? d.pk === id.pub : null };
   } catch (e) {
     homeState = { ...homeState, name: "KHOSQ" };
   }
   renderHome(homeState);
+  show("app");
+  if (shell) shell.stop();
+  shell = startShell({ f, id, user: { name: d.name || "", handle: d.handle || "", pv: Number(d.pv) || 0 }, onAbout: () => $("about").showModal() });
+  $("aboutClose").onclick = () => $("about").close();
   $("logout").onclick = () => {
+    $("about").close();
     $("askText").textContent = t("logoutAsk");
     $("ask").showModal();
   };
   $("askNo").onclick = () => $("ask").close();
   $("askYes").onclick = async () => {
     $("ask").close();
+    if (shell) shell.stop();
+    shell = null;
     try {
       await f.authM.signOut(f.auth);
     } catch (e) {

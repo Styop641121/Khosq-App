@@ -200,6 +200,11 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     return toB64(await sealRaw(k, chatId + "|" + from + "|" + field, te.encode(text)));
   }
 
+  /** The key of a message I sent myself, to change its text later: a group's is made again from my secret, otherwise the chat key. */
+  async function sentKey(chatId, msgId) {
+    return isGroup(chatId) ? aesKey(await messageKeyBits(chatId, msgId), BOTH) : chatKey(chatId);
+  }
+
   /**
    * Starts sealing a new message. A one-to-one chat or my saved messages: the chat key. A group: a message key wrapped for every member (me
    * included). Null when it cannot be done now (the other person, or somebody in the group, has no key yet): the caller must then NOT send
@@ -266,5 +271,5 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     await pins.set(FLAG + peer, "");
   }
 
-  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, messageKeyBits };
+  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sentKey, messageKeyBits };
 }

@@ -3,7 +3,7 @@
 import { t, tf, lang } from "./i18n.js";
 import { makeData, PAGE } from "./data.js";
 import { makeE2E } from "./e2e.js";
-import { makeSender, whyNot, replyOf } from "./send.js";
+import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, isActionable, lastReal } from "./send.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
 
@@ -58,6 +58,7 @@ const KIND_PREVIEW = {
   poll: () => "📊 " + t("poll"),
   sticker: () => "🙂 " + t("sticker"),
   sos: () => "🆘 SOS",
+  deleted: () => "🚫 " + t("deletedLine"),
   call_missed: () => "📵 " + t("call_missed"),
 };
 
@@ -138,6 +139,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
     stickUntil: 0, // after sending, the view follows the newest message until this moment
     refreshJob: null,
     readSig: "",
+    // changing and deleting (stage 4)
+    editing: null, // {id, original, draft, reply}: my message being changed; draft and reply are what the box held before
+    menuFor: null, // the id of the message whose menu is open
+    menuBtn: null,
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -303,6 +308,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
     body = body.replace(/\s+/g, " ").slice(0, 90);
     if (!body) return "";
+    if (kind === "deleted") return body;
     if (v.group && !v.saved && who) return nameIn(c, who) + ": " + body;
     if (who === uid && !v.saved) return t("you") + ": " + body;
     return body;
@@ -519,7 +525,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
 
   function ticks(chat, m) {
     // my own messages only: a clock = still being sent, one tick = sent, two = delivered, two coloured = read (the phone's reading of the chat document)
-    if (m.pending) return "p";
+    if (m.pending && sender.sending.has(m.id)) return "p";
     const others = (chat.members || []).filter((x) => x !== uid);
     if (!others.length) return null;
     const low = (map) => Math.min(...others.map((o) => (map && typeof map[o] === "number" ? map[o] : 0)));
@@ -562,6 +568,21 @@ export function startShell({ f, id, user, onAbout, worker }) {
       meta.append(tk);
     }
     bub.append(meta);
+    const live = isActionable(m) && !sender.sending.has(m.id);
+    if (live) {
+      const mb = el("button", "mbtn", "⋯");
+      mb.type = "button";
+      mb.title = t("moreActions");
+      mb.setAttribute("aria-label", t("moreActions"));
+      mb.setAttribute("aria-haspopup", "menu");
+      mb.setAttribute("aria-expanded", "false");
+      mb.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (S.menuFor === m.id) closeMenu();
+        else openMenu(m.id, mb);
+      });
+      bub.append(mb);
+    }
     if (view && !m.deleted && (view.ok || view.text || view.bytes)) {
       const rb = el("button", "rbtn", "↩");
       rb.type = "button";
@@ -576,7 +597,21 @@ export function startShell({ f, id, user, onAbout, worker }) {
       const counts = new Map();
       for (const r of rs) counts.set(r, (counts.get(r) || 0) + 1);
       const chips = el("div", "reacts");
-      for (const [emoji, n] of counts) chips.append(el("span", "chip", n > 1 ? emoji + " " + n : emoji));
+      const mine = m.reactions ? m.reactions[uid] : null;
+      for (const [emoji, n] of counts) {
+        const label = n > 1 ? emoji + " " + n : emoji;
+        if (!live) {
+          chips.append(el("span", "chip", label));
+          continue;
+        }
+        // a chip is also a button: pressing it puts my reaction on, or takes it off (the same as in the menu)
+        const c = el("button", "chip" + (mine === emoji ? " mine" : ""), label);
+        c.type = "button";
+        c.setAttribute("aria-pressed", String(mine === emoji));
+        c.setAttribute("aria-label", tf(mine === emoji ? "reactTake" : "reactWith", emoji));
+        c.addEventListener("click", () => doReact(m.id, emoji));
+        chips.append(c);
+      }
       row.append(chips);
     }
     return row;
@@ -621,7 +656,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
         S.opened.set(m.id, rec);
       }
       const tick = m.from === uid ? ticks(chat, m) : null;
-      const sig = [sigBase, JSON.stringify(m.reactions), m.edited, tick, lang(), group ? nameIn(chat, m.from) : ""].join("\u0002");
+      const live = isActionable(m) && !sender.sending.has(m.id);
+      const sig = [sigBase, JSON.stringify(m.reactions), m.edited, tick, live, lang(), group ? nameIn(chat, m.from) : ""].join("\u0002");
       items.push({ key: "m" + m.id, sig, make: () => buildRow(chat, m, rec.view, group, tick) });
     }
     if (token !== S.msgToken) return;
@@ -695,8 +731,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
   }
 
   function leaveChat() {
+    closeMenu();
     if (S.open) {
-      const text = $("msgIn").value;
+      const text = S.editing ? S.editing.draft : $("msgIn").value; // what is being changed is not a draft
+      S.editing = null;
       if (text) S.drafts.set(S.open.id, text);
       else S.drafts.delete(S.open.id);
     }
@@ -825,7 +863,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
   }
 
   const syncSend = () => {
-    $("sendBtn").disabled = !S.open || S.sending || Boolean(S.block) || !$("msgIn").value.trim();
+    const text = $("msgIn").value.replace(/\r\n?/g, "\n").trim();
+    $("sendBtn").disabled = !S.open || S.sending || Boolean(S.block) || !text || Boolean(S.editing && text === S.editing.original);
   };
 
   function renderReply() {
@@ -844,6 +883,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     let why = whyNot(v.raw, uid);
     if (!why && !v.group && S.changed.length) why = "key";
     S.block = why;
+    if (why && S.editing) cancelEdit();
     $("chat").classList.toggle("nowrite", Boolean(why));
     const cant = $("cant");
     cant.hidden = !why;
@@ -852,17 +892,263 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
     renderReply();
     syncSend();
+    updateEditUi();
     if (!why) autosize(); // the box has just opened: measure it now that it can be measured
   }
 
   function setReply(m, view) {
     if (!S.open || S.block) return;
+    if (S.editing) cancelEdit();
     S.reply = { id: m.id, from: m.from, quote: replyOf(m, view) };
     renderReply();
     $("msgIn").focus();
   }
 
+  // ---------------------------------------------------------------------------------------------- actions on a message (stage 4)
+  /** Every message of the open chat that is loaded, oldest first. */
+  function allMessages() {
+    const byId = new Map();
+    for (const m of S.older) byId.set(m.id, m);
+    for (const m of S.live) byId.set(m.id, m);
+    return [...byId.values()].sort((a, b) => a.ts - b.ts || (a.id < b.id ? -1 : 1));
+  }
+  const findMsg = (id) => allMessages().find((m) => m.id === id) || null;
+  const isNewest = (id) => {
+    const last = lastReal(allMessages());
+    return Boolean(last) && last.id === id;
+  };
+
+  function closeMenu(giveBackFocus) {
+    const menu = $("menu");
+    const btn = S.menuBtn;
+    S.menuFor = null;
+    S.menuBtn = null;
+    if (!menu.hidden) {
+      menu.hidden = true;
+      menu.replaceChildren();
+    }
+    if (btn) {
+      btn.setAttribute("aria-expanded", "false");
+      if (giveBackFocus && document.contains(btn)) btn.focus();
+    }
+  }
+
+  function placeMenu(btn) {
+    const menu = $("menu");
+    menu.hidden = false;
+    menu.style.left = "0px";
+    menu.style.top = "0px";
+    const r = btn.getBoundingClientRect();
+    const w = menu.offsetWidth;
+    const h = menu.offsetHeight;
+    const left = Math.min(Math.max(8, r.left), Math.max(8, window.innerWidth - w - 8));
+    let top = r.bottom + 6;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    menu.style.left = left + "px";
+    menu.style.top = top + "px";
+  }
+
+  /** The menu of one message: six reactions, and what I may do with it (answer, change, delete). */
+  function openMenu(id, btn) {
+    const m = findMsg(id);
+    if (!m || !S.open || !isActionable(m) || sender.sending.has(m.id)) return;
+    const rec = S.opened.get(id);
+    const view = rec ? rec.view : { ok: false, text: "", bytes: null };
+    closeMenu();
+    S.menuFor = id;
+    S.menuBtn = btn;
+    btn.setAttribute("aria-expanded", "true");
+    const menu = $("menu");
+    menu.setAttribute("role", "menu");
+    menu.removeAttribute("aria-label");
+    menu.replaceChildren();
+    const mine = m.reactions ? m.reactions[uid] : null;
+    const emo = el("div", "emo");
+    emo.setAttribute("role", "group");
+    emo.setAttribute("aria-label", t("reactions"));
+    for (const e of REACTIONS) {
+      const b = el("button", "emo-b" + (mine === e ? " on" : ""), e);
+      b.type = "button";
+      b.setAttribute("role", "menuitemradio");
+      b.setAttribute("aria-checked", String(mine === e));
+      b.setAttribute("aria-label", tf(mine === e ? "reactTake" : "reactWith", e));
+      b.addEventListener("click", () => {
+        closeMenu();
+        doReact(id, e);
+      });
+      emo.append(b);
+    }
+    menu.append(emo);
+    const item = (label, fn, danger) => {
+      const b = el("button", "item" + (danger ? " danger" : ""), label);
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.addEventListener("click", fn);
+      menu.append(b);
+    };
+    if (!S.block && (view.ok || view.text || view.bytes)) {
+      item(t("reply"), () => {
+        closeMenu();
+        setReply(m, view);
+      });
+    }
+    if (!S.block && view.ok && view.text && canEdit(m, uid, Date.now())) {
+      item(t("edit"), () => {
+        closeMenu();
+        startEdit(id);
+      });
+    }
+    if (canDelete(m, uid)) item(t("deleteAll"), () => askDelete(id), true);
+    placeMenu(btn);
+    menu.querySelector("button").focus({ preventScroll: true });
+  }
+
+  /** "Delete for everyone" cannot be undone: the menu asks once more. */
+  function askDelete(id) {
+    const menu = $("menu");
+    menu.setAttribute("role", "alertdialog");
+    menu.setAttribute("aria-label", t("deleteAll"));
+    menu.replaceChildren();
+    menu.append(el("p", "ask", t("deleteAsk")));
+    const row = el("div", "btns");
+    const no = el("button", "btn ghost", t("cancel"));
+    no.type = "button";
+    no.addEventListener("click", () => closeMenu(true));
+    const yes = el("button", "btn danger", t("deleteDo"));
+    yes.type = "button";
+    yes.addEventListener("click", () => {
+      closeMenu();
+      doDelete(id);
+    });
+    row.append(no, yes);
+    menu.append(row);
+    if (S.menuBtn) placeMenu(S.menuBtn);
+    no.focus({ preventScroll: true });
+  }
+
+  function doReact(id, emoji) {
+    const v = S.open;
+    const m = findMsg(id);
+    if (!v || !m) return;
+    const r = sender.react(v.raw, m, emoji);
+    if (r.ok) r.committed.catch(() => toast(t("actionFailed")));
+  }
+
+  function doDelete(id) {
+    const v = S.open;
+    const m = findMsg(id);
+    if (!v || !m) return;
+    if (S.editing && S.editing.id === id) cancelEdit();
+    const r = sender.remove(v.raw, m, isNewest(id));
+    if (r.ok) r.committed.catch(() => toast(t("actionFailed")));
+  }
+
+  /** The bar above the box while I change one of my messages, and the arrow that turns into a tick ("Save"). */
+  function updateEditUi() {
+    const e = S.editing;
+    $("editBar").hidden = !e || Boolean(S.block);
+    if (e) $("editText").textContent = e.original.replace(/\s+/g, " ").slice(0, 140);
+    const b = $("sendBtn");
+    b.classList.toggle("save", Boolean(e));
+    b.setAttribute("aria-label", t(e ? "save" : "send"));
+  }
+
+  /** The text of my message goes into the box; what the box held (and the answer being written) comes back when this ends. */
+  function startEdit(id) {
+    const v = S.open;
+    const m = findMsg(id);
+    const rec = S.opened.get(id);
+    if (!v || !m || S.block) return;
+    const text = rec && rec.view && rec.view.ok ? rec.view.text : "";
+    if (!text) return;
+    if (!canEdit(m, uid, Date.now())) {
+      toast(t("editLate"));
+      return;
+    }
+    if (S.editing) cancelEdit();
+    const ta = $("msgIn");
+    S.editing = { id, original: text, draft: ta.value, reply: S.reply };
+    S.reply = null;
+    renderReply();
+    ta.value = text;
+    autosize();
+    updateEditUi();
+    syncSend();
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
+
+  function cancelEdit() {
+    const e = S.editing;
+    if (!e) return;
+    S.editing = null;
+    const ta = $("msgIn");
+    ta.value = e.draft;
+    S.reply = e.reply;
+    autosize();
+    renderReply();
+    updateEditUi();
+    syncSend();
+  }
+
+  async function saveEdit() {
+    const v = S.open;
+    const ed = S.editing;
+    if (!v || !ed || S.sending || S.block) return;
+    const text = $("msgIn").value;
+    const body = text.replace(/\r\n?/g, "\n").trim();
+    if (!body) return;
+    if (body === ed.original) {
+      cancelEdit(); // nothing changed: nothing is written
+      return;
+    }
+    S.sending = true;
+    syncSend();
+    const chatId = v.id;
+    let r;
+    try {
+      if (S.refreshJob) await Promise.race([S.refreshJob, new Promise((res) => setTimeout(res, 4000))]);
+      await showWarn(); // an unchecked key change closes the box, and with it the change
+      if (S.block || !S.open || S.open.id !== chatId || S.editing !== ed) {
+        S.sending = false;
+        syncSend();
+        return;
+      }
+      const m = findMsg(ed.id);
+      if (!m || m.deleted) {
+        S.sending = false;
+        cancelEdit();
+        toast(t("deleted"));
+        return;
+      }
+      r = await sender.edit(v.raw, { ...m, text: ed.original }, text, isNewest(m.id));
+    } catch (e) {
+      r = { ok: false, why: "error" };
+    }
+    S.sending = false;
+    if (!r.ok) {
+      if (r.why === "same") cancelEdit();
+      else if (r.why === "late") toast(t("editLate"));
+      else if (r.why === "noKey") toast(tf("cantEncrypt", v.title));
+      else toast(t("actionFailed"));
+      syncSend();
+      return;
+    }
+    if (S.editing === ed) {
+      S.editing = null;
+      const ta = $("msgIn");
+      ta.value = ed.draft;
+      S.reply = ed.reply;
+      autosize();
+      renderReply();
+      updateEditUi();
+    }
+    syncSend();
+    r.committed.catch(() => toast(t("actionFailed")));
+  }
+
   async function sendNow() {
+    if (S.editing) return saveEdit();
     const v = S.open;
     const ta = $("msgIn");
     if (!v || S.sending || S.block || !ta.value.trim()) return;
@@ -906,6 +1192,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
       S.drafts.delete(chatId);
     }
     syncSend();
+    const again = () => renderMessages(); // the message is no longer "sending": its buttons come
+    r.taken.then(again, again);
     r.committed.catch(() => {
       toast(t("notSent"));
       if (S.open && S.open.id === chatId) {
@@ -976,6 +1264,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
     syncSend();
   });
   $("msgIn").addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && S.editing) {
+      e.preventDefault();
+      e.stopPropagation(); // Esc ends the change, it does not close the chat
+      cancelEdit();
+      return;
+    }
     // Enter sends and Shift+Enter makes a new line (on a touch screen Enter is a new line and the button sends); Ctrl/Cmd+Enter always sends
     if (e.key === "Enter" && !e.isComposing && ((!e.shiftKey && !coarse()) || e.ctrlKey || e.metaKey)) {
       e.preventDefault();
@@ -986,6 +1280,35 @@ export function startShell({ f, id, user, onAbout, worker }) {
     S.reply = null;
     renderReply();
   });
+  $("editX").addEventListener("click", () => {
+    cancelEdit();
+    $("msgIn").focus();
+  });
+  // the message menu: arrows move, Esc closes (and gives the focus back), a press outside, a scroll or a resize closes it
+  $("menu").addEventListener("keydown", (e) => {
+    const items = [...$("menu").querySelectorAll("button")];
+    const i = items.indexOf(document.activeElement);
+    const go = (n) => {
+      e.preventDefault();
+      if (items.length) items[(n + items.length) % items.length].focus();
+    };
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") go(i + 1);
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") go(i - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(items.length - 1);
+    else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenu(true);
+    } else if (e.key === "Tab") closeMenu();
+  });
+  const onPointer = (e) => {
+    if (S.menuFor && !$("menu").contains(e.target) && e.target !== S.menuBtn) closeMenu();
+  };
+  const onShrink = () => closeMenu();
+  document.addEventListener("pointerdown", onPointer, true);
+  window.addEventListener("resize", onShrink);
+  $("msgs").addEventListener("scroll", onShrink, { passive: true });
   $("warnOk").addEventListener("click", async () => {
     for (const p of S.changed) await e2e.acknowledge(p);
     showWarn();
@@ -998,7 +1321,9 @@ export function startShell({ f, id, user, onAbout, worker }) {
   $("shot").addEventListener("click", () => $("shot").close());
   $("shot").addEventListener("close", () => $("shotImg").removeAttribute("src"));
   const onKey = (e) => {
-    if (e.key === "Escape" && $("app").classList.contains("open") && !document.querySelector("dialog[open]")) closeChat();
+    if (e.key === "Escape" && S.menuFor) closeMenu(true);
+    else if (e.key === "Escape" && S.editing) cancelEdit();
+    else if (e.key === "Escape" && $("app").classList.contains("open") && !document.querySelector("dialog[open]")) closeChat();
   };
   document.addEventListener("keydown", onKey);
 
@@ -1067,6 +1392,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
         $("chSub").textContent = c.saved ? "" : c.group ? tf("members", c.members.length) : c.handle ? "@" + c.handle : "";
         $("chName").textContent = c.title;
         showWarn();
+        closeMenu();
         updateComposer();
         S.rows.clear();
         $("msgList").replaceChildren();
@@ -1077,6 +1403,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
       leaveChat();
       for (const s of S.stops) s();
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer, true);
+      window.removeEventListener("resize", onShrink);
       document.removeEventListener("visibilitychange", onVis);
       window.removeEventListener("focus", onFocus);
       clearTimeout(rest);

@@ -2,6 +2,9 @@
 // a message document { from, text (sealed), ts, e, w (groups), reply, replyFrom } and, in the same batch, the chat document's preview
 // ({ lastText, lastEnc, lastW, lastKind, lastTs, lastFrom }) and +1 on the unread counter of everybody else.
 //
+// Stage 4 (6d) adds what the phone does to a message that is already there (Repository.react / editMessage / deleteForAll): a reaction
+// (reactions.<me>), a changed text of my own message (re-sealed with the same message key, within 15 minutes), and "delete for everyone".
+//
 // One difference, on purpose: when a message cannot be sealed (the other person, or somebody in the group, has no key yet: an old version of
 // the app), the phone falls back to sending it in the clear. The page never does: it sends nothing and says so.
 import { STICKERS } from "./stickers.js";
@@ -51,6 +54,29 @@ export function whyNot(chat, uid) {
   return "";
 }
 
+export const REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"]; // the phone's six
+export const EDIT_MS = 15 * 60 * 1000; // a text can be changed for 15 minutes (as on the phone)
+
+const SYSTEM = new Set(["call", "sys"]);
+const REAL = new Set(["text", "img", "voice", "loc", "poll", "sticker"]);
+
+/** A message that can take a reaction, be answered, edited or deleted: a real message, not a call line or a group line, not deleted. */
+export const isActionable = (m) => Boolean(m) && !m.deleted && !SYSTEM.has(m.kind);
+
+/** May I change this text? Mine, a text, sealed (the page never rewrites a readable message), and not older than 15 minutes. */
+export function canEdit(m, uid, now) {
+  return isActionable(m) && m.from === uid && m.kind === "text" && m.enc === true && now - m.ts < EDIT_MS;
+}
+
+/** May I delete this for everyone? Only my own. */
+export const canDelete = (m, uid) => isActionable(m) && m.from === uid;
+
+/** The newest message of the kinds that show in the chat list (the phone's "isLast": the chat's preview is then this message). */
+export function lastReal(list) {
+  for (let i = list.length - 1; i >= 0; i--) if (REAL.has(list[i].kind)) return list[i];
+  return null;
+}
+
 /**
  * @param {object} o
  * @param {object} o.f  the signed-in Firebase ({auth, db, fsM})
@@ -62,6 +88,7 @@ export function whyNot(chat, uid) {
 export function makeSender({ f, uid, name, e2e, worker }) {
   const { db, fsM } = f;
   const delivered = new Map();
+  const sending = new Set(); // ids of my new messages that the server has not taken yet (they show as "sending")
 
   /** Asks the Worker to wake the other phones. Best effort: the message itself is already in Firestore. No text goes along. */
   async function notify(chat) {
@@ -82,8 +109,9 @@ export function makeSender({ f, uid, name, e2e, worker }) {
   }
 
   /**
-   * Seals and writes a text message. Resolves at once with {ok:false, why} (nothing was written) or {ok:true, id, committed}: the message is
-   * then already on the screen as "sending", and [committed] settles when the server has taken it (it rejects when the server refuses).
+   * Seals and writes a text message. Resolves at once with {ok:false, why} (nothing was written) or {ok:true, id, taken, committed}: the message is
+   * then already on the screen as "sending"; [taken] settles when the server has taken it (it rejects when the server refuses) and [committed]
+   * when the push for it has gone out as well.
    * @param {object} chat  the chat document ({id, members, group, saved, title, status, requester, blocked, sendMode, admins})
    * @param {string} text
    * @param {{from: string, quote: string}|null} reply  who wrote the quoted message and what is stored for it (see replyOf)
@@ -133,8 +161,12 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     batch.set(msgRef, fields);
     batch.update(chatRef, preview);
     // the push goes out once the server has the message, and only when somebody else is in the chat (not for my saved messages)
-    const committed = batch.commit().then(() => (others.length ? notify(chat) : undefined));
-    return { ok: true, id: msgRef.id, committed };
+    sending.add(msgRef.id);
+    const taken = batch.commit();
+    const done = () => sending.delete(msgRef.id);
+    taken.then(done, done);
+    const committed = taken.then(() => (others.length ? notify(chat) : undefined));
+    return { ok: true, id: msgRef.id, taken, committed };
   }
 
   /** "Read": the unread counter of mine goes to 0 and the others' read ticks turn (the phone's markRead). */
@@ -154,5 +186,58 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     fsM.updateDoc(fsM.doc(db, "chats", chat.id), { ["dlv." + uid]: Math.max(Date.now(), last) }).catch(() => {});
   }
 
-  return { sendText, markRead, markDelivered };
+  const msgRef = (chatId, id) => fsM.doc(db, "chats", chatId, "messages", id);
+
+  /** A reaction of mine on a message (the same emoji again takes it back). Resolves when the server has it; rejects when it refuses. */
+  function react(chat, m, emoji) {
+    if (!isActionable(m) || !REACTIONS.includes(emoji)) return { ok: false, why: "no" };
+    const mine = m.reactions && m.reactions[uid];
+    const committed = fsM.updateDoc(msgRef(chat.id, m.id), { ["reactions." + uid]: mine === emoji ? fsM.deleteField() : emoji });
+    return { ok: true, committed };
+  }
+
+  /**
+   * Changes the text of my own message. The message key stays the same (a group's is made again from my secret and the message id, a
+   * one-to-one chat's is the chat key), so the people who have the message can still open it. When it is the chat's newest message, the
+   * chat-list line changes too. Nothing readable is written: a message that was not sealed is not edited.
+   * @param {boolean} isLast  whether this is the chat's newest message (see lastReal)
+   */
+  async function edit(chat, m, text, isLast) {
+    const body = String(text).replace(/\r\n?/g, "\n").trim();
+    if (!canEdit(m, uid, Date.now())) return { ok: false, why: isActionable(m) && m.from === uid && m.kind === "text" && m.enc === true ? "late" : "no" };
+    if (!body) return { ok: false, why: "empty" };
+    if (body === m.text) return { ok: false, why: "same" };
+    if (body.length > MAX_TEXT) return { ok: false, why: "long" };
+    let key = null;
+    try {
+      key = await e2e.sentKey(chat.id, m.id);
+    } catch (e) {
+      key = null;
+    }
+    if (!key) return { ok: false, why: "noKey" };
+    const batch = fsM.writeBatch(db);
+    batch.update(msgRef(chat.id, m.id), { text: await e2e.sealText(key, chat.id, uid, "t", body), edited: true });
+    if (isLast) {
+      // the wraps already in the chat document still open the new line: it is the same message key
+      batch.update(fsM.doc(db, "chats", chat.id), { lastText: await e2e.sealText(key, chat.id, uid, "l", body), lastEnc: true, lastKind: "text" });
+    }
+    return { ok: true, committed: batch.commit() };
+  }
+
+  /**
+   * "Delete for everyone": the text, the picture or sound and the quote are taken out of the message (the phone's deleteForAll).
+   * One addition on purpose: when it is a text and the chat's newest message, the chat-list line is cleared as well. The phone leaves
+   * it, so the deleted text stays readable in everybody's chat list.
+   */
+  function remove(chat, m, isLast) {
+    if (!canDelete(m, uid)) return { ok: false, why: "no" };
+    const batch = fsM.writeBatch(db);
+    batch.update(msgRef(chat.id, m.id), { deleted: true, text: "", data: fsM.deleteField(), reply: fsM.deleteField() });
+    if (isLast && m.kind === "text") {
+      batch.update(fsM.doc(db, "chats", chat.id), { lastText: "", lastEnc: false, lastW: fsM.deleteField(), lastKind: "deleted" });
+    }
+    return { ok: true, committed: batch.commit() };
+  }
+
+  return { sendText, markRead, markDelivered, react, edit, remove, sending };
 }

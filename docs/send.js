@@ -4,6 +4,7 @@
 //
 // Stage 4 (6d) adds what the phone does to a message that is already there (Repository.react / editMessage / deleteForAll): a reaction
 // (reactions.<me>), a changed text of my own message (re-sealed with the same message key, within 15 minutes), and "delete for everyone".
+// A reaction put on somebody else's message also asks the Worker for a push to its author (type "react"), like the phone.
 //
 // One difference, on purpose: when a message cannot be sealed (the other person, or somebody in the group, has no key yet: an old version of
 // the app), the phone falls back to sending it in the clear. The page never does: it sends nothing and says so.
@@ -90,8 +91,11 @@ export function makeSender({ f, uid, name, e2e, worker }) {
   const delivered = new Map();
   const sending = new Set(); // ids of my new messages that the server has not taken yet (they show as "sending")
 
-  /** Asks the Worker to wake the other phones. Best effort: the message itself is already in Firestore. No text goes along. */
-  async function notify(chat) {
+  /**
+   * Asks the Worker to wake the other phones. Best effort: the message itself is already in Firestore. No text goes along.
+   * @param {object} [what]  a reaction: {type: "react", msgId, body: the emoji}; the Worker reads the message and tells only its author
+   */
+  async function notify(chat, what) {
     if (!worker) return;
     try {
       const user = f.auth && f.auth.currentUser;
@@ -101,7 +105,7 @@ export function makeSender({ f, uid, name, e2e, worker }) {
       await fetch(worker, {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: chat.id, type: "msg", title: cut(title, 60), body: "" }),
+        body: JSON.stringify({ chatId: chat.id, type: "msg", title: cut(title, 60), body: "", ...what }),
       });
     } catch (e) {
       // not delivered as a push; the other side still gets the message when it looks
@@ -188,12 +192,22 @@ export function makeSender({ f, uid, name, e2e, worker }) {
 
   const msgRef = (chatId, id) => fsM.doc(db, "chats", chatId, "messages", id);
 
-  /** A reaction of mine on a message (the same emoji again takes it back). Resolves when the server has it; rejects when it refuses. */
+  /**
+   * A reaction of mine on a message (the same emoji again takes it back). [committed] resolves when the server has it and rejects when it
+   * refuses. The author of the message gets a push once the server has the reaction, as from the phone: not when I take mine back, not on
+   * my own message, not in my saved messages. [pushed] settles when that has been tried (it never rejects).
+   */
   function react(chat, m, emoji) {
     if (!isActionable(m) || !REACTIONS.includes(emoji)) return { ok: false, why: "no" };
     const mine = m.reactions && m.reactions[uid];
-    const committed = fsM.updateDoc(msgRef(chat.id, m.id), { ["reactions." + uid]: mine === emoji ? fsM.deleteField() : emoji });
-    return { ok: true, committed };
+    const taking = mine === emoji;
+    const committed = fsM.updateDoc(msgRef(chat.id, m.id), { ["reactions." + uid]: taking ? fsM.deleteField() : emoji });
+    const tell = !taking && m.from !== uid && chat.saved !== true;
+    const pushed = committed.then(
+      () => (tell ? notify(chat, { type: "react", msgId: m.id, body: emoji }) : undefined),
+      () => {},
+    );
+    return { ok: true, committed, pushed };
   }
 
   /**

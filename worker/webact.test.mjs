@@ -223,3 +223,116 @@ test("a message that is still being sent is tracked until the server has it", as
   await r.taken;
   assert.equal(s.sending.has(r.id), false);
 });
+
+// ---------------------------------------------------------------------------------------------- the push for a reaction
+/** A sender whose reaction write is held until the test lets it go, and whose pushes are written down. */
+function pushRig({ reject = false, fetchFails = false } = {}) {
+  const { f, log } = fake();
+  const asked = [];
+  let gate;
+  const held = new Promise((res) => (gate = res));
+  f.fsM.updateDoc = async (r, d) => {
+    await held;
+    if (reject) throw new Error("refused");
+    log.push({ kind: "update", path: r.path.join("/"), data: d });
+  };
+  f.auth = { currentUser: { getIdToken: async () => "ID-TOKEN" } };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (fetchFails) throw new Error("offline");
+    asked.push({ url: String(url), headers: opts.headers, body: JSON.parse(opts.body) });
+    return new Response("ok", { status: 200 });
+  };
+  const done = () => (globalThis.fetch = realFetch);
+  return { f, log, asked, let: gate, done };
+}
+
+test("a reaction on somebody else's message asks for a push, once the server has it, with the emoji and nothing else", async () => {
+  const rig = pushRig();
+  try {
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "https://w.example/" });
+    const r = s.react({ id: "Aa1_Bb2" }, mine("Bb2"), "😂");
+    await new Promise((x) => setTimeout(x, 10));
+    assert.equal(rig.asked.length, 0, "not before the server has the reaction");
+    rig.let();
+    await r.committed;
+    await r.pushed;
+    assert.equal(rig.asked.length, 1);
+    const q = rig.asked[0];
+    assert.equal(q.url, "https://w.example/");
+    assert.equal(q.headers.Authorization, "Bearer ID-TOKEN");
+    assert.deepEqual(q.body, { chatId: "Aa1_Bb2", type: "react", title: "Ani", body: "😂", msgId: "m1" });
+  } finally {
+    rig.done();
+  }
+});
+
+test("a reaction in a group: the title is the group's, and the message is named so the Worker can find its author", async () => {
+  const rig = pushRig();
+  try {
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "https://w.example/" });
+    const r = s.react({ id: "grp1", group: true, title: "Family" }, mine("Cc3", { id: "mm7" }), "❤️");
+    rig.let();
+    await r.pushed;
+    assert.deepEqual(rig.asked[0].body, { chatId: "grp1", type: "react", title: "Family", body: "❤️", msgId: "mm7" });
+  } finally {
+    rig.done();
+  }
+});
+
+test("another emoji in place of mine asks again; taking mine back, my own message and my saved messages ask for nothing", async () => {
+  const rig = pushRig();
+  try {
+    rig.let();
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "https://w.example/" });
+    const chat = { id: "Aa1_Bb2" };
+    await s.react(chat, mine("Bb2", { reactions: { Aa1: "👍" } }), "🙏").pushed;
+    assert.equal(rig.asked.length, 1, "a replaced reaction is a new one");
+    assert.equal(rig.asked[0].body.body, "🙏");
+    await s.react(chat, mine("Bb2", { reactions: { Aa1: "👍" } }), "👍").pushed;
+    assert.equal(rig.asked.length, 1, "taken back: nothing");
+    await s.react(chat, mine("Aa1"), "👍").pushed;
+    assert.equal(rig.asked.length, 1, "my own message: nothing");
+    await s.react({ id: "Aa1_Aa1", saved: true }, mine("Aa1"), "👍").pushed;
+    await s.react({ id: "Aa1_Aa1", saved: true }, mine("Bb2"), "👍").pushed; // nobody else is in that chat, whatever the message says
+    assert.equal(rig.asked.length, 1, "saved messages: nothing");
+  } finally {
+    rig.done();
+  }
+});
+
+test("a refused reaction asks for no push and the page still sees the refusal; a failing push breaks nothing", async () => {
+  let rig = pushRig({ reject: true });
+  try {
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "https://w.example/" });
+    const r = s.react({ id: "Aa1_Bb2" }, mine("Bb2"), "👍");
+    rig.let();
+    await assert.rejects(r.committed, /refused/);
+    await r.pushed; // never rejects
+    assert.equal(rig.asked.length, 0);
+  } finally {
+    rig.done();
+  }
+  rig = pushRig({ fetchFails: true });
+  try {
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "https://w.example/" });
+    const r = s.react({ id: "Aa1_Bb2" }, mine("Bb2"), "👍");
+    rig.let();
+    await r.committed;
+    await r.pushed;
+    assert.equal(rig.log.length, 1, "the reaction itself is written");
+  } finally {
+    rig.done();
+  }
+  // no Worker address: no push, no request
+  rig = pushRig();
+  try {
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: "Ani", e2e: null, worker: "" });
+    const r = s.react({ id: "Aa1_Bb2" }, mine("Bb2"), "👍");
+    rig.let();
+    await r.pushed;
+    assert.equal(rig.asked.length, 0);
+  } finally {
+    rig.done();
+  }
+});

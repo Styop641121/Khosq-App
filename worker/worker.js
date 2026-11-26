@@ -64,7 +64,7 @@ async function verifyUser(idToken, apiKey) {
   return j.users && j.users[0] ? j.users[0].localId : null;
 }
 
-async function pushTo(pid, auth, fs, uid, chatId, body, peer) {
+async function pushTo(pid, auth, fs, uid, chatId, body, peer, extra) {
   const tokRes = await fetch(fs + "tokens/" + encodeURIComponent(peer), { headers: auth });
   if (!tokRes.ok) return "no token";
   const tok = (await tokRes.json()).fields?.fcmToken?.stringValue;
@@ -74,11 +74,12 @@ async function pushTo(pid, auth, fs, uid, chatId, body, peer) {
     message: {
       token: tok,
       data: {
-        type: isCall ? "call" : "msg",
+        type: isCall ? "call" : body.type === "react" ? "react" : "msg",
         chatId,
         from: uid,
         title: String(body.title || "KHOSQ").slice(0, 60),
         body: String(body.body || "").slice(0, 120),
+        ...(extra || {}), // a reaction: who, msgId (all strings, as FCM wants)
       },
       android: { priority: "HIGH", ttl: isCall ? "30s" : "86400s" },
     },
@@ -89,6 +90,38 @@ async function pushTo(pid, auth, fs, uid, chatId, body, peer) {
     body: JSON.stringify(msg),
   });
   return r.ok ? "ok" : "fcm " + r.status;
+}
+
+// A reaction on a message (type "react"). Only the person who wrote that message is told, and only when the reaction is really there:
+// the Worker reads the message itself and trusts nothing but what it finds (who wrote it, which emoji I put on it, that it is not deleted).
+// So a push for a reaction that was taken back, for my own message, for a deleted one or for a made-up emoji is not sent.
+// The sender's name and the group's title come from the chat document too, so nobody can sign a reaction with another name.
+const MSG_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200d\ufe0f]{1,16}$/u;
+
+async function reactPlan(fs, auth, chatId, doc, body, uid, members, group) {
+  const msgId = String(body.msgId || "");
+  if (!MSG_ID_RE.test(msgId)) return { bad: true };
+  const res = await fetch(fs + "chats/" + encodeURIComponent(chatId) + "/messages/" + encodeURIComponent(msgId), { headers: auth });
+  if (!res.ok) return null;
+  const f = (await res.json()).fields || {};
+  if (f.deleted?.booleanValue === true) return null;
+  const author = f.from?.stringValue || "";
+  if (!author || author === uid || !members.includes(author)) return null;
+  const emoji = f.reactions?.mapValue?.fields?.[uid]?.stringValue || "";
+  if (!EMOJI_RE.test(emoji) || emoji !== String(body.body || "")) return null;
+  const name = doc.fields?.names?.mapValue?.fields?.[uid]?.stringValue || "";
+  const title = group ? doc.fields?.title?.stringValue || "" : name;
+  return {
+    author,
+    extra: {
+      title: (title || String(body.title || "KHOSQ")).slice(0, 60),
+      who: (name || String(body.title || "")).slice(0, 60),
+      group: group ? "1" : "0",
+      body: emoji,
+      msgId,
+    },
+  };
 }
 
 // Best-effort limits. They live in one Worker instance only, so they stop a runaway client,
@@ -1181,9 +1214,17 @@ async function handle(req, env) {
       const requester = doc.fields?.requester?.stringValue || "";
       if (status !== "active" && (isCall || requester !== uid)) return new Response("skipped", { status: 200 });
 
-      const targets = members.filter((m) => m !== uid).slice(0, 20);
+      let targets = members.filter((m) => m !== uid).slice(0, 20);
+      let extra = null;
+      if (body.type === "react") {
+        const plan = await reactPlan(fs, auth, chatId, doc, body, uid, members, group);
+        if (plan && plan.bad) return new Response("bad request", { status: 400 });
+        if (!plan) return new Response("skipped", { status: 200 });
+        targets = [plan.author];
+        extra = plan.extra;
+      }
 
-      const out = await Promise.all(targets.map((t) => pushTo(pid, auth, fs, uid, chatId, body, t)));
+      const out = await Promise.all(targets.map((t) => pushTo(pid, auth, fs, uid, chatId, body, t, extra)));
       return new Response(out.join(","), { status: 200 });
     } catch (e) {
       return new Response("error: " + e.message, { status: 500 });

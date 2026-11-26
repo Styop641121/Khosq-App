@@ -859,6 +859,27 @@ object Strings {
     }
 
     /** KHOSQ Real Estate Finder. */
+    // Phase 6a: the web version, linked by QR code
+    private fun part22() {
+        map["Կապել բրաուզեր (KHOSQ Web)"] = arrayOf("Link a browser (KHOSQ Web)", "Привязать браузер (KHOSQ Web)")
+        map["Բացիր KHOSQ Web-ը համակարգչում և սկանավորիր նրա QR կոդը"] = arrayOf("Open KHOSQ Web on a computer and scan its QR code", "Откройте KHOSQ Web на компьютере и отсканируйте его QR-код")
+        map["Վերջին կապումը՝ {0}"] = arrayOf("Last linked: {0}", "Последняя привязка: {0}")
+        map["Սա KHOSQ Web-ի կոդ չէ"] = arrayOf("This is not a KHOSQ Web code", "Это не код KHOSQ Web")
+        map["Կապե՞լ բրաուզերը"] = arrayOf("Link this browser?", "Привязать браузер?")
+        map["Բրաուզերի էկրանին պետք է երևա նույն թիվը՝"] = arrayOf("The browser screen must show the same number:", "На экране браузера должно быть то же число:")
+        map["Շարունակիր միայն եթե հենց հիմա դու ինքդ բացել ես KHOSQ Web-ը քո համակարգչում։ Բրաուզերը կկարդա քո զրույցները և կգրի քո անունով։ Քո անձնական բանալին փոխանցվում է գաղտնագրված՝ միայն այդ բրաուզերի համար։"] = arrayOf(
+            "Continue only if you yourself have just opened KHOSQ Web on your own computer. The browser will read your chats and write in your name. Your private key is passed encrypted, for that browser only.",
+            "Продолжайте, только если вы сами только что открыли KHOSQ Web на своём компьютере. Браузер будет читать ваши чаты и писать от вашего имени. Ваш личный ключ передаётся в зашифрованном виде, только для этого браузера.",
+        )
+        map["Կապել"] = arrayOf("Link", "Привязать")
+        map["Կապվում է…"] = arrayOf("Linking…", "Привязываю…")
+        map["Բրաուզերը կապվեց. էջը մի քանի վայրկյանում կբացվի"] = arrayOf("Browser linked. The page will open in a few seconds", "Браузер привязан. Страница откроется через несколько секунд")
+        map["Այս կոդն արդեն օգտագործվել է. թարմացրու էջը և նորից սկանավորիր"] = arrayOf("This code has already been used. Refresh the page and scan again", "Этот код уже использован. Обновите страницу и отсканируйте снова")
+        map["Կապը չստացվեց. ստուգիր համացանցը և փորձիր նորից"] = arrayOf("Could not connect. Check the internet and try again", "Не удалось подключиться. Проверьте интернет и повторите")
+        map["Սերվերի վրա վեբ մուտքը դեռ միացված չէ"] = arrayOf("Web sign-in is not switched on on the server yet", "Вход через веб на сервере ещё не включён")
+        map["Կոդը սխալ է կամ ժամկետանց է. թարմացրու էջը և նորից սկանավորիր"] = arrayOf("The code is wrong or has expired. Refresh the page and scan again", "Код неверный или устарел. Обновите страницу и отсканируйте снова")
+    }
+
     private fun part21() {
         map["Դեռ չի կարգավորված"] = arrayOf("Not set up yet", "Ещё не настроено")
         map["Դադարեցված է. ծանուցումներ չեն գալիս"] = arrayOf("Paused: no notifications will come", "На паузе: уведомления не приходят")
@@ -950,5 +971,6 @@ object Strings {
         part19()
         part20()
         part21()
+        part22()
     }
 }

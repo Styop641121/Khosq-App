@@ -5,6 +5,7 @@
 //   INVITE_KEY - any long random text (Secret). Signs group invite links. Without it, invite links are off.
 //   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation and voice transcription are off.
 //   (The Trust Shield link check needs nothing: no binding, no key.)
+//   WEB_ORIGINS - optional, comma separated: more addresses of the web version (the GitHub Pages one is built in).
 //   Real Estate Finder: add a Cron Trigger  */5 * * * *  (Settings -> Triggers -> Cron Triggers). Needs no key and no binding.
 //   Either Cloudflare Realtime TURN:
 //     TURN_KEY_ID    - TURN key id (text variable)
@@ -654,6 +655,30 @@ function finderParse(html) {
   return out;
 }
 
+// A few words about a refusal, so it can be told who refused: the server's name, Cloudflare's ray tag, and the page's title or first words.
+async function finderPeek(r) {
+  let head = "";
+  try {
+    const rd = r.body && r.body.getReader ? r.body.getReader() : null;
+    if (rd) {
+      const { value } = await rd.read();
+      head = value ? new TextDecoder().decode(value.slice(0, 2000)) : "";
+      try {
+        await rd.cancel();
+      } catch (e) {
+        // already closed
+      }
+    }
+  } catch (e) {
+    // no body to look at
+  }
+  const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(head);
+  const words = (title ? title[1] : head.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]*>?/g, " ")).replace(/\s+/g, " ").trim().slice(0, 80);
+  const h = r.headers;
+  const ray = (h.get("cf-ray") || "").split("-").pop();
+  return [h.get("server") || "", ray ? "ray-" + ray : "", h.get("cf-mitigated") || "", words].filter(Boolean).join(" | ").slice(0, 160);
+}
+
 // Reads the beginning of a page only (the cards of the newest listings come first), then lets go of the connection.
 async function finderFetch(url) {
   const init = {
@@ -661,7 +686,7 @@ async function finderFetch(url) {
   };
   if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) init.signal = AbortSignal.timeout(9000);
   const r = await fetch(url, init);
-  if (!r.ok) return { ok: false, status: r.status, html: "" };
+  if (!r.ok) return { ok: false, status: r.status, html: "", d: await finderPeek(r) };
   // a redirect to the home page means the address was not understood
   if (r.url && !/\/category\/\d+/.test(r.url)) return { ok: false, status: 0, why: "redirect", html: "" };
   let html = "";
@@ -754,7 +779,7 @@ async function finderPush(f, uid, cfg, fresh) {
 // One look at list.am for one person. Never throws; says how it went in st. [cache] shares the page between people with the same search.
 async function finderCheck(f, uid, s, now, notify, cache) {
   const cfg = s.cfg;
-  const st = { run: now, ok: false, note: "", found: 0, fresh: 0 };
+  const st = { run: now, ok: false, note: "", found: 0, fresh: 0, by: notify ? "cron" : "app" };
   const url = finderUrl(cfg);
   let res;
   try {
@@ -765,6 +790,7 @@ async function finderCheck(f, uid, s, now, notify, cache) {
   }
   if (!res.ok) {
     st.note = res.status ? "http " + res.status : res.why || "net";
+    if (res.d) st.d = res.d;
     return { ...s, st };
   }
   const cards = finderParse(res.html);
@@ -838,36 +864,234 @@ async function finderRoute(path, body, uid, env) {
 }
 
 // Cron: the people whose search is on and whose last look is old enough, oldest first, at most FINDER_MAX_USERS.
-async function finderCron(env) {
-  if (!env.SA_JSON) return;
-  const f = await finderCtx(env);
-  const r = await fetch(f.fs + "finder?pageSize=200&mask.fieldPaths=cfg&mask.fieldPaths=st", { headers: f.auth });
-  if (!r.ok) return;
+// Every run leaves a short note ("beat") in finder/_cron and in the Worker's log, so it can be seen that the schedule really fires and where
+// a run stopped. The note holds counts only, nothing about any person.
+const errText = (e) => String((e && e.message) || e).slice(0, 100);
+
+// The note is written as plain fields (numbers, short texts, short lists), so the Firebase console shows every one of them in full.
+async function finderBeat(f, beat) {
+  try {
+    const fields = { time: str(beat.time) };
+    for (const k of ["list", "docs", "on", "due", "did", "ms"]) fields[k] = { integerValue: String(beat[k]) };
+    for (const k of ["errs", "h", "refused"]) fields[k] = { arrayValue: { values: beat[k].map(str) } };
+    // "beat" is the older one-piece form of this note: asking for it in the mask without a value removes it
+    const q = [...Object.keys(fields), "beat"].map((n) => "updateMask.fieldPaths=" + n).join("&");
+    await fetch(f.fs + "finder/_cron?" + q, {
+      method: "PATCH",
+      headers: { ...f.auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields }),
+    });
+  } catch (e) {
+    // the note is only a help; a run is not worse for missing it
+  }
+}
+
+const noteList = (v) => ((v && v.arrayValue && v.arrayValue.values) || []).map((x) => x.stringValue).filter((x) => typeof x === "string").map((x) => x.slice(0, 100));
+
+// The people to look at now: [{uid, run}], oldest look first. Counts what it saw into [beat] and takes over the history of the earlier runs.
+async function finderDue(f, beat) {
+  const r = await fetch(f.fs + "finder?pageSize=200&mask.fieldPaths=cfg&mask.fieldPaths=st&mask.fieldPaths=h&mask.fieldPaths=refused", { headers: f.auth });
+  beat.list = r.status;
+  if (!r.ok) return [];
   const now = Date.now();
   const due = [];
   for (const d of (await r.json()).documents || []) {
     const uid = String(d.name || "").split("/").pop();
+    if (uid === "_cron") {
+      beat.h = noteList(d.fields?.h).slice(0, 11);
+      beat.refused = noteList(d.fields?.refused).slice(0, 6);
+      continue;
+    }
+    if (!uid || !UID_RE.test(uid)) continue;
+    beat.docs++;
     const cfg = finderCfg(parseJson(d.fields?.cfg?.stringValue, null));
     const st = parseJson(d.fields?.st?.stringValue, { run: 0 });
-    if (uid && UID_RE.test(uid) && cfg && cfg.on && now - (Number(st.run) || 0) >= FINDER_MIN_GAP_MS) due.push({ uid, run: Number(st.run) || 0 });
+    if (!cfg || !cfg.on) continue;
+    beat.on++;
+    if (now - (Number(st.run) || 0) >= FINDER_MIN_GAP_MS) due.push({ uid, run: Number(st.run) || 0 });
   }
   due.sort((a, b) => a.run - b.run);
-  const cache = new Map();
-  for (const u of due.slice(0, FINDER_MAX_USERS)) {
-    try {
-      let s = await finderLoad(f, u.uid);
-      if (!s.cfg || !s.cfg.on) continue;
-      const ut = s.ut;
-      s = await finderCheck(f, u.uid, s, Date.now(), true, cache);
-      await finderSave(f, u.uid, s, ["seen", "hits", "st"], ut);
-    } catch (e) {
-      // one person's trouble must not stop the others
+  beat.due = due.length;
+  return due;
+}
+
+// "07:05" (or "07:05:35" with 8) in Yerevan (UTC+4, no summer time)
+const clock = (ms, n = 5) => new Date(ms + 4 * 3600000).toISOString().slice(11, 11 + n);
+
+async function finderCron(env) {
+  const t0 = Date.now();
+  const beat = { time: clock(t0, 8), list: 0, docs: 0, on: 0, due: 0, did: 0, errs: [], h: [], refused: [] };
+  const looked = new Set();
+  let refusal = false;
+  let f = null;
+  if (!env.SA_JSON) {
+    console.log("finder cron: no SA_JSON");
+    return;
+  }
+  try {
+    f = await finderCtx(env);
+    const cache = new Map();
+    for (const u of (await finderDue(f, beat)).slice(0, FINDER_MAX_USERS)) {
+      try {
+        let s = await finderLoad(f, u.uid);
+        if (!s.cfg || !s.cfg.on) continue;
+        const ut = s.ut;
+        s = await finderCheck(f, u.uid, s, Date.now(), true, cache);
+        looked.add(s.st.ok ? "ok" : s.st.note || "?");
+        if (!s.st.ok && !refusal) {
+          // the latest refusal stays in the note until a newer one replaces it: when, what, and who said it
+          refusal = true;
+          beat.refused = [clock(t0) + " " + (s.st.note || "?"), ...String(s.st.d || "").split(" | ")].filter(Boolean).map((x) => x.slice(0, 100)).slice(0, 5);
+        }
+        if (await finderSave(f, u.uid, s, ["seen", "hits", "st"], ut)) beat.did++;
+        else beat.errs.push("save " + u.uid.slice(0, 4));
+      } catch (e) {
+        // one person's trouble must not stop the others
+        beat.errs.push(u.uid.slice(0, 4) + " " + errText(e));
+      }
     }
+  } catch (e) {
+    beat.errs.push(errText(e));
+  }
+  beat.errs = beat.errs.slice(0, 3);
+  // the last twelve runs, newest first: when, and how list.am answered ("idle" = nobody was due, "err" = the run itself failed)
+  beat.h = [clock(t0) + " " + (looked.size ? [...looked].join("/") : beat.errs.length ? "err" : "idle"), ...beat.h].slice(0, 12);
+  beat.ms = Date.now() - t0;
+  console.log("finder cron " + JSON.stringify(beat));
+  if (f) await finderBeat(f, beat);
+}
+
+// ---------------------------------------------------------------------------------------------- web version: login by QR code
+// The web version (a page on GitHub Pages) shows a QR code; the phone scans it and sends the person's identity key to the page, sealed
+// with a key that exists only in that page. The Worker is a post box in between: it keeps the sealed packet for three minutes in
+// links/{sid} (no Firestore rule: only this Worker, with the service account, can touch it) and cannot open it.
+//   /link/config  GET   what the page needs to start Firebase (the public Web API key and the project id)
+//   /link/put     POST  the phone leaves the sealed packet (signed in; {sid, eph, iv, ct, rh}); rh = SHA-256 of a secret r inside the packet
+//   /link/poll    POST  the page asks whether a packet is there ({sid})
+//   /link/finish  POST  the page shows r (it could read the packet, so it holds the key) and gets a Firebase sign-in token for that account
+const LINK_TTL_MS = 3 * 60 * 1000;
+const LINK_ORIGINS = ["https://styop641121.github.io"]; // the web version; more can be added with the WEB_ORIGINS variable (comma separated)
+const SID_RE = /^[A-Za-z0-9_-]{22}$/;
+const B64U_RE = /^[A-Za-z0-9_-]+$/;
+const unb64u = (t) => Uint8Array.from(atob(String(t).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+
+function linkCors(req, env) {
+  const origin = req.headers.get("Origin") || "";
+  const extra = String(env.WEB_ORIGINS || "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (!LINK_ORIGINS.includes(origin) && !extra.includes(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    Vary: "Origin",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Max-Age": "600",
+  };
+}
+
+// A Firebase "custom token": a short-lived proof, signed with the service account, that lets the page sign in as [uid].
+// {web:true} marks the session as a browser one (rules could tell it apart later).
+async function customToken(sa, uid) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64u(enc.encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
+  const claim = b64u(enc.encode(JSON.stringify({
+    iss: sa.client_email,
+    sub: sa.client_email,
+    aud: "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit",
+    iat: now,
+    exp: now + 3600,
+    uid,
+    claims: { web: true },
+  })));
+  const pem = sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, enc.encode(header + "." + claim)));
+  return header + "." + claim + "." + b64u(sig);
+}
+
+async function linkDoc(f, sid) {
+  const r = await fetch(f.fs + "links/" + sid, { headers: f.auth });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("firestore " + r.status);
+  const fl = (await r.json()).fields || {};
+  const g = (k) => fl[k]?.stringValue || "";
+  return { uid: g("uid"), eph: g("eph"), iv: g("iv"), ct: g("ct"), rh: g("rh"), exp: Number(fl.exp?.integerValue || 0) };
+}
+
+async function linkHandle(req, env, path, ip) {
+  if (!env.SA_JSON || !env.API_KEY) return new Response("web login is off", { status: 501 });
+  if (req.method === "GET" && path === "/link/config") {
+    if (limited(ip, "lc", 30)) return new Response("slow down", { status: 429 });
+    return json({ apiKey: env.API_KEY, projectId: JSON.parse(env.SA_JSON).project_id });
+  }
+  if (req.method !== "POST") return new Response("not found", { status: 404 });
+  const raw = await req.text();
+  if (raw.length > MAX_BODY) return new Response("too big", { status: 413 });
+  const body = parseJson(raw, null);
+  if (!body || typeof body !== "object" || !SID_RE.test(String(body.sid || ""))) return new Response("bad request", { status: 400 });
+  const sid = body.sid;
+  const now = Date.now();
+
+  if (path === "/link/poll") {
+    if (limited(ip, "lp", 40)) return new Response("slow down", { status: 429 });
+    const d = await linkDoc(await finderCtx(env), sid);
+    if (!d || d.exp < now) return json({ state: "wait" });
+    return json({ state: "ready", eph: d.eph, iv: d.iv, ct: d.ct });
+  }
+
+  if (path === "/link/put") {
+    const uid = await verifyUser((req.headers.get("Authorization") || "").replace("Bearer ", ""), env.API_KEY);
+    if (!uid || !UID_RE.test(uid)) return new Response("unauthorized", { status: 401 });
+    if (limited(uid, "lput", 10)) return new Response("slow down", { status: 429 });
+    const ok = (k, n, m) => typeof body[k] === "string" && B64U_RE.test(body[k]) && body[k].length >= n && body[k].length <= m;
+    if (!ok("eph", 86, 88) || !ok("iv", 16, 16) || !ok("ct", 16, 2400) || !ok("rh", 43, 43)) return new Response("bad request", { status: 400 });
+    const f = await finderCtx(env);
+    const fields = { uid: str(uid), eph: str(body.eph), iv: str(body.iv), ct: str(body.ct), rh: str(body.rh), exp: { integerValue: String(now + LINK_TTL_MS) } };
+    // create only: the first phone to answer a code is the one that counts
+    const r = await fetch(f.fs + "links/" + sid + "?currentDocument.exists=false", {
+      method: "PATCH",
+      headers: { ...f.auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ fields }),
+    });
+    if (r.status === 409 || r.status === 400) return new Response("taken", { status: 409 });
+    if (!r.ok) return new Response("firestore", { status: 502 });
+    return json({ ok: true });
+  }
+
+  if (path === "/link/finish") {
+    if (limited(ip, "lf", 10)) return new Response("slow down", { status: 429 });
+    if (typeof body.r !== "string" || !B64U_RE.test(body.r) || body.r.length < 16 || body.r.length > 64) return new Response("bad request", { status: 400 });
+    const f = await finderCtx(env);
+    const d = await linkDoc(f, sid);
+    if (!d || d.exp < now) return new Response("not found", { status: 404 });
+    const rh = b64u(new Uint8Array(await crypto.subtle.digest("SHA-256", unb64u(body.r))));
+    if (!same(rh, d.rh)) return new Response("forbidden", { status: 403 });
+    const tok = await customToken(JSON.parse(env.SA_JSON), d.uid);
+    // one use only
+    await fetch(f.fs + "links/" + sid, { method: "DELETE", headers: f.auth });
+    return json({ tok, uid: d.uid });
+  }
+  return new Response("not found", { status: 404 });
+}
+
+async function linkRoute(req, env, path) {
+  const cors = linkCors(req, env);
+  const done = (res) => {
+    for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+    return res;
+  };
+  if (req.method === "OPTIONS") return done(new Response(null, { status: 204 }));
+  try {
+    return done(await linkHandle(req, env, path, req.headers.get("CF-Connecting-IP") || "?"));
+  } catch (e) {
+    return done(new Response("error", { status: 500 }));
   }
 }
 
 export default {
   async fetch(req, env) {
+    const linkPath = new URL(req.url).pathname;
+    if (linkPath.startsWith("/link/")) return linkRoute(req, env, linkPath);
     if (req.method === "GET") {
       const page = /^\/j\/([A-Za-z0-9_.-]{20,120})$/.exec(new URL(req.url).pathname);
       if (page) return invitePage(page[1]);
@@ -964,6 +1188,6 @@ export default {
 
   // Cron Trigger: the Real Estate Finder looks at list.am. Nothing else runs here, and a failure stays inside it.
   async scheduled(event, env, ctx) {
-    ctx.waitUntil(finderCron(env).catch(() => {}));
+    ctx.waitUntil(finderCron(env).catch((e) => console.error("finder cron failed: " + errText(e))));
   },
 };

@@ -623,6 +623,8 @@ fun SettingsTab(vm: AppViewModel, me: Profile, onStarred: () -> Unit, onTasks: (
                 tone = KTheme.colors.danger,
                 onClick = onSos,
             )
+            KDivider(inset = 62.dp)
+            LinkBrowserRow()
         }
         SettingsGroup(tr("Գաղտնիություն")) {
             SettingsRow(

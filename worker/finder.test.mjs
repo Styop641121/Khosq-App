@@ -53,6 +53,7 @@ function world({ uid = "U1", docs = {}, tokens = { U1: "FCM1", U2: "FCM2" }, lis
     let m = /\/documents\/tokens\/([^/?]+)$/.exec(url);
     if (m) return w.tokens[m[1]] ? ok({ fields: { fcmToken: { stringValue: w.tokens[m[1]] } } }) : new Response("{}", { status: 404 });
     if (/\/documents\/finder\?/.test(url)) {
+      if (fsStatus.list) return new Response("{}", { status: fsStatus.list });
       return ok({ documents: Object.entries(w.docs).map(([id, d]) => ({ name: "projects/demo/databases/(default)/documents/finder/" + id, fields: d.fields })) });
     }
     m = /\/documents\/finder\/([^/?]+)(\?.*)?$/.exec(url);
@@ -72,8 +73,11 @@ function world({ uid = "U1", docs = {}, tokens = { U1: "FCM1", U2: "FCM2" }, lis
         if (must && (!cur || cur.updateTime !== must)) return new Response("{}", { status: 400 });
         const fields = JSON.parse(opts.body).fields;
         const names = q.getAll("updateMask.fieldPaths");
-        assert.deepEqual(Object.keys(fields).sort(), [...names].sort(), "the mask names exactly the written fields");
+        for (const k of Object.keys(fields)) assert.ok(names.includes(k), "the mask names every written field: " + k);
+        if (id !== "_cron") assert.deepEqual(Object.keys(fields).sort(), [...names].sort(), "the mask names exactly the written fields");
         const next = { fields: { ...(cur?.fields ?? {}), ...fields }, updateTime: "T" + (log.patches.length + 1) };
+        // like Firestore: a field named in the mask but missing from the body is removed
+        for (const n of names) if (!(n in fields)) delete next.fields[n];
         w.docs[id] = next;
         log.patches.push({ id, names, must });
         return ok(next);
@@ -93,6 +97,9 @@ const doc = (cfg, extra = {}) => ({
 });
 const CFG = { on: true, cat: "sale", region: 1, min: 0, max: 100000, cur: "USD", rooms: 2, lang: "en" };
 const read = (w, id, f) => JSON.parse(w.docs[id].fields[f].stringValue);
+// the cron's note: plain fields, turned back into plain values
+const unval = (v) => (v.stringValue !== undefined ? v.stringValue : v.integerValue !== undefined ? Number(v.integerValue) : (v.arrayValue.values || []).map(unval));
+const beatOf = (w) => Object.fromEntries(Object.entries(w.docs._cron.fields).map(([k, v]) => [k, unval(v)]));
 const post = (path, body = {}, env = ENV) =>
   worker.fetch(new Request("https://w.example" + path, { method: "POST", headers: { Authorization: "Bearer x" }, body: JSON.stringify(body) }), env);
 const cron = () => worker.scheduled({}, ENV, { waitUntil: (p) => (cron.last = p) }).then(() => cron.last);
@@ -304,7 +311,7 @@ test("at most eight people per run, the one waiting longest first", async () => 
   const w = world({ docs, tokens });
   w.listam = () => new Response(page([card(1)]));
   await cron();
-  const touched = new Set(w.log.patches.map((p) => p.id));
+  const touched = new Set(w.log.patches.map((p) => p.id).filter((id) => id !== "_cron"));
   assert.equal(touched.size, 8);
   for (const id of ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8"]) assert.ok(touched.has(id), id);
 });
@@ -384,6 +391,104 @@ test("the cron without a service account, or a Firestore that fails, is silent",
   w.listam = () => new Response(page([card(1)]));
   await cron();
   assert.ok(true);
+});
+
+test("every run leaves a note of counts, even when nobody is due, so it can be seen that the schedule fires", async () => {
+  const w = world({ docs: { U1: doc(CFG, { seen: ["1"], st: { run: Date.now() } }), U2: doc({ ...CFG, on: false }) } });
+  await cron();
+  const b = beatOf(w);
+  assert.equal(b.list, 200);
+  assert.equal(b.docs, 2);
+  assert.equal(b.on, 1);
+  assert.equal(b.due, 0);
+  assert.equal(b.did, 0);
+  assert.deepEqual(b.errs, []);
+  assert.match(b.time, /^\d\d:\d\d:\d\d$/);
+  assert.ok(b.ms >= 0);
+  assert.equal(w.log.listam.length, 0);
+});
+
+test("the note counts the people looked at, and holds nothing about them", async () => {
+  const w = world({ docs: { U1: doc(CFG, { seen: ["1"] }), U2: doc({ ...CFG, region: 3 }, { seen: ["1"] }) } });
+  w.listam = () => new Response(page([card(1)]));
+  await cron();
+  const b = beatOf(w);
+  assert.equal(b.due, 2);
+  assert.equal(b.did, 2);
+  assert.deepEqual(Object.keys(b).sort(), ["did", "docs", "due", "errs", "h", "list", "ms", "on", "refused", "time"]);
+  assert.ok(!JSON.stringify(w.docs._cron.fields).includes("FCM"));
+  // the note itself is never taken for a person
+  await cron();
+  assert.equal(beatOf(w).docs, 2);
+});
+
+test("a Firestore that refuses the list, or a write that fails, shows in the note", async () => {
+  let w = world({ docs: { U1: doc(CFG) }, fsStatus: { list: 403 } });
+  await cron();
+  assert.equal(beatOf(w).list, 403);
+  assert.equal(beatOf(w).due, 0);
+  w = world({ docs: { U1: doc(CFG, { seen: ["1"] }) } });
+  w.listam = () => new Response(page([card(2), card(1)]));
+  const real = globalThis.fetch;
+  globalThis.fetch = (url, opts = {}) => (/finder\/U1\?/.test(String(url)) && opts.method === "PATCH" ? Promise.resolve(new Response("{}", { status: 500 })) : real(url, opts));
+  await cron();
+  globalThis.fetch = real;
+  const b = beatOf(w);
+  assert.equal(b.did, 0);
+  assert.equal(b.errs.length, 1);
+  assert.ok(b.errs[0].startsWith("save "));
+});
+
+test("a refusal is written down with who refused, and which way the look was made", async () => {
+  const w = world({ docs: { U1: doc(CFG, { seen: ["1"] }) } });
+  w.listam = () => new Response("<html><head><title>Attention Required! | Cloudflare</title></head><body>blocked</body></html>", { status: 403, headers: { server: "cloudflare", "cf-ray": "abc123-FRA" } });
+  await cron();
+  const st = read(w, "U1", "st");
+  assert.equal(st.note, "http 403");
+  assert.equal(st.d, "cloudflare | ray-FRA | Attention Required! | Cloudflare");
+  assert.equal(st.by, "cron");
+  assert.equal(st.ok, false);
+  // a look the person asked for says so
+  shift += 61000;
+  await post("/finder/check");
+  assert.equal(read(w, "U1", "st").by, "app");
+});
+
+test("the note shows the latest refusal in plain lines and keeps it after a good run", async () => {
+  const w = world({ docs: { U1: doc(CFG, { seen: ["1"] }), _cron: { fields: { beat: { stringValue: "{}" } }, updateTime: "T0" } } });
+  w.listam = () => new Response("<title>Attention Required! | Cloudflare</title>", { status: 403, headers: { server: "cloudflare", "cf-ray": "abc-FRA" } });
+  await cron();
+  let b = beatOf(w);
+  assert.match(b.refused[0], /^\d\d:\d\d http 403$/);
+  assert.deepEqual(b.refused.slice(1), ["cloudflare", "ray-FRA", "Attention Required!", "Cloudflare"]);
+  assert.match(b.h[0], / http 403$/);
+  assert.equal(w.docs._cron.fields.beat, undefined, "the older one-piece note is gone");
+  shift += 5 * 60000;
+  w.listam = () => new Response(page([card(1)]));
+  await cron();
+  b = beatOf(w);
+  assert.match(b.h[0], / ok$/);
+  assert.match(b.refused[0], / http 403$/);
+});
+
+test("the note keeps the last twelve runs, newest first", async () => {
+  const w = world({ docs: { U1: doc(CFG, { seen: ["1"] }) } });
+  w.listam = () => new Response(page([card(1)]));
+  await cron();
+  assert.match(beatOf(w).h[0], /^\d\d:\d\d ok$/);
+  shift += 60000; // too soon for another look: nobody is due
+  await cron();
+  let h = beatOf(w).h;
+  assert.equal(h.length, 2);
+  assert.match(h[0], /^\d\d:\d\d idle$/);
+  assert.match(h[1], /^\d\d:\d\d ok$/);
+  for (let i = 0; i < 14; i++) {
+    shift += 5 * 60000;
+    await cron();
+  }
+  h = beatOf(w).h;
+  assert.equal(h.length, 12);
+  assert.equal(JSON.stringify(w.docs._cron.fields).includes("U1"), false);
 });
 
 // ---------------------------------------------------------------------------------------------- the routes

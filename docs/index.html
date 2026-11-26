@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<meta name="referrer" content="no-referrer">
+<!-- The page holds a key: it may load scripts only from itself and from Google's Firebase address, and talk only to the KHOSQ Worker and Firebase. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://www.gstatic.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://*.workers.dev https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com; base-uri 'none'; form-action 'none'">
+<title>KHOSQ Web</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="icon.svg" alt="" width="32" height="32"><span>KHOSQ <b>Web</b></span></div>
+  <div class="langs" id="langs" role="group" aria-label="Language"></div>
+</header>
+
+<main id="boot" class="center"><div class="spinner" aria-hidden="true"></div></main>
+
+<main id="login" class="wrap" hidden>
+  <section class="card login">
+    <div class="intro">
+      <h1 data-i18n="loginTitle"></h1>
+      <p class="muted" data-i18n="tagline"></p>
+      <ol class="steps">
+        <li><span>1</span><p data-i18n="step1"></p></li>
+        <li><span>2</span><p data-i18n="step2"></p></li>
+        <li><span>3</span><p data-i18n="step3"></p></li>
+        <li><span>4</span><p><span data-i18n="step4"></span> <b class="code" id="code" aria-live="polite"></b></p></li>
+      </ol>
+      <p class="note" data-i18n="privacy"></p>
+    </div>
+    <div class="scan">
+      <div class="qrbox" id="qr" aria-label="QR"></div>
+      <p class="status" id="status" role="status"></p>
+      <button class="btn ghost" id="refresh" type="button" data-i18n="refresh"></button>
+      <button class="btn" id="retry" type="button" data-i18n="retry" hidden></button>
+      <p class="muted small" data-i18n="changes"></p>
+    </div>
+  </section>
+</main>
+
+<main id="home" class="wrap" hidden>
+  <section class="card home">
+    <div class="me">
+      <div class="avatar" id="avatar" aria-hidden="true"></div>
+      <div>
+        <h1 id="name"></h1>
+        <p class="muted" id="handle"></p>
+      </div>
+    </div>
+    <h2 data-i18n="homeTitle"></h2>
+    <ul class="checks" id="checks"></ul>
+    <p class="muted" id="keyid"></p>
+    <p class="muted" data-i18n="homeNext"></p>
+    <button class="btn danger" id="logout" type="button" data-i18n="logout"></button>
+  </section>
+</main>
+
+<dialog id="ask">
+  <p id="askText"></p>
+  <div class="row">
+    <button class="btn ghost" id="askNo" type="button" data-i18n="cancel"></button>
+    <button class="btn danger" id="askYes" type="button" data-i18n="logout"></button>
+  </div>
+</dialog>
+
+<noscript><p class="center">KHOSQ Web needs JavaScript.</p></noscript>
+<script type="module" src="app.js"></script>
+</body>
+</html>

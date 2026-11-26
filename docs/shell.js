@@ -1,8 +1,9 @@
-// KHOSQ Web, stage 2: the chat list and the messages, read only. Everything the page puts on the screen from a message goes in with
-// textContent (never as markup), so what somebody wrote can never act as part of the page.
+// KHOSQ Web, stages 2 and 3: the chat list, the messages, and writing text messages (send.js). Everything the page puts on the screen from
+// a message goes in with textContent (never as markup), so what somebody wrote can never act as part of the page.
 import { t, tf, lang } from "./i18n.js";
 import { makeData, PAGE } from "./data.js";
 import { makeE2E } from "./e2e.js";
+import { makeSender, whyNot, replyOf } from "./send.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
 
@@ -60,14 +61,20 @@ const KIND_PREVIEW = {
   call_missed: () => "📵 " + t("call_missed"),
 };
 
-/** What a quoted message shows (the phone stores a marker for a photo, a voice message ... instead of text). */
+/**
+ * What a quoted message shows. For a photo, a voice message, a location or a sticker the phone stores a marker, not text: the private-use
+ * character U+E000 followed by the kind (REPLY_IMG ... in I18n.kt), so that each reader sees it in their own language. A reply that merely
+ * says "img" is text and stays text.
+ */
+const MARK = "\uE000";
 function quoteText(raw) {
-  switch (raw) {
-    case "img": return KIND_PREVIEW.img();
-    case "voice": return KIND_PREVIEW.voice();
-    case "loc": return KIND_PREVIEW.loc();
-    case "sticker": return KIND_PREVIEW.sticker();
-    default: return raw;
+  if (!raw.startsWith(MARK)) return raw;
+  switch (raw.slice(1)) {
+    case "img": return KIND_PREVIEW.img();
+    case "voice": return KIND_PREVIEW.voice();
+    case "loc": return KIND_PREVIEW.loc();
+    case "sticker": return KIND_PREVIEW.sticker();
+    default: return "";
   }
 }
 
@@ -81,7 +88,7 @@ const hue = (id) => {
 const SOS_WORD = "🆘 SOS";
 
 /** Starts the chat screens. [f] is the signed-in Firebase, [id] the identity (uid, pub, key), [user] my own profile. Returns {stop, relang}. */
-export function startShell({ f, id, user, onAbout }) {
+export function startShell({ f, id, user, onAbout, worker }) {
   const uid = id.uid;
   const data = makeData(f, uid);
   const e2e = makeE2E({
@@ -94,6 +101,8 @@ export function startShell({ f, id, user, onAbout }) {
     },
     pins,
   });
+  const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
+  const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
 
   const S = {
     chats: [],
@@ -120,6 +129,15 @@ export function startShell({ f, id, user, onAbout }) {
     failed: false,
     loadingMsgs: false,
     hold: false,
+    // writing
+    reply: null, // {id, from, quote}: the message being answered; quote is what is stored for it
+    drafts: new Map(), // what was typed in a chat and not sent (kept in memory only, never in the browser's storage)
+    sending: false,
+    block: "", // why the box is closed: blocked / pending / admins / key, or ""
+    changed: [], // people of the open chat whose key changed and was not acknowledged
+    stickUntil: 0, // after sending, the view follows the newest message until this moment
+    refreshJob: null,
+    readSig: "",
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -500,7 +518,8 @@ export function startShell({ f, id, user, onAbout }) {
   }
 
   function ticks(chat, m) {
-    // my own messages only: one tick = sent, two = delivered, two coloured = read (the same reading of the chat document as the phone)
+    // my own messages only: a clock = still being sent, one tick = sent, two = delivered, two coloured = read (the phone's reading of the chat document)
+    if (m.pending) return "p";
     const others = (chat.members || []).filter((x) => x !== uid);
     if (!others.length) return null;
     const low = (map) => Math.min(...others.map((o) => (map && typeof map[o] === "number" ? map[o] : 0)));
@@ -537,8 +556,20 @@ export function startShell({ f, id, user, onAbout }) {
     const meta = el("div", "meta");
     if (m.edited && !m.deleted) meta.append(el("span", "ed", t("edited")));
     meta.append(el("time", "", clock(m.ts)));
-    if (mine && tick) meta.append(el("span", "tick " + tick, tick === "s" ? "✓" : "✓✓"));
+    if (mine && tick) {
+      const tk = el("span", "tick " + tick, tick === "s" ? "✓" : tick === "p" ? "🕓" : "✓✓");
+      if (tick === "p") tk.title = t("sending");
+      meta.append(tk);
+    }
     bub.append(meta);
+    if (view && !m.deleted && (view.ok || view.text || view.bytes)) {
+      const rb = el("button", "rbtn", "↩");
+      rb.type = "button";
+      rb.title = t("reply");
+      rb.setAttribute("aria-label", t("reply"));
+      rb.addEventListener("click", () => setReply(m, view));
+      bub.append(rb);
+    }
     row.append(bub);
     const rs = Object.values(m.reactions || {}).filter((x) => typeof x === "string" && x);
     if (rs.length) {
@@ -624,18 +655,52 @@ export function startShell({ f, id, user, onAbout }) {
     $("noMsgs").textContent = t("noMsgs");
     $("older").hidden = !S.more;
     $("msgLoading").hidden = !S.loadingMsgs;
-    if (!S.hold && (firstDraw || nearBottom)) box.scrollTop = box.scrollHeight;
+    if (!S.hold && (firstDraw || nearBottom || Date.now() < S.stickUntil)) box.scrollTop = box.scrollHeight;
   }
 
-  function showWarn() {
-    const w = $("warn");
-    const peer = S.open && !S.open.group ? S.open.peer : null;
-    const on = Boolean(peer) && e2e.keyChanged(peer);
-    w.hidden = !on;
-    if (on) w.textContent = "⚠ " + tf("keyChanged", S.open.title);
+  /** Looks for people of the open chat whose key changed and was not acknowledged: shows the warning and, in a one-to-one chat, closes the box. */
+  async function showWarn() {
+    const v = S.open;
+    if (!v) return;
+    const peers = v.saved ? [] : v.group ? v.members.filter((m) => m !== uid).slice(0, MAX_REFRESH) : v.peer ? [v.peer] : [];
+    const changed = [];
+    for (const p of peers) if (await e2e.keyChanged(p)) changed.push(p);
+    if (!S.open || S.open.id !== v.id) return;
+    S.changed = changed;
+    $("warn").hidden = changed.length === 0;
+    if (changed.length) {
+      $("warnText").textContent = "⚠ " + (v.group ? tf("keyChangedIn", changed.map((p) => nameOf(v.raw, p)).join(", ")) : tf("keyChanged", v.title));
+    }
+    updateComposer();
+  }
+
+  /** Looks at the server's copy of the keys of the open chat once per visit (a changed one is noted, the new one used for what is sealed from now on). */
+  function refreshKeys(v) {
+    const people = (v.saved ? [] : v.group ? v.members : v.peer ? [v.peer] : []).filter((p) => p !== uid).slice(0, MAX_REFRESH);
+    return (async () => {
+      let any = false;
+      for (const p of people) {
+        if (S.refreshed.has(p)) continue;
+        S.refreshed.add(p);
+        if (await e2e.refreshPeer(p).catch(() => false)) any = true;
+      }
+      if (S.open && S.open.id === v.id) {
+        if (any) {
+          S.opened.clear();
+          renderMessages();
+        }
+        showWarn();
+      }
+    })().catch(() => {});
   }
 
   function leaveChat() {
+    if (S.open) {
+      const text = $("msgIn").value;
+      if (text) S.drafts.set(S.open.id, text);
+      else S.drafts.delete(S.open.id);
+    }
+    S.reply = null;
     S.msgToken++;
     if (S.msgStop) S.msgStop();
     S.msgStop = null;
@@ -670,7 +735,11 @@ export function startShell({ f, id, user, onAbout }) {
     head.replaceChildren(v.saved ? el("span", "av saved", "🔖") : avatar(v.avatarId, v.title, v.avatarV));
     S.listSig = "";
     renderList();
-    showWarn();
+    S.changed = [];
+    $("warn").hidden = true;
+    $("msgIn").value = S.drafts.get(chatId) || "";
+    autosize();
+    updateComposer();
     $("msgLoading").hidden = false;
     $("noMsgs").hidden = true;
     $("older").hidden = true;
@@ -696,19 +765,9 @@ export function startShell({ f, id, user, onAbout }) {
         $("noMsgs").textContent = t("errMsgs");
       },
     );
-    if (v.peer && !S.refreshed.has(v.peer)) {
-      S.refreshed.add(v.peer);
-      e2e
-        .refreshPeer(v.peer)
-        .catch(() => false)
-        .then((changed) => {
-          if (changed) {
-            showWarn();
-            S.opened.clear();
-            renderMessages();
-          }
-        });
-    }
+    S.refreshJob = refreshKeys(v);
+    showWarn();
+    maybeRead();
   }
 
   async function loadOlder() {
@@ -746,6 +805,138 @@ export function startShell({ f, id, user, onAbout }) {
     renderList();
   }
 
+  // ---------------------------------------------------------------------------------------------- writing
+  let toastTimer = 0;
+  function toast(text) {
+    const n = $("toast");
+    n.textContent = text;
+    n.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => (n.hidden = true), 6000);
+  }
+
+  const coarse = () => Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+
+  function autosize() {
+    const ta = $("msgIn");
+    ta.style.height = "auto";
+    // a box that is closed (display: none) measures 0: leave it to the stylesheet; it is measured again when it opens (updateComposer)
+    if (ta.offsetParent !== null) ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
+  }
+
+  const syncSend = () => {
+    $("sendBtn").disabled = !S.open || S.sending || Boolean(S.block) || !$("msgIn").value.trim();
+  };
+
+  function renderReply() {
+    const r = S.reply;
+    $("replyBar").hidden = !r || Boolean(S.block);
+    if (r && S.open) {
+      $("replyName").textContent = nameIn(S.open.raw, r.from);
+      $("replyText").textContent = quoteText(r.quote).slice(0, 140);
+    }
+  }
+
+  /** Opens or closes the box for the open chat: the conditions of the Firestore rules, and an unchecked key change in a one-to-one chat. */
+  function updateComposer() {
+    const v = S.open;
+    if (!v) return;
+    let why = whyNot(v.raw, uid);
+    if (!why && !v.group && S.changed.length) why = "key";
+    S.block = why;
+    $("chat").classList.toggle("nowrite", Boolean(why));
+    const cant = $("cant");
+    cant.hidden = !why;
+    if (why) {
+      cant.textContent = why === "blocked" ? t("cantBlocked") : why === "pending" ? tf("cantPending", v.title) : why === "admins" ? t("cantAdmins") : t("cantKey");
+    }
+    renderReply();
+    syncSend();
+    if (!why) autosize(); // the box has just opened: measure it now that it can be measured
+  }
+
+  function setReply(m, view) {
+    if (!S.open || S.block) return;
+    S.reply = { id: m.id, from: m.from, quote: replyOf(m, view) };
+    renderReply();
+    $("msgIn").focus();
+  }
+
+  async function sendNow() {
+    const v = S.open;
+    const ta = $("msgIn");
+    if (!v || S.sending || S.block || !ta.value.trim()) return;
+    S.sending = true;
+    S.stickUntil = Date.now() + 4000;
+    syncSend();
+    const chatId = v.id;
+    const text = ta.value;
+    const reply = S.reply ? { from: S.reply.from, quote: S.reply.quote } : null;
+    let r;
+    try {
+      // the keys of the people in this chat are looked at first (a few seconds at most), so nothing is sealed for an old key
+      if (S.refreshJob) await Promise.race([S.refreshJob, new Promise((res) => setTimeout(res, 4000))]);
+      await showWarn(); // an unchecked key change closes the box, even if it was noticed only a moment ago
+      if (S.block || !S.open || S.open.id !== chatId) {
+        S.sending = false;
+        S.stickUntil = 0;
+        syncSend();
+        return;
+      }
+      r = await sender.sendText(v.raw, text, reply);
+    } catch (e) {
+      r = { ok: false, why: "error" };
+    }
+    S.sending = false;
+    const here = S.open && S.open.id === chatId;
+    if (!r.ok) {
+      S.stickUntil = 0;
+      if (r.why === "noKey") toast(v.group ? t("cantEncryptGroup") : tf("cantEncrypt", v.title));
+      else if (r.why !== "empty") toast(t("notSent"));
+      syncSend();
+      return;
+    }
+    // taken: it is on the screen as "sending" and the server settles it in a moment
+    if (here) {
+      ta.value = "";
+      S.reply = null;
+      autosize();
+      renderReply();
+    } else {
+      S.drafts.delete(chatId);
+    }
+    syncSend();
+    r.committed.catch(() => {
+      toast(t("notSent"));
+      if (S.open && S.open.id === chatId) {
+        if (!ta.value) {
+          ta.value = text;
+          autosize();
+        }
+        syncSend();
+      } else {
+        S.drafts.set(chatId, text);
+      }
+    });
+  }
+
+  /** The tab is in front and in use (not hidden, has the focus): only then does the page say "read" or "delivered". */
+  const seen = () => document.visibilityState === "visible" && (typeof document.hasFocus !== "function" || document.hasFocus());
+
+  function maybeRead() {
+    const v = S.open;
+    if (!v || v.request || !seen() || !(v.unread > 0)) return;
+    const sig = v.id + "|" + v.lastTs + "|" + v.unread;
+    if (S.readSig === sig) return;
+    S.readSig = sig;
+    sender.markRead(v.raw);
+  }
+
+  function maybeDeliver(list) {
+    if (!seen()) return;
+    for (const c of list) sender.markDelivered(c);
+  }
+
   // ---------------------------------------------------------------------------------------------- start
   function chips() {
     const box = $("chips");
@@ -779,6 +970,31 @@ export function startShell({ f, id, user, onAbout }) {
   $("meBtn").addEventListener("click", () => onAbout());
   $("back").addEventListener("click", closeChat);
   $("older").addEventListener("click", loadOlder);
+  $("sendBtn").addEventListener("click", sendNow);
+  $("msgIn").addEventListener("input", () => {
+    autosize();
+    syncSend();
+  });
+  $("msgIn").addEventListener("keydown", (e) => {
+    // Enter sends and Shift+Enter makes a new line (on a touch screen Enter is a new line and the button sends); Ctrl/Cmd+Enter always sends
+    if (e.key === "Enter" && !e.isComposing && ((!e.shiftKey && !coarse()) || e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      sendNow();
+    }
+  });
+  $("replyX").addEventListener("click", () => {
+    S.reply = null;
+    renderReply();
+  });
+  $("warnOk").addEventListener("click", async () => {
+    for (const p of S.changed) await e2e.acknowledge(p);
+    showWarn();
+  });
+  const onFocus = () => {
+    maybeRead();
+    maybeDeliver(S.chats);
+  };
+  window.addEventListener("focus", onFocus);
   $("shot").addEventListener("click", () => $("shot").close());
   $("shot").addEventListener("close", () => $("shotImg").removeAttribute("src"));
   const onKey = (e) => {
@@ -794,6 +1010,7 @@ export function startShell({ f, id, user, onAbout }) {
     } else {
       clearTimeout(rest);
       f.fsM.enableNetwork(f.db).catch(() => {});
+      onFocus();
     }
   };
   document.addEventListener("visibilitychange", onVis);
@@ -821,10 +1038,13 @@ export function startShell({ f, id, user, onAbout }) {
           if (c) {
             S.open = { ...chatVm(c) };
             $("chName").textContent = S.open.title;
+            updateComposer();
             renderMessages();
           }
         }
         renderList();
+        maybeDeliver(list);
+        maybeRead();
       },
       () => {
         S.loadedChats = true;
@@ -847,6 +1067,7 @@ export function startShell({ f, id, user, onAbout }) {
         $("chSub").textContent = c.saved ? "" : c.group ? tf("members", c.members.length) : c.handle ? "@" + c.handle : "";
         $("chName").textContent = c.title;
         showWarn();
+        updateComposer();
         S.rows.clear();
         $("msgList").replaceChildren();
         renderMessages();
@@ -857,7 +1078,9 @@ export function startShell({ f, id, user, onAbout }) {
       for (const s of S.stops) s();
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
       clearTimeout(rest);
+      clearTimeout(toastTimer);
       for (const p of photoUrls.values()) URL.revokeObjectURL(p.url);
     },
   };

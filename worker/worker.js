@@ -6,6 +6,8 @@
 //   AI - a Workers AI binding (Settings -> Bindings -> Add -> Workers AI, variable name AI). Needs no key. Without it, translation and voice transcription are off.
 //   (The Trust Shield link check needs nothing: no binding, no key.)
 //   WEB_ORIGINS - optional, comma separated: more addresses of the web version (the GitHub Pages one is built in).
+//     The web version may also POST the push request to "/" from the browser (step 6c, to wake the other phones after a message it wrote):
+//     CORS is granted to those web addresses only and for that one path; every other path is unchanged. The request carries no message text.
 //   Real Estate Finder: add a Cron Trigger  */5 * * * *  (Settings -> Triggers -> Cron Triggers). Needs no key and no binding.
 //   Either Cloudflare Realtime TURN:
 //     TURN_KEY_ID    - TURN key id (text variable)
@@ -1088,8 +1090,10 @@ async function linkRoute(req, env, path) {
   }
 }
 
-export default {
-  async fetch(req, env) {
+// The web version (docs/) also sends the push for a message it wrote. That call is the same as the phone's (POST to the main address with the
+// person's own Firebase token), and a browser needs CORS for it. It is granted to the web version's address only (LINK_ORIGINS / WEB_ORIGINS),
+// and only for the main address "/", never for /ai/*, /finder/*, /group/*, which stay closed to browsers.
+async function handle(req, env) {
     const linkPath = new URL(req.url).pathname;
     if (linkPath.startsWith("/link/")) return linkRoute(req, env, linkPath);
     if (req.method === "GET") {
@@ -1184,6 +1188,17 @@ export default {
     } catch (e) {
       return new Response("error: " + e.message, { status: 500 });
     }
+}
+
+export default {
+  async fetch(req, env) {
+    const web = new URL(req.url).pathname === "/" ? linkCors(req, env) : {};
+    if (Object.keys(web).length === 0) return handle(req, env);
+    if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: web });
+    const out = await handle(req, env);
+    const res = new Response(out.body, out); // a copy whose headers can be changed
+    for (const [k, v] of Object.entries(web)) res.headers.set(k, v);
+    return res;
   },
 
   // Cron Trigger: the Real Estate Finder looks at list.am. Nothing else runs here, and a failure stays inside it.

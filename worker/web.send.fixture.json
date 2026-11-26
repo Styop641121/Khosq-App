@@ -1,0 +1,20 @@
+{
+ "note": "Group message keys the PHONE's code (crypto/E2E.kt messageKey) makes for the identity in web.fixture.json. The page must make the same bytes, or the phone could not edit a message sent from the page.",
+ "messageKeys": [
+  {
+   "chatId": "grpYerevan01",
+   "msgId": "gNew1",
+   "hex": "42463ee5ffcccd0fbbaba53cc9d27c1363ebc8fdff199be85feb40fbf6077028"
+  },
+  {
+   "chatId": "grpYerevan01",
+   "msgId": "gNew2",
+   "hex": "94649c97a88b22496c449f1869f83f21faf5f4557a9f9f98cb28deae3dec4b0b"
+  },
+  {
+   "chatId": "grpOther02",
+   "msgId": "gNew1",
+   "hex": "746184c0b69d7c61cd7a2c129060c3fbf631e497d0bfe0f340aaeaa2317b494f"
+  }
+ ]
+}

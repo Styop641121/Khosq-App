@@ -65,14 +65,26 @@
         <span id="chAv"></span>
         <div class="who2"><b id="chName"></b><small id="chSub"></small></div>
       </header>
-      <p class="warn" id="warn" role="alert" hidden></p>
+      <p class="warn" id="warn" role="alert" hidden><span id="warnText"></span><button class="btn ghost" id="warnOk" type="button" data-i18n="ackKey"></button></p>
       <div class="msgs" id="msgs">
         <button class="btn ghost more" id="older" type="button" data-i18n="older" hidden></button>
         <p class="hint" id="msgLoading" data-i18n="loadingMsgs" hidden></p>
         <p class="hint" id="noMsgs" hidden></p>
         <div id="msgList"></div>
       </div>
-      <footer class="ro" data-i18n="roNote"></footer>
+      <footer class="compose" id="compose">
+        <div class="replybar" id="replyBar" hidden>
+          <div class="rq"><b id="replyName"></b><span id="replyText"></span></div>
+          <button class="icon-btn" id="replyX" type="button" data-i18n-aria="cancelReply">✕</button>
+        </div>
+        <p class="cant" id="cant" role="status" hidden></p>
+        <div class="cmp" id="cmp">
+          <textarea id="msgIn" rows="1" maxlength="4000" autocomplete="off" enterkeyhint="send" data-i18n-ph="writeMsg" data-i18n-aria="writeMsg"></textarea>
+          <button class="send" id="sendBtn" type="button" data-i18n-aria="send" disabled>
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.3 10.1 15 12 3.3 13.9z" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </footer>
     </div>
   </section>
 </main>
@@ -94,6 +106,8 @@
     <button class="btn ghost" id="aboutClose" type="button" data-i18n="close"></button>
   </div>
 </dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
 <dialog id="shot" class="shot"><img id="shotImg" alt=""></dialog>
 

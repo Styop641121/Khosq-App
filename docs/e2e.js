@@ -6,10 +6,15 @@
 // opened with the key I share with the sender (salt "wrap|<smaller id>|<larger id>"; "wrap|self" for my own messages).
 // Every sealed piece is  iv(12) + ciphertext + tag(16)  in standard base64, bound to "<chat>|<sender>|<field>" (wraps: "w|<chat>|<from>|<to>").
 //
-// The private key here is the page's non-extractable key: this file can use it, never read it. Only reading is done in this stage.
+// Sealing (stage 3, sending) is the same arithmetic the other way round: a random 12-byte IV, AES-256-GCM with the same bound text. A group
+// message key is NOT random: like the phone, it is made from my own secret and the message id (HKDF, salt "<chat>|<message id>", info
+// "khosq-msg-v1"), so that the phone can seal an edit of a message that was sent from here, and the other way round.
+//
+// The private key here is the page's non-extractable key: this file can use it, never read it.
 const te = new TextEncoder();
 const td = new TextDecoder();
 const CURVE = { name: "ECDH", namedCurve: "P-256" };
+const FLAG = "!"; // in the remembered keys, "!<person>" = "1" says that person's key changed and is not acknowledged yet
 
 export function fromB64(s) {
   const bin = atob(s);
@@ -25,15 +30,17 @@ export function toB64(u8) {
 }
 
 const importPublic = (text) => crypto.subtle.importKey("spki", fromB64(text), CURVE, true, []);
-const aesKey = (raw) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+const BOTH = ["encrypt", "decrypt"];
+/** An AES key the page cannot read back (not extractable). Keys of received messages only open; keys of chats also seal. */
+const aesKey = (raw, usages = ["decrypt"]) => crypto.subtle.importKey("raw", raw, "AES-GCM", false, usages);
 
-/** ECDH with my key, then HKDF-SHA256 with the salt, 32 bytes, as an AES key that can only decrypt. */
-async function derive(myKey, theirPublic, salt) {
+/** ECDH with my key, then HKDF-SHA256 with the salt: 32 bytes. */
+async function deriveBits(myKey, theirPublic, salt) {
   const secret = await crypto.subtle.deriveBits({ name: "ECDH", public: theirPublic }, myKey, 256);
   const base = await crypto.subtle.importKey("raw", secret, "HKDF", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: te.encode(salt), info: te.encode("khosq-e2e-v1") }, base, 256);
-  return aesKey(bits);
+  return crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: te.encode(salt), info: te.encode("khosq-e2e-v1") }, base, 256);
 }
+const derive = async (myKey, theirPublic, salt) => aesKey(await deriveBits(myKey, theirPublic, salt), BOTH);
 
 async function openRaw(key, aad, blob) {
   if (!blob || blob.length < 12 + 16) return null;
@@ -43,6 +50,16 @@ async function openRaw(key, aad, blob) {
   } catch (e) {
     return null;
   }
+}
+
+/** iv(12) + ciphertext + tag(16), bound to [aad]. */
+async function sealRaw(key, aad, plain) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: te.encode(aad), tagLength: 128 }, key, plain));
+  const out = new Uint8Array(12 + ct.length);
+  out.set(iv, 0);
+  out.set(ct, 12);
+  return out;
 }
 
 /**
@@ -61,6 +78,7 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
   const changed = new Set();
   let mine = null;
   let selfKey = null;
+  let selfBase = null;
 
   const myPublic = () => (mine ||= importPublic(pub));
 
@@ -103,6 +121,17 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
   }
 
   const getSelfKey = async () => (selfKey ||= derive(key, await myPublic(), "self"));
+
+  /** The secret the group message keys are made from (the same 32 bytes as the phone's selfKey), kept as a key that can only derive. */
+  const getSelfBase = () =>
+    (selfBase ||= (async () => crypto.subtle.importKey("raw", await deriveBits(key, await myPublic(), "self"), "HKDF", false, ["deriveBits"]))());
+
+  /** The key of a group message I send: 32 bytes made from my secret and the message id, the same as the phone makes them. */
+  async function messageKeyBits(chatId, msgId) {
+    return new Uint8Array(
+      await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt: te.encode(chatId + "|" + msgId), info: te.encode("khosq-msg-v1") }, await getSelfBase(), 256),
+    );
+  }
 
   /** The key of a one-to-one chat or of my saved messages. Null for groups and when the other side has no key. */
   async function chatKey(chatId) {
@@ -166,6 +195,31 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
 
   const openBytes = (k, chatId, from, field, sealed) => openRaw(k, chatId + "|" + from + "|" + field, sealed);
 
+  /** Seals a text for [field] (t text, r quote, l chat-list line, v vote) as the standard base64 the phone writes. */
+  async function sealText(k, chatId, from, field, text) {
+    return toB64(await sealRaw(k, chatId + "|" + from + "|" + field, te.encode(text)));
+  }
+
+  /**
+   * Starts sealing a new message. A one-to-one chat or my saved messages: the chat key. A group: a message key wrapped for every member (me
+   * included). Null when it cannot be done now (the other person, or somebody in the group, has no key yet): the caller must then NOT send
+   * the message in the clear, as an old phone would. {key, wraps} otherwise (wraps is null outside groups).
+   */
+  async function begin(chatId, msgId, others) {
+    if (!isGroup(chatId)) {
+      const k = await chatKey(chatId);
+      return k ? { key: k, wraps: null } : null;
+    }
+    const raw = await messageKeyBits(chatId, msgId);
+    const wraps = {};
+    for (const m of new Set([...others, uid])) {
+      const pk = await pairKey(m);
+      if (!pk) return null;
+      wraps[m] = toB64(await sealRaw(pk, "w|" + chatId + "|" + uid + "|" + m, raw));
+    }
+    return { key: await aesKey(raw, BOTH), wraps };
+  }
+
   /** The chat-list line (the last message), of any kind of chat. */
   async function openLast(chatId, from, sealed, wraps) {
     const k = isGroup(chatId) ? await groupKey(chatId, from, wraps) : await chatKey(chatId);
@@ -189,9 +243,28 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     pairKeys.delete(peer);
     for (const id of [...chatKeys.keys()]) if (id.includes(peer)) chatKeys.delete(id);
     missUntil.delete(peer);
-    if (pinned) changed.add(peer);
+    if (pinned) {
+      changed.add(peer);
+      // kept in the browser too: a reload must not make the warning disappear before somebody has looked at it
+      await pins.set(FLAG + peer, "1");
+    }
     return Boolean(pinned);
   }
 
-  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged: (peer) => changed.has(peer) };
+  /** True while somebody's key has changed since it was first seen and nobody has pressed "I checked it" (the phone's pkchg). */
+  async function keyChanged(peer) {
+    if (changed.has(peer)) return true;
+    if ((await pins.get(FLAG + peer)) === "1") {
+      changed.add(peer);
+      return true;
+    }
+    return false;
+  }
+
+  async function acknowledge(peer) {
+    changed.delete(peer);
+    await pins.set(FLAG + peer, "");
+  }
+
+  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, messageKeyBits };
 }

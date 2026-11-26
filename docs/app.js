@@ -256,7 +256,7 @@ async function home(id) {
   renderHome(homeState);
   show("app");
   if (shell) shell.stop();
-  shell = startShell({ f, id, user: { name: d.name || "", handle: d.handle || "", pv: Number(d.pv) || 0 }, onAbout: () => $("about").showModal() });
+  shell = startShell({ f, id, user: { name: d.name || "", handle: d.handle || "", pv: Number(d.pv) || 0 }, onAbout: () => $("about").showModal(), worker: WORKER });
   $("aboutClose").onclick = () => $("about").close();
   $("logout").onclick = () => {
     $("about").close();

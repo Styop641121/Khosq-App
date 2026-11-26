@@ -200,6 +200,9 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     return toB64(await sealRaw(k, chatId + "|" + from + "|" + field, te.encode(text)));
   }
 
+  /** Seals bytes (a photo, a voice note) for [field] ("d") exactly as the phone does: iv (12) + ciphertext + tag (16), as raw bytes. */
+  const sealBytes = (k, chatId, from, field, bytes) => sealRaw(k, chatId + "|" + from + "|" + field, bytes);
+
   /** The key of a message I sent myself, to change its text later: a group's is made again from my secret, otherwise the chat key. */
   async function sentKey(chatId, msgId) {
     return isGroup(chatId) ? aesKey(await messageKeyBits(chatId, msgId), BOTH) : chatKey(chatId);
@@ -271,5 +274,5 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     await pins.set(FLAG + peer, "");
   }
 
-  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sentKey, messageKeyBits };
+  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sealBytes, sentKey, messageKeyBits };
 }

@@ -4,6 +4,7 @@ import { t, tf, lang } from "./i18n.js";
 import { makeData, PAGE } from "./data.js";
 import { makeE2E } from "./e2e.js";
 import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, isActionable, lastReal } from "./send.js";
+import { photoBytes, voiceMime, startVoice } from "./media.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
 
@@ -143,6 +144,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
     editing: null, // {id, original, draft, reply}: my message being changed; draft and reply are what the box held before
     menuFor: null, // the id of the message whose menu is open
     menuBtn: null,
+    // a photo and a voice note (stage 5)
+    media: null, // what waits to be sent: {kind: "img", bytes, url} | {kind: "rec", ctl} (recording now) | {kind: "voice", bytes, dur, wave}
+    mediaBusy: false, // a picture is being shrunk, the microphone is being asked for, or a send is on its way
+    mediaTimer: 0,
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -739,6 +744,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       else S.drafts.delete(S.open.id);
     }
     S.reply = null;
+    dropMedia();
     S.msgToken++;
     if (S.msgStop) S.msgStop();
     S.msgStop = null;
@@ -884,6 +890,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     if (!why && !v.group && S.changed.length) why = "key";
     S.block = why;
     if (why && S.editing) cancelEdit();
+    if (why && S.media) dropMedia();
     $("chat").classList.toggle("nowrite", Boolean(why));
     const cant = $("cant");
     cant.hidden = !why;
@@ -893,6 +900,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     renderReply();
     syncSend();
     updateEditUi();
+    renderMedia();
     if (!why) autosize(); // the box has just opened: measure it now that it can be measured
   }
 
@@ -1066,10 +1074,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
       return;
     }
     if (S.editing) cancelEdit();
+    if (S.media) dropMedia(); // a change and a photo are not prepared at the same time
     const ta = $("msgIn");
     S.editing = { id, original: text, draft: ta.value, reply: S.reply };
     S.reply = null;
     renderReply();
+    renderMedia();
     ta.value = text;
     autosize();
     updateEditUi();
@@ -1089,6 +1099,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     renderReply();
     updateEditUi();
     syncSend();
+    renderMedia();
   }
 
   async function saveEdit() {
@@ -1145,6 +1156,169 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
     syncSend();
     r.committed.catch(() => toast(t("actionFailed")));
+  }
+
+  // ---------------------------------------------------------------------------------------------- a photo and a voice note (stage 5)
+  const VOICE_MIME = voiceMime(); // "" when this browser cannot record what the phone plays
+  const sizeText = (n) => Math.max(1, Math.round(n / 1024)) + " KB";
+  const mmss = (s) => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+
+  /** The two buttons and the bar above the box: what waits to be sent (a photo, a recording, a voice note). */
+  function renderMedia() {
+    const m = S.media;
+    $("mediaBar").hidden = !m || Boolean(S.block);
+    const idle = Boolean(S.open) && !S.block && !S.editing && !m && !S.mediaBusy;
+    $("photoBtn").disabled = !idle;
+    $("micBtn").disabled = !idle;
+    if (!m) return;
+    const thumb = $("mediaThumb");
+    thumb.hidden = m.kind !== "img";
+    if (m.kind === "img" && thumb.getAttribute("src") !== m.url) thumb.src = m.url;
+    $("mediaDot").hidden = m.kind !== "rec";
+    if (m.kind === "img") {
+      $("mediaTitle").textContent = t("photo");
+      $("mediaInfo").textContent = sizeText(m.bytes.length);
+    } else if (m.kind === "rec") {
+      $("mediaTitle").textContent = t("recording");
+      $("mediaInfo").textContent = mmss(m.ctl.elapsed()) + (m.ctl.limited ? " · " + t("voiceFull") : "");
+    } else {
+      $("mediaTitle").textContent = t("voice");
+      $("mediaInfo").textContent = mmss(m.dur);
+    }
+    $("mediaSend").disabled = S.mediaBusy;
+  }
+
+  /** Throws away what waits: a recording is stopped and the microphone is let go. */
+  function dropMedia() {
+    const m = S.media;
+    if (!m) return;
+    S.media = null;
+    clearInterval(S.mediaTimer);
+    S.mediaTimer = 0;
+    if (m.kind === "rec") m.ctl.cancel();
+    if (m.url) {
+      URL.revokeObjectURL(m.url);
+      S.urls.delete(m.url);
+    }
+    $("mediaThumb").removeAttribute("src");
+    renderMedia();
+  }
+
+  /** A picture file (chosen, or pasted): shrunk like the phone does it, then shown above the box until "Send". */
+  async function pickPhoto(file) {
+    const v = S.open;
+    if (!v || !file || S.block || S.editing || S.media || S.mediaBusy) return;
+    const chatId = v.id;
+    S.mediaBusy = true;
+    renderMedia();
+    let r;
+    try {
+      r = await photoBytes(file);
+    } catch (e) {
+      S.mediaBusy = false;
+      renderMedia();
+      toast(t(e && e.message === "big" ? "photoBig" : "photoBad"));
+      return;
+    }
+    S.mediaBusy = false;
+    if (!S.open || S.open.id !== chatId || S.block || S.editing || S.media) {
+      renderMedia();
+      return; // the person went elsewhere meanwhile
+    }
+    S.media = { kind: "img", bytes: r.bytes, url: blobUrl(r.bytes, "image/jpeg") };
+    renderMedia();
+    $("mediaSend").focus();
+  }
+
+  /** The microphone button: asks for the microphone and starts recording. */
+  async function startRec() {
+    const v = S.open;
+    if (!v || S.block || S.editing || S.media || S.mediaBusy) return;
+    if (!VOICE_MIME) {
+      toast(t("noVoiceHere"));
+      return;
+    }
+    const chatId = v.id;
+    S.mediaBusy = true;
+    renderMedia();
+    let ctl;
+    try {
+      ctl = await startVoice({ mime: VOICE_MIME, onEnd: renderMedia });
+    } catch (e) {
+      S.mediaBusy = false;
+      renderMedia();
+      const n = e && e.name;
+      toast(t(n === "NotAllowedError" || n === "SecurityError" ? "micDenied" : n === "NotFoundError" || n === "OverconstrainedError" ? "noMic" : "micFailed"));
+      return;
+    }
+    S.mediaBusy = false;
+    if (!S.open || S.open.id !== chatId || S.block || S.editing || S.media) {
+      ctl.cancel(); // the person went elsewhere while the microphone was being asked for
+      renderMedia();
+      return;
+    }
+    S.media = { kind: "rec", ctl };
+    S.mediaTimer = setInterval(renderMedia, 250);
+    renderMedia();
+    $("mediaSend").focus();
+  }
+
+  /** "Send" on the bar: a photo, or the end of a recording and its sending. What was recorded stays on the bar until the server has it. */
+  async function sendMediaNow() {
+    const v = S.open;
+    let m = S.media;
+    if (!v || !m || S.mediaBusy || S.block) return;
+    const chatId = v.id;
+    S.mediaBusy = true;
+    renderMedia();
+    let r;
+    try {
+      // the keys of the people in this chat are looked at first, as before a text
+      if (S.refreshJob) await Promise.race([S.refreshJob, new Promise((res) => setTimeout(res, 4000))]);
+      await showWarn();
+      const here = () => S.media === m && !S.block && S.open && S.open.id === chatId;
+      if (!here()) {
+        S.mediaBusy = false;
+        renderMedia();
+        return;
+      }
+      if (m.kind === "rec") {
+        clearInterval(S.mediaTimer);
+        S.mediaTimer = 0;
+        const rec = await m.ctl.stop();
+        if (!here()) {
+          S.mediaBusy = false;
+          renderMedia();
+          return;
+        }
+        if (!rec || rec.sec < 1) {
+          S.media = null;
+          S.mediaBusy = false;
+          renderMedia();
+          toast(t("voiceShort"));
+          return;
+        }
+        m = S.media = { kind: "voice", bytes: rec.bytes, dur: rec.sec, wave: rec.wave };
+      }
+      S.stickUntil = Date.now() + 4000;
+      r = await sender.sendMedia(v.raw, m.kind, m.bytes, m.kind === "voice" ? m.dur : 0, m.kind === "voice" ? m.wave : "");
+    } catch (e) {
+      r = { ok: false, why: "error" };
+    }
+    S.mediaBusy = false;
+    if (!r.ok) {
+      S.stickUntil = 0;
+      if (r.why === "noKey") toast(v.group ? t("cantEncryptGroup") : tf("cantEncrypt", v.title));
+      else toast(t(r.why === "big" ? (m.kind === "img" ? "photoBig" : "voiceBig") : "notSent"));
+      renderMedia();
+      return;
+    }
+    // taken: it is on the screen as "sending" and the server settles it in a moment
+    if (S.media === m) dropMedia();
+    renderMedia();
+    const again = () => renderMessages();
+    r.taken.then(again, again);
+    r.committed.catch(() => toast(t("notSent")));
   }
 
   async function sendNow() {
@@ -1259,6 +1433,29 @@ export function startShell({ f, id, user, onAbout, worker }) {
   $("back").addEventListener("click", closeChat);
   $("older").addEventListener("click", loadOlder);
   $("sendBtn").addEventListener("click", sendNow);
+  $("photoBtn").addEventListener("click", () => {
+    if (!$("photoBtn").disabled) $("photoIn").click();
+  });
+  $("photoIn").addEventListener("change", () => {
+    const file = $("photoIn").files && $("photoIn").files[0];
+    $("photoIn").value = ""; // the same file can be chosen again
+    if (file) pickPhoto(file);
+  });
+  $("micBtn").addEventListener("click", startRec);
+  $("mediaSend").addEventListener("click", sendMediaNow);
+  $("mediaX").addEventListener("click", () => {
+    dropMedia();
+    $("msgIn").focus();
+  });
+  // a picture pasted into the box (a screenshot, a copied photo) waits above the box like a chosen one; pasted text is left alone
+  $("msgIn").addEventListener("paste", (e) => {
+    const files = e.clipboardData && e.clipboardData.files ? [...e.clipboardData.files] : [];
+    const pic = files.find((x) => /^image\//.test(x.type));
+    if (pic && !$("photoBtn").disabled) {
+      e.preventDefault();
+      pickPhoto(pic);
+    }
+  });
   $("msgIn").addEventListener("input", () => {
     autosize();
     syncSend();
@@ -1323,7 +1520,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
   const onKey = (e) => {
     if (e.key === "Escape" && S.menuFor) closeMenu(true);
     else if (e.key === "Escape" && S.editing) cancelEdit();
-    else if (e.key === "Escape" && $("app").classList.contains("open") && !document.querySelector("dialog[open]")) closeChat();
+    else if (e.key === "Escape" && S.media && !document.querySelector("dialog[open]")) {
+      dropMedia();
+      $("msgIn").focus();
+    } else if (e.key === "Escape" && $("app").classList.contains("open") && !document.querySelector("dialog[open]")) closeChat();
   };
   document.addEventListener("keydown", onKey);
 
@@ -1400,7 +1600,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       }
     },
     stop() {
-      leaveChat();
+      leaveChat(); // also ends a recording and lets the microphone go
       for (const s of S.stops) s();
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer, true);

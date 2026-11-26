@@ -6,11 +6,16 @@
 // (reactions.<me>), a changed text of my own message (re-sealed with the same message key, within 15 minutes), and "delete for everyone".
 // A reaction put on somebody else's message also asks the Worker for a push to its author (type "react"), like the phone.
 //
+// Stage 5 (6e) adds a photo and a voice note (Repository.sendMedia): the bytes are sealed with the message key (field "d") and kept in the message.
+//
 // One difference, on purpose: when a message cannot be sealed (the other person, or somebody in the group, has no key yet: an old version of
 // the app), the phone falls back to sending it in the clear. The page never does: it sends nothing and says so.
 import { STICKERS } from "./stickers.js";
 
 export const MAX_TEXT = 4000; // the same limit as the phone's text field
+export const MAX_MEDIA = 900000; // a photo or a voice note must be smaller than this (the phone's limit: it has to fit inside one message)
+const WAVE_RE = /^[1-9]{40}$/; // the loudness bars of a voice note: 40 digits 1..9 (what the phone's player draws)
+const PREVIEW = { img: "\u{1F4F7}", voice: "\u{1F3A4}" }; // the chat-list line of a photo and of a voice note (as the phone: lastOf)
 export const MARK = ""; // starts the marker the phone stores for a quoted photo, voice message, location or sticker (REPLY_IMG ...)
 
 /** The first [n] UTF-16 units (like Kotlin's take), without cutting an emoji or other surrogate pair in half. */
@@ -126,9 +131,8 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     if (body.length > MAX_TEXT) return { ok: false, why: "long" };
     const why = whyNot(chat, uid);
     if (why) return { ok: false, why };
-    const members = Array.isArray(chat.members) ? chat.members : [];
-    const others = chat.saved === true ? [] : chat.group === true ? members.filter((m) => m !== uid) : [e2e.peerOf(chat.id)].filter((m) => m && m !== uid);
-    if (chat.group !== true && !others.length && chat.saved !== true) return { ok: false, why: "noChat" };
+    const others = othersOf(chat);
+    if (!others) return { ok: false, why: "noChat" };
 
     const chatRef = fsM.doc(db, "chats", chat.id);
     const msgRef = fsM.doc(fsM.collection(db, "chats", chat.id, "messages"));
@@ -159,8 +163,20 @@ export function makeSender({ f, uid, name, e2e, worker }) {
       lastTs: Date.now(),
       lastFrom: uid,
     };
-    for (const o of others) preview["unread." + o] = fsM.increment(1);
+    return writeNew(chat, chatRef, msgRef, fields, preview, others);
+  }
 
+  /** The people who must get the message and the unread counter: the others of a group, the other person of a chat, nobody for my saved messages. Null: no such chat. */
+  function othersOf(chat) {
+    const members = Array.isArray(chat.members) ? chat.members : [];
+    const others = chat.saved === true ? [] : chat.group === true ? members.filter((m) => m !== uid) : [e2e.peerOf(chat.id)].filter((m) => m && m !== uid);
+    if (chat.group !== true && !others.length && chat.saved !== true) return null;
+    return others;
+  }
+
+  /** One batch: the new message and the chat's preview with +1 unread for the others; then the push, once the server has it. */
+  function writeNew(chat, chatRef, msgRef, fields, preview, others) {
+    for (const o of others) preview["unread." + o] = fsM.increment(1);
     const batch = fsM.writeBatch(db);
     batch.set(msgRef, fields);
     batch.update(chatRef, preview);
@@ -171,6 +187,48 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     taken.then(done, done);
     const committed = taken.then(() => (others.length ? notify(chat) : undefined));
     return { ok: true, id: msgRef.id, taken, committed };
+  }
+
+  /**
+   * Seals and writes a photo ("img") or a voice note ("voice"), as the phone's Repository.sendMedia does: the bytes are sealed with the
+   * message key (field "d") and stored in the message itself; the chat-list line is just the sign of the kind. Resolves like sendText.
+   * @param {Uint8Array} bytes  the JPEG, or the AAC audio in an MP4 file (the phone plays what the page records)
+   * @param {number} dur  seconds (a voice note; 0 for a photo)
+   * @param {string} wave  the loudness bars (a voice note): 40 digits 1..9, or "" for none
+   */
+  async function sendMedia(chat, kind, bytes, dur, wave) {
+    if ((kind !== "img" && kind !== "voice") || !(bytes instanceof Uint8Array)) return { ok: false, why: "no" };
+    if (!bytes.length) return { ok: false, why: "empty" };
+    if (bytes.length > MAX_MEDIA) return { ok: false, why: "big" };
+    const why = whyNot(chat, uid);
+    if (why) return { ok: false, why };
+    const others = othersOf(chat);
+    if (!others) return { ok: false, why: "noChat" };
+
+    const chatRef = fsM.doc(db, "chats", chat.id);
+    const msgRef = fsM.doc(fsM.collection(db, "chats", chat.id, "messages"));
+    let seal = null;
+    try {
+      seal = await e2e.begin(chat.id, msgRef.id, others);
+    } catch (e) {
+      seal = null;
+    }
+    if (!seal) return { ok: false, why: "noKey" };
+
+    const sealed = await e2e.sealBytes(seal.key, chat.id, uid, "d", bytes);
+    const fields = {
+      from: uid,
+      text: "",
+      kind,
+      dur: kind === "voice" ? Math.max(0, Math.min(3600, Math.floor(Number(dur) || 0))) : 0,
+      data: fsM.Bytes.fromUint8Array(sealed),
+      ts: fsM.serverTimestamp(),
+      e: true,
+    };
+    if (seal.wraps) fields.w = seal.wraps;
+    if (kind === "voice" && WAVE_RE.test(String(wave))) fields.wave = String(wave);
+    const preview = { lastText: PREVIEW[kind], lastEnc: false, lastW: fsM.deleteField(), lastKind: kind, lastTs: Date.now(), lastFrom: uid };
+    return writeNew(chat, chatRef, msgRef, fields, preview, others);
   }
 
   /** "Read": the unread counter of mine goes to 0 and the others' read ticks turn (the phone's markRead). */
@@ -253,5 +311,5 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     return { ok: true, committed: batch.commit() };
   }
 
-  return { sendText, markRead, markDelivered, react, edit, remove, sending };
+  return { sendText, sendMedia, markRead, markDelivered, react, edit, remove, sending };
 }

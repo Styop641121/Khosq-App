@@ -81,9 +81,23 @@
           <div class="rq"><b data-i18n="editing"></b><span id="editText"></span></div>
           <button class="icon-btn" id="editX" type="button" data-i18n-aria="cancelEdit">✕</button>
         </div>
+        <div class="replybar mediabar" id="mediaBar" role="group" hidden>
+          <img class="thumb" id="mediaThumb" alt="" hidden>
+          <span class="rec-dot" id="mediaDot" aria-hidden="true" hidden></span>
+          <div class="rq"><b id="mediaTitle"></b><span id="mediaInfo"></span></div>
+          <button class="btn" id="mediaSend" type="button" data-i18n="send"></button>
+          <button class="icon-btn" id="mediaX" type="button" data-i18n-aria="cancel">✕</button>
+        </div>
         <p class="cant" id="cant" role="status" hidden></p>
         <div class="cmp" id="cmp">
+          <button class="clip" id="photoBtn" type="button" data-i18n-aria="addPhoto" disabled>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 7h3l1.6-2h6.8L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm8 2.2A3.8 3.8 0 1 0 12 16.8 3.8 3.8 0 0 0 12 9.2zm0 1.8a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" fill="currentColor"/></svg>
+          </button>
+          <input type="file" id="photoIn" accept="image/*" hidden>
           <textarea id="msgIn" rows="1" maxlength="4000" autocomplete="off" enterkeyhint="send" data-i18n-ph="writeMsg" data-i18n-aria="writeMsg"></textarea>
+          <button class="clip" id="micBtn" type="button" data-i18n-aria="voice" disabled>
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" fill="currentColor"/></svg>
+          </button>
           <button class="send" id="sendBtn" type="button" data-i18n-aria="send" disabled>
             <svg class="i-send" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3.4 20.4 21 12 3.4 3.6 3.3 10.1 15 12 3.3 13.9z" fill="currentColor"/></svg>
             <svg class="i-save" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9.2 16.6 4.9 12.3l-1.4 1.4 5.7 5.7L20.5 8.1l-1.4-1.4z" fill="currentColor"/></svg>

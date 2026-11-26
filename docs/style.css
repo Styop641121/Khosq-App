@@ -225,7 +225,7 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .warn { display: flex; align-items: center; gap: 12px; }
 .warn span { flex: 1; min-width: 0; }
 .warn .btn { flex: none; padding: 4px 12px; font-size: 13px; }
-.warn[hidden], .replybar[hidden], .cant[hidden], .toast[hidden], .cmp[hidden], .menu[hidden] { display: none; }
+.warn[hidden], .replybar[hidden], .cant[hidden], .toast[hidden], .cmp[hidden], .menu[hidden], .thumb[hidden], .rec-dot[hidden] { display: none; }
 .compose { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
 .replybar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 6px 6px 12px; border-left: 3px solid var(--accent); border-radius: 8px; background: var(--accent-soft); }
 .replybar .rq { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13.5px; }
@@ -280,3 +280,17 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .reacts .chip.mine { background: var(--accent-soft); border-color: var(--accent); }
 .reacts .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mbtn, .rbtn, .menu button, .reacts .chip { -webkit-tap-highlight-color: transparent; }
+
+/* ------------------------------------------------------------------ stage 5: a photo and a voice note */
+.clip { flex: none; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; color: var(--text2); background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.clip:hover:not(:disabled) { background: var(--high); color: var(--text); }
+.clip:disabled { color: var(--text3); cursor: default; opacity: 0.55; }
+.clip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.mediabar { align-items: center; }
+.mediabar .thumb { flex: none; width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: var(--high); }
+.mediabar .btn { flex: none; padding: 5px 14px; font-size: 13.5px; }
+.rec-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--danger); animation: recpulse 1.2s ease-in-out infinite; }
+@keyframes recpulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+.mediabar .rq span { font-variant-numeric: tabular-nums; }
+@media (max-width: 380px) { .clip { width: 36px; height: 36px; } .cmp { gap: 4px; } }

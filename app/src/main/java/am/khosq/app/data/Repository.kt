@@ -839,9 +839,18 @@ class Repository {
         awaitClose { reg.remove() }
     }
 
-    fun react(chatId: String, msgId: String, uid: String, emoji: String?) {
-        db.collection("chats").document(chatId).collection("messages").document(msgId)
+    /**
+     * Puts my reaction on a message, or takes it off ([emoji] null). When [tellTitle] is given, the author of the message gets a push once
+     * the server has the reaction (the Worker looks at the message itself, so a reaction that is gone by then sends nothing).
+     */
+    fun react(chatId: String, msgId: String, uid: String, emoji: String?, tellTitle: String? = null) {
+        val write = db.collection("chats").document(chatId).collection("messages").document(msgId)
             .update("reactions." + uid, emoji ?: FieldValue.delete())
+        if (emoji != null && tellTitle != null) {
+            write.addOnSuccessListener {
+                am.khosq.app.push.PushClient.notify(chatId, "react", tellTitle, emoji, msgId)
+            }
+        }
     }
 
     fun deleteForAll(chatId: String, msgId: String) {

@@ -590,8 +590,11 @@ class AppViewModel : ViewModel() {
     }
 
     fun react(chatId: String, m: Message, emoji: String) {
-        val current = m.reactions[uid]
-        repo.react(chatId, m.id, uid, if (current == emoji) null else emoji)
+        val me = (_boot.value as? Boot.Ready)?.me
+        val off = m.reactions[uid] == emoji
+        // a reaction put on somebody else's message tells its author by push (not one taken back, not one on my own message)
+        val tell = if (!off && me != null && m.from != me.uid) groupTitle(chatId).ifEmpty { me.name } else null
+        repo.react(chatId, m.id, uid, if (off) null else emoji, tell)
     }
 
     fun togglePin(chatId: String) {

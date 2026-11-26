@@ -946,6 +946,8 @@ object Strings {
         map["Ջնջե՞լ որոնումը"] = arrayOf("Delete the search?", "Удалить поиск?")
         map["Որոնումը և գտնված հայտարարությունները կջնջվեն սերվերից և հեռախոսից։ Ծանուցումները կդադարեն։"] = arrayOf("The search and the listings found will be deleted from the server and the phone. Notifications will stop.", "Поиск и найденные объявления будут удалены с сервера и телефона. Уведомления прекратятся.")
         map["Նոր հայտարարություն"] = arrayOf("New listing", "Новое объявление")
+        map["Արձագանք քո նամակին"] = arrayOf("Reaction to your message", "Реакция на ваше сообщение")
+        map["Նոր արձագանք"] = arrayOf("New reaction", "Новая реакция")
     }
 
     init {

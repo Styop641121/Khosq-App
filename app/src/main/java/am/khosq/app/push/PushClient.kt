@@ -7,7 +7,7 @@ import java.net.URL
 
 /** Asks the Cloudflare Worker to send an FCM push to the other person in a chat. */
 object PushClient {
-    fun notify(chatId: String, type: String, title: String, body: String) {
+    fun notify(chatId: String, type: String, title: String, body: String, msgId: String = "") {
         if (PushConfig.WORKER_URL.isEmpty()) return
         val user = FirebaseAuth.getInstance().currentUser ?: return
         user.getIdToken(false).addOnSuccessListener { res ->
@@ -19,6 +19,8 @@ object PushClient {
                         .put("type", type)
                         .put("title", title.take(60))
                         .put("body", body.take(120))
+                    // a reaction names its message; the Worker reads it to find who must be told
+                    if (msgId.isNotEmpty()) json.put("msgId", msgId)
                     val c = URL(PushConfig.WORKER_URL).openConnection() as HttpURLConnection
                     c.requestMethod = "POST"
                     c.connectTimeout = 8000

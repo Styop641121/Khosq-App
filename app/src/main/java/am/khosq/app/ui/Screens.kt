@@ -357,6 +357,7 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
     DisposableEffect(chatId) {
         vm.openChat(chatId)
         NotificationManagerCompat.from(ctx).cancel(chatId.hashCode())
+        NotificationManagerCompat.from(ctx).cancel(am.khosq.app.data.ReactNote.notifId(chatId))
         onDispose {
             recorder.stop(false)
             VoicePlayer.stop()

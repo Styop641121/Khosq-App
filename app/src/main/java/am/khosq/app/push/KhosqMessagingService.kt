@@ -36,6 +36,10 @@ class KhosqMessagingService : FirebaseMessagingService() {
             showFinder(m)
             return
         }
+        if (type == "react") {
+            showReaction(m)
+            return
+        }
         if (AppState.inForeground) return
         val chatId = m.data["chatId"] ?: return
         if (am.khosq.app.Prefs.isMuted(chatId)) return
@@ -76,6 +80,48 @@ class KhosqMessagingService : FirebaseMessagingService() {
             NotificationManagerCompat.from(this).notify(chatId.hashCode(), n)
         } catch (e: SecurityException) {
             // notifications not allowed
+        }
+    }
+
+    /**
+     * Somebody put a reaction on one of my messages. The push holds only the emoji, the name and the group's title (never any text); the
+     * notification says "👍 Reaction to your message" (in a group, with the name in front). Like a message it stays silent while the app is
+     * on screen or the chat is muted, and "hide the text in notifications" turns it into "New reaction". Whatever goes wrong stays in here.
+     */
+    private fun showReaction(m: RemoteMessage) {
+        try {
+            if (AppState.inForeground) return
+            val chatId = m.data["chatId"] ?: return
+            if (am.khosq.app.Prefs.isMuted(chatId)) return
+            val emoji = am.khosq.app.data.ReactNote.emojiOf(m.data["body"] ?: "")
+            if (emoji.isEmpty()) return
+            val title = m.data["title"] ?: "KHOSQ"
+            val who = if (m.data["group"] == "1") (m.data["who"] ?: "") else ""
+            val line = am.khosq.app.data.ReactNote.line(emoji, who, am.khosq.app.tr("Արձագանք քո նամակին"))
+            val text = am.khosq.app.data.NotifyPrivacy.text(am.khosq.app.AppLock.hideTextNow(), line, am.khosq.app.tr("Նոր արձագանք"))
+            val tap = PendingIntent.getActivity(
+                this,
+                am.khosq.app.data.ReactNote.notifId(chatId),
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra("chat", chatId),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val n = NotificationCompat.Builder(this, KeepAliveService.CH_MSG)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .setContentIntent(tap)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .build()
+            NotificationManagerCompat.from(this).notify(am.khosq.app.data.ReactNote.notifId(chatId), n)
+        } catch (e: SecurityException) {
+            // notifications not allowed
+        } catch (e: Exception) {
+            // a reaction must never break the delivery of messages
         }
     }
 

@@ -46,6 +46,9 @@
   <aside class="side">
     <div class="side-top">
       <button class="mebtn" id="meBtn" type="button" data-i18n-title="about"></button>
+      <button class="plus" id="newBtn" type="button" data-i18n-aria="newChat" data-i18n-title="newChat">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" fill="currentColor"/></svg>
+      </button>
     </div>
     <div class="search"><input id="q" type="search" autocomplete="off" spellcheck="false" data-i18n-ph="search" data-i18n-aria="search"></div>
     <div class="chips" id="chips" role="group"></div>
@@ -64,6 +67,9 @@
         <button class="icon-btn back" id="back" type="button" data-i18n-aria="back">‹</button>
         <span id="chAv"></span>
         <div class="who2"><b id="chName"></b><small id="chSub"></small></div>
+        <button class="hbtn" id="chatMore" type="button" aria-haspopup="menu" aria-expanded="false" data-i18n-aria="chatMenu" data-i18n-title="chatMenu">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm0 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" fill="currentColor"/></svg>
+        </button>
       </header>
       <p class="warn" id="warn" role="alert" hidden><span id="warnText"></span><button class="btn ghost" id="warnOk" type="button" data-i18n="ackKey"></button></p>
       <div class="msgs" id="msgs">
@@ -88,6 +94,12 @@
           <button class="btn" id="mediaSend" type="button" data-i18n="send"></button>
           <button class="icon-btn" id="mediaX" type="button" data-i18n-aria="cancel">✕</button>
         </div>
+        <div class="notice" id="notice" role="group" hidden>
+          <p class="nt" id="noticeText"></p>
+          <p class="nn" id="noticeNote" hidden></p>
+          <div class="btns"><button class="btn danger" id="noticeNo" type="button"></button><button class="btn" id="noticeYes" type="button"></button></div>
+        </div>
+        <p class="waitnote" id="waitNote" role="status" hidden></p>
         <p class="cant" id="cant" role="status" hidden></p>
         <div class="cmp" id="cmp">
           <button class="clip" id="photoBtn" type="button" data-i18n-aria="addPhoto" disabled>
@@ -129,6 +141,18 @@
 <div class="menu" id="menu" role="menu" hidden></div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<dialog id="newChat" class="newchat" aria-labelledby="ncTitle">
+  <h2 id="ncTitle" data-i18n="ncTitle"></h2>
+  <label class="ncl" for="ncId" data-i18n="ncLabel"></label>
+  <input id="ncId" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="30" enterkeyhint="go">
+  <p class="small" id="ncMine"></p>
+  <p class="ncerr" id="ncErr" role="alert" hidden></p>
+  <div class="row">
+    <button class="btn ghost" id="ncNo" type="button" data-i18n="cancel"></button>
+    <button class="btn" id="ncGo" type="button" data-i18n="ncGo"></button>
+  </div>
+</dialog>
 
 <dialog id="shot" class="shot"><img id="shotImg" alt=""></dialog>
 

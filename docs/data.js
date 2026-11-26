@@ -1,4 +1,4 @@
-// Reading from Firestore, and nothing else: this stage never writes. Everything here goes through the account the page signed in as, so
+// Reading from Firestore, and nothing else: this file never writes (writing is in send.js and people.js). Everything here goes through the account the page signed in as, so
 // the same rules that guard the phone guard the page (a chat can be read only by its members).
 //
 // Cost on the free plan: the chat list is one listener (one read per chat when it opens, then one per change); a chat shows its newest
@@ -47,16 +47,16 @@ export function makeData(f, uid) {
       return fsM.onSnapshot(q, (snap) => onList(snap.docs.map(chatOf)), onError);
     },
 
-    /** My own choices (pinned, muted, archived), live. */
+    /** My own choices (pinned, muted, archived, marked as unread), live. */
     watchPrefs(onPrefs) {
       const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
       return fsM.onSnapshot(
         fsM.doc(db, "prefs", uid),
         (d) => {
           const x = d.exists() ? d.data() : {};
-          onPrefs({ pins: list(x.pins), muted: list(x.muted), archived: list(x.archived) });
+          onPrefs({ pins: list(x.pins), muted: list(x.muted), archived: list(x.archived), marked: list(x.marked) });
         },
-        () => onPrefs({ pins: [], muted: [], archived: [] }),
+        () => onPrefs({ pins: [], muted: [], archived: [], marked: [] }),
       );
     },
 

@@ -1,10 +1,13 @@
-// KHOSQ Web, stages 2 and 3: the chat list, the messages, and writing text messages (send.js). Everything the page puts on the screen from
-// a message goes in with textContent (never as markup), so what somebody wrote can never act as part of the page.
+// KHOSQ Web, stages 2 to 6: the chat list, the messages, writing (send.js), and people (people.js: new chats, requests, blocking, my lists).
+// Everything the page puts on the screen from a message or a name goes in with textContent (never as markup), so what somebody wrote can
+// never act as part of the page.
 import { t, tf, lang } from "./i18n.js";
 import { makeData, PAGE } from "./data.js";
 import { makeE2E } from "./e2e.js";
 import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, isActionable, lastReal } from "./send.js";
 import { photoBytes, voiceMime, startVoice } from "./media.js";
+import { makePeople, cleanHandle } from "./people.js";
+import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
 
@@ -104,11 +107,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
     pins,
   });
   const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
+  const people = makePeople({ f, uid, user });
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
 
   const S = {
     chats: [],
-    prefs: { pins: [], muted: [], archived: [] },
+    prefs: { pins: [], muted: [], archived: [], marked: [] },
     filter: "all",
     q: "",
     open: null, // the vm of the chat on the right
@@ -148,6 +152,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
     media: null, // what waits to be sent: {kind: "img", bytes, url} | {kind: "rec", ctl} (recording now) | {kind: "voice", bytes, dur, wave}
     mediaBusy: false, // a picture is being shrunk, the microphone is being asked for, or a send is on its way
     mediaTimer: 0,
+    // people (stage 6)
+    wantOpen: "", // a chat that was just made: opened as soon as the list has it
+    wantTimer: 0,
+    ncToken: 0, // the "new chat" search that is current
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -252,6 +260,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     const saved = group && c.saved === true;
     const members = Array.isArray(c.members) ? c.members : [];
     const peer = group ? null : members.find((m) => m !== uid) || null;
+    const blockedBy = c.blocked && typeof c.blocked === "object" ? Object.keys(c.blocked) : [];
     const title = saved ? t("saved") : group ? c.title || t("group") : (c.names && c.names[peer]) || (peer && userName(peer)) || "?";
     return {
       id: c.id,
@@ -265,7 +274,11 @@ export function startShell({ f, id, user, onAbout, worker }) {
       pinned: S.prefs.pins.includes(c.id),
       muted: S.prefs.muted.includes(c.id),
       archived: S.prefs.archived.includes(c.id),
+      marked: S.prefs.marked.includes(c.id),
       request: c.status === "pending" && c.requester && c.requester !== uid,
+      waiting: !group && c.status === "pending" && c.requester === uid,
+      blocked: !group && blockedBy.length > 0,
+      iBlocked: !group && blockedBy.includes(uid),
       avatarId: saved ? null : group ? c.id : peer,
       avatarV: saved ? 0 : group ? num(c.gpv) : c.pv && peer ? num(c.pv[peer]) : 0,
       handle: peer && c.handles && typeof c.handles[peer] === "string" ? c.handles[peer] : "",
@@ -330,7 +343,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   function renderList() {
     const list = vms();
     const rows = list.map((v) => ({ v, line: preview(v) }));
-    const sig = JSON.stringify([S.filter, S.q, S.open && S.open.id, S.loadedChats, S.failed, lang(), rows.map((r) => [r.v.id, r.v.title, r.v.lastTs, r.v.unread, r.v.pinned, r.v.muted, r.v.request, r.v.avatarV, r.line])]);
+    const sig = JSON.stringify([S.filter, S.q, S.open && S.open.id, S.loadedChats, S.failed, lang(), rows.map((r) => [r.v.id, r.v.title, r.v.lastTs, r.v.unread, r.v.pinned, r.v.muted, r.v.request, r.v.marked, r.v.waiting, r.v.blocked, r.v.avatarV, r.line])]);
     if (sig === S.listSig) return;
     S.listSig = sig;
     const ul = $("list");
@@ -350,12 +363,26 @@ export function startShell({ f, id, user, onAbout, worker }) {
       top.append(el("time", "when" + (v.unread ? " hot" : ""), stamp(v.lastTs)));
       const bot = el("span", "l2");
       if (v.request) bot.append(el("span", "tag", t("request")));
+      if (v.waiting) bot.append(el("span", "tag waiting", t("waitingTag")));
+      if (v.blocked) bot.append(el("span", "tag blocked", t("blockedTag")));
       bot.append(el("span", "ln", line));
       if (v.unread) bot.append(el("span", "badge" + (v.muted ? " quiet" : ""), v.unread > 99 ? "99+" : String(v.unread)));
+      else if (v.marked) bot.append(el("span", "dot" + (v.muted ? " quiet" : "")));
       mid.append(top, bot);
       b.append(mid);
       b.addEventListener("click", () => openChat(v.id));
-      li.append(b);
+      // the same menu as in the chat's header: with the mouse a button shows when the pointer is over the row, and a right press opens it too
+      const more = el("button", "rowmore", "⋯");
+      more.type = "button";
+      more.setAttribute("aria-label", t("chatMenu"));
+      more.setAttribute("aria-haspopup", "menu");
+      more.setAttribute("aria-expanded", "false");
+      more.addEventListener("click", () => openChatMenu(v.id, more));
+      b.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        openChatMenu(v.id, more.offsetParent ? more : b);
+      });
+      li.append(b, more);
       kids.push(li);
     }
     ul.replaceChildren(...kids);
@@ -769,6 +796,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
     leaveChat();
     S.open = v;
+    if (v.marked) people.setPref("marked", chatId, false).committed.catch(() => {});
     S.loadingMsgs = true;
     $("app").classList.add("open");
     $("paneEmpty").hidden = true;
@@ -892,8 +920,27 @@ export function startShell({ f, id, user, onAbout, worker }) {
     if (why && S.editing) cancelEdit();
     if (why && S.media) dropMedia();
     $("chat").classList.toggle("nowrite", Boolean(why));
+    // somebody's request to me, or a person I blocked: a bar with the buttons (instead of the line that only says why)
+    const mode = v.group ? "" : v.iBlocked && !v.saved ? "unblock" : v.request && !v.blocked ? "request" : "";
+    $("notice").hidden = !mode;
+    if (mode === "unblock") {
+      $("noticeText").textContent = t("youBlocked");
+      $("noticeNote").hidden = true;
+      $("noticeNo").hidden = true;
+      $("noticeYes").textContent = t("unblock");
+    } else if (mode === "request") {
+      $("noticeText").textContent = tf("reqText", v.title);
+      $("noticeNote").textContent = requestNotes(v);
+      $("noticeNote").hidden = false;
+      $("noticeNo").hidden = false;
+      $("noticeNo").textContent = t("block");
+      $("noticeYes").textContent = t("accept");
+    }
+    const waitNote = $("waitNote");
+    waitNote.hidden = !(v.waiting && !v.blocked);
+    if (!waitNote.hidden) waitNote.textContent = tf("waitNote", v.title);
     const cant = $("cant");
-    cant.hidden = !why;
+    cant.hidden = !why || Boolean(mode);
     if (why) {
       cant.textContent = why === "blocked" ? t("cantBlocked") : why === "pending" ? tf("cantPending", v.title) : why === "admins" ? t("cantAdmins") : t("cantKey");
     }
@@ -1399,6 +1446,149 @@ export function startShell({ f, id, user, onAbout, worker }) {
     for (const c of list) sender.markDelivered(c);
   }
 
+  // ---------------------------------------------------------------------------------------------- people and my lists (stage 6)
+  /** What is said under a request: a name that copies one of my contacts' names (the phone's warning), and that this is a stranger. */
+  function requestNotes(v) {
+    const known = [];
+    for (const c of S.chats) {
+      if (c.id === v.id || c.group === true || (c.status || "active") !== "active") continue;
+      const who = (Array.isArray(c.members) ? c.members : []).find((m) => m !== uid);
+      if (who) known.push([who, nameOf(c, who)]);
+    }
+    const near = similarNames(v.title, known)[0];
+    const out = [];
+    if (near) out.push(tf(near.same ? "lookSame" : "lookNear", near.name));
+    out.push(t("strangerNote"));
+    return out.join("\n\n");
+  }
+
+  const mustTell = (r) => {
+    if (r.ok) r.committed.catch(() => toast(t("actionFailed")));
+    else toast(t("actionFailed"));
+  };
+
+  function togglePref(field, id) {
+    mustTell(people.setPref(field, id, !S.prefs[field].includes(id)));
+  }
+
+  function doAccept(id) {
+    const c = S.chats.find((x) => x.id === id);
+    if (c) mustTell(people.accept(c));
+  }
+
+  function doBlock(id, on) {
+    const c = S.chats.find((x) => x.id === id);
+    if (c) mustTell(people.setBlocked(c, on));
+  }
+
+  /** "Mark as read" from the list: my counter goes to 0 and the other side's ticks turn, as when the chat is opened (the unread mark goes too). */
+  function doMarkRead(id) {
+    const c = S.chats.find((x) => x.id === id);
+    if (!c) return;
+    sender.markRead(c);
+    if (S.prefs.marked.includes(id)) togglePref("marked", id);
+  }
+
+  /** The menu of one chat (from the list or from its header): pin, mute, mark read / unread, archive, block. */
+  function openChatMenu(id, btn) {
+    const c = S.chats.find((x) => x.id === id);
+    if (!c) return;
+    const v = chatVm(c);
+    closeMenu();
+    S.menuFor = "chat:" + id;
+    S.menuBtn = btn;
+    btn.setAttribute("aria-expanded", "true");
+    const menu = $("menu");
+    menu.setAttribute("role", "menu");
+    menu.setAttribute("aria-label", t("chatMenu"));
+    menu.replaceChildren();
+    const item = (label, fn, danger) => {
+      const b = el("button", "item" + (danger ? " danger" : ""), label);
+      b.type = "button";
+      b.setAttribute("role", "menuitem");
+      b.addEventListener("click", () => {
+        closeMenu();
+        fn();
+      });
+      menu.append(b);
+    };
+    item(t(v.pinned ? "unpin" : "pin"), () => togglePref("pins", id));
+    if (!v.saved) item(t(v.muted ? "unmute" : "mute"), () => togglePref("muted", id));
+    if (v.unread > 0) item(t("markRead"), () => doMarkRead(id));
+    else item(t(v.marked ? "unmark" : "markUnread"), () => togglePref("marked", id));
+    item(t(v.archived ? "unarchive" : "archive"), () => togglePref("archived", id));
+    if (!v.group && !v.saved) item(t(v.iBlocked ? "unblock" : "block"), () => doBlock(id, !v.iBlocked), !v.iBlocked);
+    placeMenu(btn);
+    menu.querySelector("button").focus({ preventScroll: true });
+  }
+
+  /**
+   * Makes the chat visible in the list (a chat in the archive, or a group while "Personal" is chosen) and opens it. With a keyboard the cursor
+   * goes into the message box when it is open (the window of "new chat" gave the focus back to the "+" button when it closed).
+   */
+  function showChat(id) {
+    const c = S.chats.find((x) => x.id === id);
+    if (!c) return;
+    if (!inFilter(chatVm(c))) {
+      S.filter = S.prefs.archived.includes(id) ? "archive" : "all";
+      chips();
+    }
+    openChat(id);
+    // a chat with no message yet sits at the bottom of a long list: bring its row into view
+    const row = $("list").querySelector(".item.on");
+    if (row) row.scrollIntoView({ block: "nearest" });
+    if (!coarse() && !$("chat").classList.contains("nowrite")) $("msgIn").focus({ preventScroll: true });
+  }
+
+  /** A chat that was just made reaches the list by itself a moment later: it is opened then. */
+  function openWhenListed(id) {
+    if (S.chats.some((x) => x.id === id)) return showChat(id);
+    S.wantOpen = id;
+    clearTimeout(S.wantTimer);
+    S.wantTimer = setTimeout(() => (S.wantOpen = ""), 8000);
+  }
+
+  function ncFail(why) {
+    S.ncBusy = false;
+    $("ncGo").disabled = false;
+    $("ncGo").textContent = t("ncGo");
+    $("ncErr").textContent = t(why === "empty" ? "ncEmpty" : why === "notFound" ? "ncNotFound" : why === "self" ? "ncSelf" : "ncError");
+    $("ncErr").hidden = false;
+    $("ncId").focus();
+  }
+
+  function openNewChat() {
+    S.ncToken++;
+    S.ncBusy = false;
+    closeMenu();
+    $("ncId").value = "";
+    $("ncErr").hidden = true;
+    $("ncMine").textContent = user.handle ? tf("ncMine", user.handle) : "";
+    $("ncGo").disabled = false;
+    $("ncGo").textContent = t("ncGo");
+    if (!$("newChat").open) $("newChat").showModal();
+    $("ncId").focus();
+  }
+
+  async function goNewChat() {
+    if (S.ncBusy) return;
+    if (!cleanHandle($("ncId").value)) return ncFail("empty");
+    const token = ++S.ncToken;
+    S.ncBusy = true;
+    $("ncErr").hidden = true;
+    $("ncGo").disabled = true;
+    $("ncGo").textContent = t("ncSearching");
+    const found = await people.find($("ncId").value);
+    if (token !== S.ncToken) return; // the window was closed meanwhile
+    if (!found.ok) return ncFail(found.why);
+    const made = await people.start(found.peer);
+    if (token !== S.ncToken) return;
+    if (!made.ok) return ncFail(made.why);
+    S.ncBusy = false;
+    $("newChat").close();
+    openWhenListed(made.id);
+  }
+
   // ---------------------------------------------------------------------------------------------- start
   function chips() {
     const box = $("chips");
@@ -1430,6 +1620,43 @@ export function startShell({ f, id, user, onAbout, worker }) {
     renderList();
   });
   $("meBtn").addEventListener("click", () => onAbout());
+  $("newBtn").addEventListener("click", openNewChat);
+  $("ncGo").addEventListener("click", goNewChat);
+  // a search still on its way is forgotten the moment the window is left (a dialog's "close" event comes a little later than Esc or the button)
+  const ncForget = () => {
+    S.ncToken++;
+    S.ncBusy = false;
+  };
+  $("ncNo").addEventListener("click", () => {
+    ncForget();
+    $("newChat").close();
+  });
+  $("newChat").addEventListener("cancel", ncForget);
+  $("newChat").addEventListener("close", ncForget);
+  $("ncId").addEventListener("input", () => {
+    const clean = cleanHandle($("ncId").value);
+    if (clean !== $("ncId").value) $("ncId").value = clean; // what the phone lets in: a-z, 0-9, _ and -
+    $("ncErr").hidden = true;
+  });
+  $("ncId").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      goNewChat();
+    }
+  });
+  $("chatMore").addEventListener("click", () => {
+    if (S.open) openChatMenu(S.open.id, $("chatMore"));
+  });
+  $("noticeYes").addEventListener("click", () => {
+    const v = S.open;
+    if (!v) return;
+    if (v.iBlocked) doBlock(v.id, false);
+    else if (v.request) doAccept(v.id);
+  });
+  $("noticeNo").addEventListener("click", () => {
+    const v = S.open;
+    if (v && v.request && !v.iBlocked) doBlock(v.id, true);
+  });
   $("back").addEventListener("click", closeChat);
   $("older").addEventListener("click", loadOlder);
   $("sendBtn").addEventListener("click", sendNow);
@@ -1506,6 +1733,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   document.addEventListener("pointerdown", onPointer, true);
   window.addEventListener("resize", onShrink);
   $("msgs").addEventListener("scroll", onShrink, { passive: true });
+  $("list").addEventListener("scroll", onShrink, { passive: true });
   $("warnOk").addEventListener("click", async () => {
     for (const p of S.changed) await e2e.acknowledge(p);
     showWarn();
@@ -1567,6 +1795,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
             renderMessages();
           }
         }
+        if (S.wantOpen && list.some((x) => x.id === S.wantOpen)) {
+          const id = S.wantOpen;
+          S.wantOpen = "";
+          clearTimeout(S.wantTimer);
+          showChat(id);
+        }
         renderList();
         maybeDeliver(list);
         maybeRead();
@@ -1609,6 +1843,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       window.removeEventListener("focus", onFocus);
       clearTimeout(rest);
       clearTimeout(toastTimer);
+      clearTimeout(S.wantTimer);
       for (const p of photoUrls.values()) URL.revokeObjectURL(p.url);
     },
   };

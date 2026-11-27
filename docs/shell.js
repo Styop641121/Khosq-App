@@ -8,6 +8,8 @@ import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, canForward,
 import { makeStars, starFor, starKey } from "./stars.js";
 import { photoBytes, voiceMime, startVoice } from "./media.js";
 import { makePeople, cleanHandle } from "./people.js";
+import { makeGroups } from "./groups.js";
+import { makeGroupUi } from "./groupui.js";
 import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
@@ -122,6 +124,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   });
   const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
   const people = makePeople({ f, uid, user });
+  const groups = makeGroups({ f, uid, user, cachePhoto: (id, v, bytes) => putPhoto(id, v, bytes) });
   const stars = makeStars({ f, uid, e2e });
   const JUMP_PAGES = 5; // a jump to a message that is not loaded asks for at most this many older pages
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
@@ -181,6 +184,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
     pinCache: null, // {key, state: "loading"|"ok"|"none", m, view}: the pinned message when it is not among the loaded ones
     pinToken: 0,
     jumping: 0, // a jump to a message that is on its way (a newer one cancels an older one)
+    // groups (stage 9)
+    leaving: null, // {id, until}: the group I just left myself
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -842,6 +847,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     $("chSub").textContent = v.saved ? "" : v.group ? tf("members", v.members.length) : v.handle ? "@" + v.handle : "";
     const head = $("chAv");
     head.replaceChildren(v.saved ? el("span", "av saved", "🔖") : avatar(v.avatarId, v.title, v.avatarV));
+    $("chat").querySelector(".chat-top").classList.toggle("grp", v.group && !v.saved);
     S.listSig = "";
     renderList();
     S.changed = [];
@@ -1868,6 +1874,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       });
       menu.append(b);
     };
+    if (v.group && !v.saved) item(t("giOpen"), () => groupUi.openInfo(id));
     item(t(v.pinned ? "unpin" : "pin"), () => togglePref("pins", id));
     if (!v.saved) item(t(v.muted ? "unmute" : "mute"), () => togglePref("muted", id));
     if (v.unread > 0) item(t("markRead"), () => doMarkRead(id));
@@ -1978,6 +1985,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
   $("meBtn").addEventListener("click", () => onAbout());
   $("newBtn").addEventListener("click", openNewChat);
   $("ncGo").addEventListener("click", goNewChat);
+  $("ncGroup").addEventListener("click", () => {
+    S.ncToken++;
+    S.ncBusy = false;
+    $("newChat").close();
+    groupUi.openNew();
+  });
   // a search still on its way is forgotten the moment the window is left (a dialog's "close" event comes a little later than Esc or the button)
   const ncForget = () => {
     S.ncToken++;
@@ -2219,6 +2232,48 @@ export function startShell({ f, id, user, onAbout, worker }) {
   window.addEventListener("pagehide", onHide);
   if (rtcOk) calls.listen();
 
+  // ---------------------------------------------------------------------------------------------- groups (stage 9)
+  /** The version of a person's picture for the list of a group: the chat's own record, else the person's profile (asked once). */
+  function memberPv(c, who) {
+    const own = c && c.pv ? num(c.pv[who]) : 0;
+    if (own) return own;
+    const u = S.users.get(who);
+    if (u) return num(Number(u.pv));
+    if (!S.users.has(who)) {
+      S.users.set(who, null);
+      data.user(who).then((x) => {
+        S.users.set(who, x || {});
+        groupUi.refresh();
+      });
+    }
+    return 0;
+  }
+  const groupUi = makeGroupUi({
+    groups,
+    uid,
+    t,
+    tf,
+    getChats: () => S.chats,
+    getChat: (id) => S.chats.find((x) => x.id === id),
+    avatarOf: (who, name, v) => avatar(who, name, v),
+    nameOf,
+    pvOf: memberPv,
+    toast,
+    onCreated: (id) => openWhenListed(id),
+    onLeaving: (id) => {
+      S.leaving = { id, until: Date.now() + 15000 }; // the list will soon lack this group: that is what I did, not news
+    },
+    onLeft: (id) => {
+      if (S.open && S.open.id === id) closeChat();
+    },
+  });
+  // the name and the picture in the header of an opened group are the way to its window
+  const openOwnGroup = () => {
+    if (S.open && S.open.group && !S.open.saved) groupUi.openInfo(S.open.id);
+  };
+  $("chAv").addEventListener("click", openOwnGroup);
+  $("chName").parentElement.addEventListener("click", openOwnGroup);
+
   me();
   chips();
   $("paneEmpty").hidden = false;
@@ -2257,12 +2312,25 @@ export function startShell({ f, id, user, onAbout, worker }) {
         if (S.open) {
           const c = list.find((x) => x.id === S.open.id);
           if (c) {
+            const was = S.open;
             S.open = { ...chatVm(c) };
             $("chName").textContent = S.open.title;
+            if (S.open.group && !S.open.saved) {
+              // a group changes under my eyes: the number of people and the picture follow
+              $("chSub").textContent = tf("members", S.open.members.length);
+              if (was.avatarV !== S.open.avatarV) $("chAv").replaceChildren(avatar(S.open.avatarId, S.open.title, S.open.avatarV));
+            }
             updateComposer();
             renderMessages();
+          } else {
+            // the chat is no longer mine: I left the group, or an admin took me out of it
+            const gone = S.open;
+            closeChat();
+            const mine = S.leaving && S.leaving.id === gone.id && S.leaving.until > Date.now();
+            if (gone.group && !gone.saved && !mine) toast(t("giGone"));
           }
         }
+        groupUi.refresh();
         if (S.wantOpen && list.some((x) => x.id === S.wantOpen)) {
           const id = S.wantOpen;
           S.wantOpen = "";
@@ -2302,11 +2370,13 @@ export function startShell({ f, id, user, onAbout, worker }) {
       }
       renderStarred();
       callUi.relang();
+      groupUi.relang();
     },
     stop() {
       leaveChat(); // also ends a recording and lets the microphone go
       calls.stop(); // a call in progress ends (hang-up written), the listener of incoming calls goes
       callUi.stop();
+      groupUi.stop();
       tones.stop();
       $("callBtn").removeEventListener("click", onVoice);
       $("vidBtn").removeEventListener("click", onVideo);

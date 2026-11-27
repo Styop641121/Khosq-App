@@ -66,6 +66,59 @@ export async function photoBytes(file) {
   }
 }
 
+export const AVATAR_SIDES = [512, 384, 256]; // the phone's MediaUtil.avatar: a square of 512 px, then 384, then 256 when the picture is too detailed
+export const AVATAR_GOAL = 70000; // the picture is saved at the best quality (85, 75 ... 45) that fits in this many bytes; the rules refuse 90 KB
+const AVATAR_QUALITIES = [0.85, 0.75, 0.65, 0.55, 0.45];
+
+/** The middle square of a picture: where it starts and how long its side is. */
+export function squareOf(w, h) {
+  const side = Math.min(w, h);
+  return { sx: Math.floor((w - side) / 2), sy: Math.floor((h - side) / 2), side };
+}
+
+/**
+ * A picture file as the round picture of a group (what the phone's MediaUtil.avatar makes): the middle square, 512 x 512 px, a JPEG of at most
+ * 70 KB (smaller squares of 384 and 256 px when a detailed picture does not fit). Throws an Error whose message is "notImage", "unreadable" or
+ * "big" (even the smallest does not fit).
+ * @param {File} file
+ * @returns {Promise<Uint8Array>}
+ */
+export async function avatarBytes(file) {
+  if (!file || !/^image\//.test(file.type || "")) throw new Error("notImage");
+  if (file.size > PICK_MAX) throw new Error("big");
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    try {
+      await img.decode();
+    } catch (e) {
+      throw new Error("unreadable");
+    }
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error("unreadable");
+    const { sx, sy, side } = squareOf(img.naturalWidth, img.naturalHeight);
+    for (const px of AVATAR_SIDES) {
+      const canvas = document.createElement("canvas");
+      canvas.width = px;
+      canvas.height = px;
+      const g = canvas.getContext("2d");
+      if (!g) throw new Error("unreadable");
+      g.imageSmoothingQuality = "high";
+      g.fillStyle = "#fff"; // see-through parts get a white background, not black
+      g.fillRect(0, 0, px, px);
+      g.drawImage(img, sx, sy, side, side, 0, 0, px, px);
+      for (const q of AVATAR_QUALITIES) {
+        const blob = await jpegOf(canvas, q);
+        if (!blob) throw new Error("unreadable");
+        if (blob.size <= AVATAR_GOAL) return new Uint8Array(await blob.arrayBuffer());
+      }
+    }
+    throw new Error("big");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /**
  * About 40 bars from the loudness samples, each one a digit 1..9 (quiet to loud): the phone's VoiceRecorder.wave(), the same arithmetic.
  * [levels] are the loudest points of short moments, any scale (the phone's go to 32767). "" when there is nothing.

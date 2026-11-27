@@ -190,6 +190,7 @@
   <input id="ncId" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="30" enterkeyhint="go">
   <p class="small" id="ncMine"></p>
   <p class="ncerr" id="ncErr" role="alert" hidden></p>
+  <button class="linkbtn" id="ncGroup" type="button" data-i18n="ncGroup"></button>
   <div class="row">
     <button class="btn ghost" id="ncNo" type="button" data-i18n="cancel"></button>
     <button class="btn" id="ncGo" type="button" data-i18n="ncGo"></button>
@@ -204,6 +205,70 @@
     <button class="btn ghost" id="fwdNo" type="button" data-i18n="cancel"></button>
     <button class="btn" id="fwdGo" type="button" disabled></button>
   </div>
+</dialog>
+
+<dialog id="newGroup" class="pick newgroup" aria-labelledby="ngTitle">
+  <h2 id="ngTitle" data-i18n="ngTitle"></h2>
+  <label class="ncl" for="ngName" data-i18n="ngName"></label>
+  <input id="ngName" type="text" maxlength="40" autocomplete="off" enterkeyhint="done">
+  <p class="small" id="ngNone" data-i18n="ngNone" hidden></p>
+  <p class="small" id="ngCount"></p>
+  <ul class="picks" id="ngList"></ul>
+  <p class="ncerr" id="ngErr" role="alert" hidden></p>
+  <div class="row">
+    <button class="btn ghost" id="ngNo" type="button" data-i18n="cancel"></button>
+    <button class="btn" id="ngGo" type="button" disabled></button>
+  </div>
+</dialog>
+
+<dialog id="ginfo" class="pick ginfo" aria-labelledby="giName">
+  <div class="gi-head">
+    <span class="gi-av" id="giAv"></span>
+    <div class="gi-who"><h2 id="giName"></h2><small id="giSub"></small></div>
+    <button class="icon-btn" id="giX" type="button" data-i18n-aria="close">✕</button>
+  </div>
+  <div class="gi-desc" id="giDescBox" hidden><b data-i18n="giDesc"></b><p id="giDesc"></p></div>
+  <div class="gi-acts" id="giActs" hidden>
+    <button class="gbtn" id="giPhoto" type="button" data-i18n="giPhoto"></button>
+    <button class="gbtn danger" id="giPhotoX" type="button" data-i18n="giPhotoX" hidden></button>
+    <button class="gbtn" id="giDescB" type="button" data-i18n="giDescEdit"></button>
+    <button class="gbtn" id="giRenameB" type="button" data-i18n="giRename"></button>
+    <button class="gbtn" id="giModeB" type="button" role="switch" aria-checked="false"><span data-i18n="giMode"></span><small id="giModeNote"></small></button>
+    <button class="gbtn" id="giAddB" type="button" data-i18n="giAdd"></button>
+    <p class="small" data-i18n="giNoLink"></p>
+  </div>
+  <div class="gi-edit" id="giEdit" hidden>
+    <label class="ncl" id="giEditLb" for="giEditIn"></label>
+    <input id="giEditIn" type="text" maxlength="40" autocomplete="off" enterkeyhint="done">
+    <textarea id="giEditTa" rows="3" maxlength="200" autocomplete="off" hidden></textarea>
+    <div class="row">
+      <button class="btn ghost" id="giEditNo" type="button" data-i18n="cancel"></button>
+      <button class="btn" id="giEditGo" type="button" data-i18n="save"></button>
+    </div>
+  </div>
+  <div class="gi-add" id="giAdd" hidden>
+    <p class="small" id="giAddNone" data-i18n="giAddNone" hidden></p>
+    <ul class="picks" id="giAddList"></ul>
+    <div class="row">
+      <button class="btn ghost" id="giAddNo" type="button" data-i18n="cancel"></button>
+      <button class="btn" id="giAddGo" type="button" disabled></button>
+    </div>
+  </div>
+  <h3 class="gi-h" data-i18n="giMembers"></h3>
+  <ul class="gi-members" id="giMembers"></ul>
+  <p class="ncerr" id="giErr" role="alert" hidden></p>
+  <div class="gi-ask" id="giAsk" role="group" hidden>
+    <p id="giAskText"></p>
+    <div class="row">
+      <button class="btn ghost" id="giAskNo" type="button" data-i18n="cancel"></button>
+      <button class="btn danger" id="giAskYes" type="button"></button>
+    </div>
+  </div>
+  <div class="row spread gi-foot">
+    <button class="btn danger" id="giLeave" type="button" data-i18n="giLeave"></button>
+    <button class="btn ghost" id="giClose" type="button" data-i18n="close"></button>
+  </div>
+  <input type="file" id="giFile" accept="image/*" hidden>
 </dialog>
 
 <dialog id="starred" class="pick starred" aria-labelledby="stTitle">

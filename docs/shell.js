@@ -13,6 +13,8 @@ import { makeGroupUi } from "./groupui.js";
 import { makeInvite } from "./invite.js";
 import { makeProfile, shownName } from "./profile.js";
 import { makeSettingsUi } from "./settingsui.js";
+import { makeContact, statusOf, formatSeen } from "./contact.js";
+import { makeContactUi } from "./contactui.js";
 import * as look from "./look.js";
 import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
@@ -133,12 +135,17 @@ export function startShell({ f, id, user, onAbout, worker }) {
   // my own profile (6k): [user] is changed in place by profile.js, so everything that holds it sees a new name or picture
   const profile = makeProfile({ f, uid, user, cachePhoto: (id, v, bytes) => putPhoto(id, v, bytes), onChange: () => onProfile() });
   const stars = makeStars({ f, uid, e2e });
+  const contact = makeContact({ f, e2e }); // what the page knows about the other person of a one-to-one chat (6l)
   const JUMP_PAGES = 5; // a jump to a message that is not loaded asks for at most this many older pages
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
 
   const S = {
     chats: [],
     prefs: { pins: [], muted: [], archived: [], marked: [] },
+    peerInfo: null, // {seen, about, hide} of the other person of the open one-to-one chat (6l)
+    peerStop: null,
+    peerClock: 0,
+    badgeToken: 0,
     filter: "all",
     q: "",
     open: null, // the vm of the chat on the right
@@ -771,6 +778,66 @@ export function startShell({ f, id, user, onAbout, worker }) {
     renderPin();
   }
 
+  /** The line under the name of the open chat: the number of people of a group; for one person "online", "last seen ..." or the ID (6l). */
+  function subText(v) {
+    if (v.saved) return "";
+    if (v.group) return tf("members", v.members.length);
+    const s = statusOf(S.peerInfo, Date.now());
+    if (s.kind === "online") return t("ctOnline");
+    if (s.kind === "seen") return tf("ctSeen", formatSeen(s.ts));
+    return v.handle ? "@" + v.handle : "";
+  }
+  function drawSub() {
+    const v = S.open;
+    if (!v) return;
+    $("chSub").textContent = subText(v);
+    $("chSub").classList.toggle("on", !v.group && !v.saved && statusOf(S.peerInfo, Date.now()).kind === "online");
+  }
+  /** Follows the other person's document while a one-to-one chat is open (online / last seen, "about"); the clock redraws "online" every 20 seconds. */
+  function startPeerWatch(v) {
+    stopPeerWatch();
+    if (v.group || v.saved || !v.peer) return;
+    const id = v.id;
+    S.peerStop = contact.watch(v.peer, (info) => {
+      if (!S.open || S.open.id !== id) return;
+      S.peerInfo = info;
+      drawSub();
+      contactUi.refresh();
+    });
+    S.peerClock = setInterval(drawSub, 20000);
+  }
+  function stopPeerWatch() {
+    if (S.peerStop) S.peerStop();
+    S.peerStop = null;
+    clearInterval(S.peerClock);
+    S.peerClock = 0;
+    S.peerInfo = null;
+  }
+  /** The mark next to the name: "verified" (✓) or "the key changed since" (⚠); nothing while the person was never verified here. */
+  async function drawBadge() {
+    const v = S.open;
+    const b = $("chVer");
+    const token = ++S.badgeToken;
+    if (!v || v.group || v.saved || !v.peer) {
+      b.hidden = true;
+      return;
+    }
+    let r = null;
+    try {
+      r = await contact.view(v.peer);
+    } catch (e) {
+      r = null;
+    }
+    if (token !== S.badgeToken || !S.open || S.open.id !== v.id) return;
+    const state = r && r.ready ? r.state : "none";
+    b.hidden = state === "none";
+    b.className = "vb " + state;
+    b.textContent = state === "verified" ? "✓" : state === "changed" ? "⚠" : "";
+    const label = state === "verified" ? t("ctVerOk") : state === "changed" ? t("ctVerChanged") : "";
+    b.setAttribute("aria-label", label);
+    b.title = label;
+  }
+
   /** Looks for people of the open chat whose key changed and was not acknowledged: shows the warning and, in a one-to-one chat, closes the box. */
   async function showWarn() {
     const v = S.open;
@@ -785,6 +852,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       $("warnText").textContent = "⚠ " + (v.group ? tf("keyChangedIn", changed.map((p) => nameOf(v.raw, p)).join(", ")) : tf("keyChanged", v.title));
     }
     updateComposer();
+    drawBadge();
   }
 
   /** Looks at the server's copy of the keys of the open chat once per visit (a changed one is noted, the new one used for what is sealed from now on). */
@@ -816,6 +884,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       else S.drafts.delete(S.open.id);
     }
     S.reply = null;
+    stopPeerWatch();
     dropMedia();
     S.msgToken++;
     if (S.msgStop) S.msgStop();
@@ -851,10 +920,13 @@ export function startShell({ f, id, user, onAbout, worker }) {
     $("paneEmpty").hidden = true;
     $("chat").hidden = false;
     $("chName").textContent = v.title;
-    $("chSub").textContent = v.saved ? "" : v.group ? tf("members", v.members.length) : v.handle ? "@" + v.handle : "";
+    $("chVer").hidden = true;
+    drawSub();
+    startPeerWatch(v);
     const head = $("chAv");
     head.replaceChildren(v.saved ? el("span", "av saved", "🔖") : avatar(v.avatarId, v.title, v.avatarV));
     $("chat").querySelector(".chat-top").classList.toggle("grp", v.group && !v.saved);
+    $("chat").querySelector(".chat-top").classList.toggle("dm", !v.group && !v.saved);
     S.listSig = "";
     renderList();
     S.changed = [];
@@ -1882,6 +1954,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
       menu.append(b);
     };
     if (v.group && !v.saved) item(t("giOpen"), () => groupUi.openInfo(id));
+    if (!v.group && !v.saved) item(t("ctOpen"), () => {
+      showChat(id); // the card is of the open chat
+      contactUi.open(id);
+    });
     item(t(v.pinned ? "unpin" : "pin"), () => togglePref("pins", id));
     if (!v.saved) item(t(v.muted ? "unmute" : "mute"), () => togglePref("muted", id));
     if (v.unread > 0) item(t("markRead"), () => doMarkRead(id));
@@ -2287,10 +2363,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
   });
   // the name and the picture in the header of an opened group are the way to its window
   const openOwnGroup = () => {
-    if (S.open && S.open.group && !S.open.saved) groupUi.openInfo(S.open.id);
+    if (!S.open || S.open.saved) return;
+    if (S.open.group) groupUi.openInfo(S.open.id);
+    else contactUi.open(S.open.id); // one person: their card (6l)
   };
   $("chAv").addEventListener("click", openOwnGroup);
-  $("chName").parentElement.addEventListener("click", openOwnGroup);
+  $("chName").closest(".who2").addEventListener("click", openOwnGroup);
 
   const settingsUi = makeSettingsUi({
     profile,
@@ -2301,6 +2379,19 @@ export function startShell({ f, id, user, onAbout, worker }) {
     toast,
     look,
     avatar: (who, name, v) => avatar(who, name, v),
+  });
+  const contactUi = makeContactUi({
+    contact,
+    t,
+    tf,
+    getChat: (id) => S.chats.find((x) => x.id === id),
+    getChats: () => S.chats,
+    vmOf: chatVm,
+    avatar: (who, name, v) => avatar(who, name, v),
+    getInfo: () => S.peerInfo,
+    toggleMute: (id) => togglePref("muted", id),
+    setBlocked: (id, on) => doBlock(id, on),
+    onKeyState: () => showWarn(), // the warning and the mark in the header look at the keys again
   });
   /** My profile changed (here, or on the phone): the places that show it are drawn again, and the chats are told. */
   function onProfile() {
@@ -2319,6 +2410,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       S.prefs = p;
       S.listSig = "";
       renderList();
+      contactUi.refresh();
     }),
   );
   S.stops.push(
@@ -2352,9 +2444,9 @@ export function startShell({ f, id, user, onAbout, worker }) {
             const was = S.open;
             S.open = { ...chatVm(c) };
             $("chName").textContent = S.open.title;
-            if (S.open.group && !S.open.saved) {
-              // a group changes under my eyes: the number of people and the picture follow
-              $("chSub").textContent = tf("members", S.open.members.length);
+            if (!S.open.saved) {
+              // a group changes under my eyes (the number of people, the picture), and so does a person's picture
+              drawSub();
               if (was.avatarV !== S.open.avatarV) $("chAv").replaceChildren(avatar(S.open.avatarId, S.open.title, S.open.avatarV));
             }
             updateComposer();
@@ -2368,6 +2460,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
           }
         }
         groupUi.refresh();
+        contactUi.refresh();
         if (S.wantOpen && list.some((x) => x.id === S.wantOpen)) {
           const id = S.wantOpen;
           S.wantOpen = "";
@@ -2396,7 +2489,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       me();
       if (S.open) {
         const c = S.open;
-        $("chSub").textContent = c.saved ? "" : c.group ? tf("members", c.members.length) : c.handle ? "@" + c.handle : "";
+        drawSub();
         $("chName").textContent = c.title;
         showWarn();
         closeMenu();
@@ -2409,6 +2502,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       callUi.relang();
       groupUi.relang();
       settingsUi.relang();
+      contactUi.relang();
     },
     stop() {
       leaveChat(); // also ends a recording and lets the microphone go
@@ -2416,6 +2510,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       callUi.stop();
       groupUi.stop();
       settingsUi.stop();
+      contactUi.stop();
       tones.stop();
       $("callBtn").removeEventListener("click", onVoice);
       $("vidBtn").removeEventListener("click", onVideo);

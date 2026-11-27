@@ -552,3 +552,35 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 :root[data-wall] .msgs { background: linear-gradient(180deg, var(--wall-a), var(--wall-b)); }
 :root[data-wallp="dots"] .msgs { background: radial-gradient(circle, var(--wall-ink) 1.6px, transparent 2.2px) 0 0 / 26px 26px, linear-gradient(180deg, var(--wall-a), var(--wall-b)); }
 :root[data-wallp="lines"] .msgs { background: repeating-linear-gradient(45deg, var(--wall-ink) 0, var(--wall-ink) 1px, transparent 1px, transparent 15.5px), linear-gradient(180deg, var(--wall-a), var(--wall-b)); }
+
+/* ---- stage 12 (6l): the contact card, the mark next to a name, "online" under the name ---- */
+.nmrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.nmrow b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vb { flex: none; display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 3px; box-sizing: border-box; border-radius: 999px; font-size: 11.5px; font-weight: 700; line-height: 1; color: #fff; background: var(--text3); }
+.vb[hidden] { display: none; }
+.vb.verified { background: var(--accent); }
+.vb.changed { background: var(--danger); }
+.who2 small.on, .ct-status.on { color: var(--accent); }
+.chat-top.dm .who2, .chat-top.dm #chAv { cursor: pointer; }
+.contact { width: min(460px, 94vw); }
+.ct-head { align-items: flex-start; }
+.ct-av .av { width: 96px; height: 96px; font-size: 40px; }
+.ct-head h2 { display: flex; align-items: center; gap: 8px; }
+.ct-head h2 #ctName { min-width: 0; overflow-wrap: anywhere; }
+.ct-head small { display: block; margin-top: 3px; }
+.ct-head .ct-handle { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; font-weight: 600; color: var(--accent); }
+.gi-desc p.none { color: var(--text3); }
+.ct-groups { list-style: none; margin: 0 0 14px; padding: 12px 14px; display: grid; gap: 6px; border-radius: 14px; background: var(--high); }
+.ct-groups li { font-size: 15px; overflow-wrap: anywhere; }
+.ct-sec { margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: var(--high); }
+.ct-sec .small { margin: 6px 0; overflow-wrap: anywhere; } /* the sentence holds the person's name: a long one with no spaces wraps */
+.ct-vh { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: var(--text2); }
+.ct-sec[data-state="verified"] .ct-vh { color: var(--accent); }
+.ct-sec[data-state="changed"] .ct-vh, .ct-sec[data-state="changed"] #ctVerText { color: var(--danger); }
+.ct-code { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 30px; line-height: 1.2; }
+.ct-code li { padding: 4px 7px; border-radius: 10px; background: var(--surface); }
+.ct-btns { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.ct-btns [hidden] { display: none; }
+.ct-num { margin: 0 0 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; line-height: 1.6; overflow-wrap: anywhere; }
+.ct-changed { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line2); }
+.ct-changed p { margin: 0 0 8px; font-size: 14px; font-weight: 600; color: var(--danger); }

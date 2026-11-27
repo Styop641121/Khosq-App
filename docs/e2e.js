@@ -11,10 +11,13 @@
 // "khosq-msg-v1"), so that the phone can seal an edit of a message that was sent from here, and the other way round.
 //
 // The private key here is the page's non-extractable key: this file can use it, never read it.
+import { digestOf, hex } from "./verify.js";
+
 const te = new TextEncoder();
 const td = new TextDecoder();
 const CURVE = { name: "ECDH", namedCurve: "P-256" };
 const FLAG = "!"; // in the remembered keys, "!<person>" = "1" says that person's key changed and is not acknowledged yet
+const VER = "ver."; // and "ver.<person>" = the digest of the two keys at the moment I confirmed the pictures (the phone's Prefs "ver.<peer>"; kept in this browser only)
 
 export function fromB64(s) {
   const bin = atob(s);
@@ -294,5 +297,48 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     await pins.set(FLAG + peer, "");
   }
 
-  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sealBytes, sentKey, messageKeyBits, sealSelf, openSelf };
+  /**
+   * SHA-256 of my public key text and the other person's (the phone's pairDigest): the same bytes on the phone and here while both hold the same two
+   * keys. null for myself, for somebody whose key is not known yet, or while the page cannot compute it.
+   */
+  async function pairDigest(peer) {
+    if (!peer || peer === uid) return null;
+    if (!(await peerPublic(peer))) return null; // makes sure the key is remembered (the phone's peerPublic)
+    const theirs = await pins.get(peer);
+    if (!theirs) return null;
+    try {
+      return await digestOf(pub, theirs);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /** What was saved when I confirmed the pictures with this person ("" when never). */
+  async function verifiedWith(peer) {
+    return (await pins.get(VER + peer)) || "";
+  }
+
+  /**
+   * I confirmed that the pictures match: the digest of the two keys is saved, and a "key changed" warning is over (the phone's markVerified). False
+   * while the key is not known. Throws when the browser would not keep the mark (pins.set swallows a refusal, so the saved value is read back):
+   * the person is told, and nothing looks verified that is not.
+   */
+  async function markVerified(peer) {
+    const d = await pairDigest(peer);
+    if (!d) return false;
+    const h = hex(d);
+    await pins.set(VER + peer, h);
+    if ((await pins.get(VER + peer)) !== h) throw new Error("the browser did not keep the mark");
+    changed.delete(peer);
+    await pins.set(FLAG + peer, "");
+    return true;
+  }
+
+  /** Takes the confirmation away (the phone's clearVerified). Throws when the browser would not keep that either. */
+  async function clearVerified(peer) {
+    await pins.set(VER + peer, "");
+    if ((await pins.get(VER + peer)) || "") throw new Error("the browser did not keep the change");
+  }
+
+  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, pairDigest, verifiedWith, markVerified, clearVerified, begin, sealText, sealBytes, sentKey, messageKeyBits, sealSelf, openSelf };
 }

@@ -69,7 +69,7 @@
       <header class="chat-top">
         <button class="icon-btn back" id="back" type="button" data-i18n-aria="back">‹</button>
         <span id="chAv"></span>
-        <div class="who2"><b id="chName"></b><small id="chSub"></small></div>
+        <div class="who2"><span class="nmrow"><b id="chName"></b><span class="vb" id="chVer" hidden></span></span><small id="chSub"></small></div>
         <button class="hbtn" id="callBtn" type="button" hidden data-i18n-aria="callBtn" data-i18n-title="callBtn">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg>
         </button>
@@ -336,6 +336,50 @@
     <button class="btn ghost" id="giClose" type="button" data-i18n="close"></button>
   </div>
   <input type="file" id="giFile" accept="image/*" hidden>
+</dialog>
+
+<dialog id="contact" class="pick ginfo contact" aria-labelledby="ctName">
+  <div class="gi-head ct-head">
+    <span class="gi-av ct-av" id="ctAv"></span>
+    <div class="gi-who">
+      <h2><span id="ctName"></span><span class="vb" id="ctVer" hidden></span></h2>
+      <small class="ct-handle" id="ctHandle" hidden></small>
+      <small class="ct-status" id="ctStatus" hidden></small>
+    </div>
+    <button class="icon-btn" id="ctX" type="button" data-i18n-aria="close">✕</button>
+  </div>
+  <div class="gi-desc"><b data-i18n="ctAbout"></b><p id="ctAbout"></p></div>
+  <div class="gi-acts">
+    <button class="gbtn" id="ctMute" type="button"></button>
+  </div>
+  <div id="ctGroupsBox" hidden>
+    <h3 class="gi-h" data-i18n="ctGroups"></h3>
+    <ul class="ct-groups" id="ctGroups"></ul>
+  </div>
+  <section class="ct-sec" id="ctVerBox" hidden>
+    <h3 class="ct-vh" id="ctVerHead"></h3>
+    <p class="small" id="ctVerText"></p>
+    <ul class="ct-code" id="ctCode" data-i18n-aria="ctCodeLabel" hidden></ul>
+    <div class="ct-btns">
+      <button class="btn" id="ctConfirm" type="button" hidden></button>
+      <button class="btn ghost" id="ctClear" type="button" data-i18n="ctClear" hidden></button>
+    </div>
+    <p class="small muted" data-i18n="ctVerWeb"></p>
+  </section>
+  <section class="ct-sec" id="ctNumBox" hidden>
+    <h3 class="ct-vh" data-i18n="ctNumber"></h3>
+    <p class="ct-num" id="ctNum"></p>
+    <p class="small" data-i18n="ctNumberNote"></p>
+    <div class="ct-changed" id="ctChanged" role="alert" hidden>
+      <p data-i18n="ctNumberChanged"></p>
+      <button class="btn" id="ctAck" type="button" data-i18n="ctGotIt"></button>
+    </div>
+  </section>
+  <p class="ncerr" id="ctErr" role="alert" hidden></p>
+  <div class="row spread gi-foot">
+    <button class="btn" id="ctBlock" type="button"></button>
+    <button class="btn ghost" id="ctClose" type="button" data-i18n="close"></button>
+  </div>
 </dialog>
 
 <dialog id="starred" class="pick starred" aria-labelledby="stTitle">

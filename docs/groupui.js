@@ -1,7 +1,10 @@
 // KHOSQ Web, stage 9 (6i): the two group windows. "New group" (a name and the people to put in) and "Group info" (who is in it, and for an admin:
 // the picture, the name, the description, the announcement mode, adding and removing people, admins). It writes nothing itself: it asks groups.js,
 // which writes what the phone writes. Everything somebody else wrote (a group's name, a person's name, a description) goes in with textContent.
+// Stage 10 (6j) adds the invitation link: an admin's "Invitation link" panel in the group window, and the "Join a group" window (paste a link, see
+// the group, join). Both go through invite.js, i.e. the Worker; the Worker is the one that puts the person into the group.
 import { adminsOf, cleanDesc, cleanTitle, contactsOf, iAmAdmin, isRealGroup } from "./groups.js";
+import { explainKey } from "./invite.js";
 import { avatarBytes } from "./media.js";
 
 const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : []);
@@ -21,9 +24,11 @@ const list = (v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") :
  * @param {(id: string) => void} o.onCreated  a group was made: open it when it reaches the list
  * @param {(id: string) => void} o.onLeaving  I am about to leave a group (called before the write, so the page can tell it from being taken out)
  * @param {(id: string) => void} o.onLeft  I left a group: close it if it is the open chat
+ * @param {ReturnType<typeof import("./invite.js").makeInvite>} o.invite  the invitation links (asks the Worker)
+ * @param {(id: string) => void} o.onJoined  I joined a group by a link (or it was already mine): open it when it reaches the list
  * @param {Document} [o.doc]
  */
-export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, nameOf, pvOf, toast, onCreated, onLeaving = () => {}, onLeft, doc = document }) {
+export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, nameOf, pvOf, toast, onCreated, onLeaving = () => {}, onLeft, invite, onJoined = () => {}, doc = document }) {
   const $ = (id) => doc.getElementById(id);
   const el = (tag, cls, text) => {
     const n = doc.createElement(tag);
@@ -124,8 +129,120 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
     ng.busy = false;
   });
 
+  // ---------------------------------------------------------------------------------------------- join by a link
+  // Two steps, as on the phone: the link is looked at (nothing happens yet: the group's name and size are shown), and only then "Join" joins.
+  const jg = { state: "ask", token: 0, tok: "", found: null, busy: false, errKey: "" };
+
+  function syncJg() {
+    const found = jg.state === "found" && jg.found;
+    $("jgFound").hidden = !found;
+    if (found) {
+      $("jgName").textContent = jg.found.title || t("group");
+      $("jgInfo").textContent = jg.found.member ? t("jgMember") : tf("jgInfo", jg.found.count);
+    }
+    $("jgErr").hidden = !jg.errKey;
+    if (jg.errKey) $("jgErr").textContent = t(jg.errKey);
+    $("jgLink").disabled = jg.busy;
+    const word = jg.busy ? (found ? "jgJoining" : "jgChecking") : !found ? "jgCheck" : jg.found.member ? "jgOpen" : "jgJoin";
+    $("jgGo").textContent = t(word);
+    $("jgGo").disabled = jg.busy || (!found && !$("jgLink").value.trim());
+  }
+
+  function resetJg() {
+    jg.token++;
+    jg.state = "ask";
+    jg.tok = "";
+    jg.found = null;
+    jg.busy = false;
+    jg.errKey = "";
+  }
+
+  function openJoin() {
+    resetJg();
+    $("jgLink").value = "";
+    syncJg();
+    if (!$("joinGroup").open) $("joinGroup").showModal();
+    $("jgLink").focus();
+  }
+
+  async function goJoin() {
+    if (jg.busy || $("jgGo").disabled) return;
+    if (jg.state === "found" && jg.found) {
+      if (jg.found.member) {
+        const id = jg.found.chatId;
+        $("joinGroup").close();
+        onJoined(id);
+        return;
+      }
+      const token = ++jg.token;
+      jg.busy = true;
+      jg.errKey = "";
+      syncJg();
+      try {
+        const r = await invite.join(jg.tok);
+        if (token !== jg.token) return; // the window was left meanwhile; the Worker has put me in all the same and the group shows in the list
+        jg.busy = false;
+        $("joinGroup").close();
+        onJoined(r.chatId);
+      } catch (e) {
+        if (token !== jg.token) return;
+        jg.busy = false;
+        jg.errKey = explainKey(e, false);
+        syncJg();
+        $("jgGo").focus();
+      }
+      return;
+    }
+    const tok = invite.tokenOf($("jgLink").value);
+    if (!tok) {
+      jg.errKey = "jgBad";
+      syncJg();
+      $("jgLink").focus();
+      return;
+    }
+    const token = ++jg.token;
+    jg.busy = true;
+    jg.errKey = "";
+    syncJg();
+    try {
+      const r = await invite.look(tok);
+      if (token !== jg.token) return;
+      jg.busy = false;
+      jg.state = "found";
+      jg.tok = tok;
+      jg.found = r;
+      syncJg();
+      $("jgGo").focus();
+    } catch (e) {
+      if (token !== jg.token) return;
+      jg.busy = false;
+      jg.errKey = explainKey(e, false);
+      syncJg();
+      $("jgLink").focus();
+    }
+  }
+
+  $("jgLink").addEventListener("input", () => {
+    // another link: whatever was found for the earlier one is forgotten
+    jg.token++;
+    jg.state = "ask";
+    jg.tok = "";
+    jg.found = null;
+    jg.errKey = "";
+    syncJg();
+  });
+  $("jgLink").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.isComposing) {
+      e.preventDefault();
+      goJoin();
+    }
+  });
+  $("jgGo").addEventListener("click", goJoin);
+  $("jgNo").addEventListener("click", () => $("joinGroup").close());
+  $("joinGroup").addEventListener("close", resetJg);
+
   // ---------------------------------------------------------------------------------------------- group info
-  const gi = { id: "", mode: "", picked: new Set(), cands: [], ask: null, busyPhoto: false };
+  const gi = { id: "", mode: "", picked: new Set(), cands: [], ask: null, busyPhoto: false, linkToken: 0, linkBusy: false, linkNote: "giLinkNote", copyTimer: 0 };
 
   const err = (key) => {
     $("giErr").textContent = t(key);
@@ -150,6 +267,12 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
     gi.picked.clear();
     $("giEdit").hidden = true;
     $("giAdd").hidden = true;
+    gi.linkToken++; // an answer for the link that is still on its way is not wanted any more
+    gi.linkBusy = false;
+    clearTimeout(gi.copyTimer);
+    $("giLinkBox").hidden = true;
+    $("giLinkIn").value = "";
+    $("giLinkCopy").textContent = t("giLinkCopy");
     gi.ask = null;
     $("giAsk").hidden = true;
   }
@@ -220,14 +343,93 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
     if (run(groups.addMembers(c, gi.cands.filter((p) => gi.picked.has(p.uid))))) closeEditors();
   }
 
+  /** The question and the "yes" button of a question: leaving, removing a person, making a new invitation link. */
+  const askWords = (a) =>
+    a.kind === "leave" ? [t("giLeaveAsk"), t("giLeaveYes")] : a.kind === "reset" ? [t("giLinkResetAsk"), t("giLinkResetYes")] : [tf("giRemoveAsk", a.name), t("giRemove")];
+
   function ask(kind, who, name) {
     $("giErr").hidden = true;
-    closeEditors();
+    if (kind === "reset") gi.ask = null; // the link on the screen stays while the question is asked
+    else closeEditors();
     gi.ask = { kind, who, name };
-    $("giAskText").textContent = kind === "leave" ? t("giLeaveAsk") : tf("giRemoveAsk", name);
-    $("giAskYes").textContent = t(kind === "leave" ? "giLeaveYes" : "giRemove");
+    [$("giAskText").textContent, $("giAskYes").textContent] = askWords(gi.ask);
     $("giAsk").hidden = false;
     $("giAskNo").focus();
+  }
+
+  // ---------------------------------------------------------------------------------------------- the invitation link (admins)
+  function linkNote(key) {
+    gi.linkNote = key;
+    $("giLinkNote").textContent = t(key);
+  }
+
+  function linkState(busy) {
+    gi.linkBusy = busy;
+    linkNote(busy ? "giLinkBusy" : "giLinkNote");
+    const have = !busy && Boolean($("giLinkIn").value);
+    $("giLinkNew").disabled = !have;
+    $("giLinkCopy").disabled = !have;
+  }
+
+  /** Asks the Worker for the link (or, with [reset], for a new one: every older link stops working). */
+  async function getLink(reset) {
+    const c = chatNow();
+    if (!c || gi.mode !== "link" || !iAmAdmin(c, uid)) return;
+    const id = c.id;
+    const token = ++gi.linkToken;
+    $("giErr").hidden = true;
+    linkState(true);
+    try {
+      const link = await invite.link(id, reset);
+      if (token !== gi.linkToken || gi.id !== id) return;
+      $("giLinkIn").value = link;
+      linkState(false);
+    } catch (e) {
+      if (token !== gi.linkToken || gi.id !== id) return;
+      const had = Boolean($("giLinkIn").value);
+      if (!had) closeEditors(); // nothing to show: the panel closes and the reason is told; the button asks again
+      else linkState(false);
+      err(explainKey(e, true));
+    }
+  }
+
+  function startLink() {
+    const c = chatNow();
+    if (!c || !iAmAdmin(c, uid)) return;
+    closeEditors();
+    $("giErr").hidden = true;
+    gi.mode = "link";
+    $("giLinkBox").hidden = false;
+    getLink(false);
+  }
+
+  async function copyLink() {
+    const v = $("giLinkIn").value;
+    if (!v) return;
+    let done = false;
+    try {
+      await doc.defaultView.navigator.clipboard.writeText(v);
+      done = true;
+    } catch (e) {
+      // no clipboard (an old browser, or the permission was refused): the old way, from the selected text
+      try {
+        $("giLinkIn").focus();
+        $("giLinkIn").select();
+        done = doc.execCommand("copy") === true;
+      } catch (e2) {
+        done = false;
+      }
+    }
+    if (gi.mode !== "link" || $("giLinkIn").value !== v) return;
+    clearTimeout(gi.copyTimer);
+    if (done) {
+      $("giLinkCopy").textContent = t("giLinkCopied");
+      gi.copyTimer = setTimeout(() => ($("giLinkCopy").textContent = t("giLinkCopy")), 2000);
+    } else {
+      $("giLinkIn").focus();
+      $("giLinkIn").select();
+      linkNote("giLinkSelect");
+    }
   }
 
   function answerAsk() {
@@ -243,6 +445,12 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
       gi.ask = null;
       $("ginfo").close();
       onLeft(id);
+      return;
+    }
+    if (a.kind === "reset") {
+      gi.ask = null;
+      $("giAsk").hidden = true;
+      getLink(true);
       return;
     }
     const r = groups.removeMember(c, a.who, a.name);
@@ -367,6 +575,9 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
     if (c) run(groups.setAdminOnly(c, (c.sendMode || "all") === "all"));
   });
   $("giAddB").addEventListener("click", startAdd);
+  $("giLinkB").addEventListener("click", startLink);
+  $("giLinkCopy").addEventListener("click", copyLink);
+  $("giLinkNew").addEventListener("click", () => ask("reset"));
   $("giEditIn").addEventListener("input", syncEdit);
   $("giEditTa").addEventListener("input", syncEdit);
   $("giEditIn").addEventListener("keydown", (e) => {
@@ -401,16 +612,18 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
 
   return {
     openNew,
+    openJoin,
     openInfo,
     /** The chat list changed: the window of a group shows the new state (or closes, when I am no longer in the group). */
     refresh: render,
     /** The language changed. */
     relang() {
       if ($("newGroup").open) syncNg();
+      if ($("joinGroup").open) syncJg();
       if ($("ginfo").open) {
         if (gi.mode === "rename" || gi.mode === "desc") $("giEditLb").textContent = t(gi.mode === "rename" ? "giRenameLb" : "giDescLb");
-        if (gi.ask) $("giAskText").textContent = gi.ask.kind === "leave" ? t("giLeaveAsk") : tf("giRemoveAsk", gi.ask.name);
-        if (gi.ask) $("giAskYes").textContent = t(gi.ask.kind === "leave" ? "giLeaveYes" : "giRemove");
+        if (gi.ask) [$("giAskText").textContent, $("giAskYes").textContent] = askWords(gi.ask);
+        if (gi.mode === "link") $("giLinkNote").textContent = t(gi.linkNote);
         render();
         syncAdd();
       }
@@ -418,6 +631,7 @@ export function makeGroupUi({ groups, uid, t, tf, getChats, getChat, avatarOf, n
     /** The page stops (log out): the windows close. */
     stop() {
       if ($("newGroup").open) $("newGroup").close();
+      if ($("joinGroup").open) $("joinGroup").close();
       if ($("ginfo").open) $("ginfo").close();
     },
   };

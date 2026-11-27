@@ -1,5 +1,5 @@
 // The web version sends the push for a message it wrote, from the browser. CORS for that is granted to the web address only, and only
-// on the main address "/". Runs with: cd worker && node --test
+// on the main address "/" and the two group routes (see webinvite.test.mjs). Runs with: cd worker && node --test
 import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
@@ -80,7 +80,7 @@ test("the phone's call (no Origin header) is exactly as before: no CORS headers"
 
 test("the other routes stay closed to browsers: no CORS headers, no preflight", async () => {
   net();
-  for (const path of ["/ai/translate", "/ai/transcribe", "/ai/linkcheck", "/finder/save", "/group/invite", "/group/join", "/anything"]) {
+  for (const path of ["/ai/translate", "/ai/transcribe", "/ai/linkcheck", "/finder/save", "/group", "/group/invite/x", "/anything"]) {
     const pre = await send(path, { method: "OPTIONS", origin: WEB });
     assert.equal(pre.headers.get("Access-Control-Allow-Origin"), null, "preflight " + path);
     const post = await send(path, { origin: WEB, body: {} });

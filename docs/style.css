@@ -469,3 +469,20 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
   .gi-members .gwho { flex: 1 1 calc(100% - 52px); }
   .gi-members .acts { flex-basis: 100%; padding-left: 50px; }
 }
+
+/* ------------------------------------------------------------------ stage 10 (6j): invitation links */
+.joingroup [hidden] { display: none !important; }
+.joingroup { width: min(420px, 94vw); }
+#jgLink, #giLinkIn { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; color: var(--text); background: var(--high); border: 1px solid transparent; border-radius: 12px; padding: 10px 14px; }
+#giLinkIn { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; background: var(--surface); text-overflow: ellipsis; }
+#jgLink:focus, #giLinkIn:focus { outline: none; border-color: var(--accent); }
+#jgLink:disabled { opacity: .7; }
+.jg-found { margin: 14px 0 0; padding: 12px 14px; border-radius: 14px; background: var(--high); }
+.jg-found b { display: block; font-size: 17px; overflow-wrap: anywhere; }
+.jg-found small { display: block; margin-top: 4px; font-size: 13.5px; line-height: 1.4; color: var(--text2); }
+.joingroup .ncerr { margin: 10px 0 0; }
+.joingroup .row { margin-top: 14px; }
+.gi-link { margin: 0 0 14px; padding: 12px; border-radius: 14px; background: var(--high); }
+.gi-link .ncl { margin-bottom: 6px; }
+.gi-link .small { margin: 8px 2px 0; line-height: 1.4; }
+.gi-link .row { margin-top: 12px; }

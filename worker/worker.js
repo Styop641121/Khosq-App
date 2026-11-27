@@ -1125,7 +1125,9 @@ async function linkRoute(req, env, path) {
 
 // The web version (docs/) also sends the push for a message it wrote. That call is the same as the phone's (POST to the main address with the
 // person's own Firebase token), and a browser needs CORS for it. It is granted to the web version's address only (LINK_ORIGINS / WEB_ORIGINS),
-// and only for the main address "/", never for /ai/*, /finder/*, /group/*, which stay closed to browsers.
+// and only for the main address "/" and the two group routes (the invitation link: /group/invite, /group/join). /ai/*, /finder/* and anything
+// else stay closed to browsers. A group route still needs the person's own Firebase token, exactly as for the phone.
+const WEB_PATHS = new Set(["/", "/group/invite", "/group/join"]);
 async function handle(req, env) {
     const linkPath = new URL(req.url).pathname;
     if (linkPath.startsWith("/link/")) return linkRoute(req, env, linkPath);
@@ -1233,7 +1235,7 @@ async function handle(req, env) {
 
 export default {
   async fetch(req, env) {
-    const web = new URL(req.url).pathname === "/" ? linkCors(req, env) : {};
+    const web = WEB_PATHS.has(new URL(req.url).pathname) ? linkCors(req, env) : {};
     if (Object.keys(web).length === 0) return handle(req, env);
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: web });
     const out = await handle(req, env);

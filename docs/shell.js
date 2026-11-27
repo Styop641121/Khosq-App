@@ -10,6 +10,7 @@ import { photoBytes, voiceMime, startVoice } from "./media.js";
 import { makePeople, cleanHandle } from "./people.js";
 import { makeGroups } from "./groups.js";
 import { makeGroupUi } from "./groupui.js";
+import { makeInvite } from "./invite.js";
 import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
@@ -125,6 +126,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
   const people = makePeople({ f, uid, user });
   const groups = makeGroups({ f, uid, user, cachePhoto: (id, v, bytes) => putPhoto(id, v, bytes) });
+  const invite = makeInvite({ f, worker: worker || "" });
   const stars = makeStars({ f, uid, e2e });
   const JUMP_PAGES = 5; // a jump to a message that is not loaded asks for at most this many older pages
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
@@ -1991,6 +1993,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
     $("newChat").close();
     groupUi.openNew();
   });
+  $("ncJoin").addEventListener("click", () => {
+    S.ncToken++;
+    S.ncBusy = false;
+    $("newChat").close();
+    groupUi.openJoin();
+  });
   // a search still on its way is forgotten the moment the window is left (a dialog's "close" event comes a little later than Esc or the button)
   const ncForget = () => {
     S.ncToken++;
@@ -2260,6 +2268,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
     pvOf: memberPv,
     toast,
     onCreated: (id) => openWhenListed(id),
+    invite,
+    onJoined: (id) => openWhenListed(id),
     onLeaving: (id) => {
       S.leaving = { id, until: Date.now() + 15000 }; // the list will soon lack this group: that is what I did, not news
     },

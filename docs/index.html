@@ -191,6 +191,7 @@
   <p class="small" id="ncMine"></p>
   <p class="ncerr" id="ncErr" role="alert" hidden></p>
   <button class="linkbtn" id="ncGroup" type="button" data-i18n="ncGroup"></button>
+  <button class="linkbtn" id="ncJoin" type="button" data-i18n="ncJoin"></button>
   <div class="row">
     <button class="btn ghost" id="ncNo" type="button" data-i18n="cancel"></button>
     <button class="btn" id="ncGo" type="button" data-i18n="ncGo"></button>
@@ -221,6 +222,21 @@
   </div>
 </dialog>
 
+<dialog id="joinGroup" class="pick joingroup" aria-labelledby="jgTitle">
+  <h2 id="jgTitle" data-i18n="jgTitle"></h2>
+  <label class="ncl" for="jgLink" data-i18n="jgLabel"></label>
+  <input id="jgLink" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go">
+  <div class="jg-found" id="jgFound" hidden>
+    <b id="jgName"></b>
+    <small id="jgInfo"></small>
+  </div>
+  <p class="ncerr" id="jgErr" role="alert" hidden></p>
+  <div class="row">
+    <button class="btn ghost" id="jgNo" type="button" data-i18n="cancel"></button>
+    <button class="btn" id="jgGo" type="button" disabled></button>
+  </div>
+</dialog>
+
 <dialog id="ginfo" class="pick ginfo" aria-labelledby="giName">
   <div class="gi-head">
     <span class="gi-av" id="giAv"></span>
@@ -235,7 +251,16 @@
     <button class="gbtn" id="giRenameB" type="button" data-i18n="giRename"></button>
     <button class="gbtn" id="giModeB" type="button" role="switch" aria-checked="false"><span data-i18n="giMode"></span><small id="giModeNote"></small></button>
     <button class="gbtn" id="giAddB" type="button" data-i18n="giAdd"></button>
-    <p class="small" data-i18n="giNoLink"></p>
+    <button class="gbtn" id="giLinkB" type="button"><span data-i18n="giLink"></span><small data-i18n="giLinkSub"></small></button>
+  </div>
+  <div class="gi-link" id="giLinkBox" hidden>
+    <label class="ncl" for="giLinkIn" data-i18n="giLinkLb"></label>
+    <input id="giLinkIn" type="text" readonly autocomplete="off" autocapitalize="none" spellcheck="false">
+    <p class="small" id="giLinkNote"></p>
+    <div class="row">
+      <button class="btn danger" id="giLinkNew" type="button" data-i18n="giLinkNew" disabled></button>
+      <button class="btn" id="giLinkCopy" type="button" data-i18n="giLinkCopy" disabled></button>
+    </div>
   </div>
   <div class="gi-edit" id="giEdit" hidden>
     <label class="ncl" id="giEditLb" for="giEditIn"></label>

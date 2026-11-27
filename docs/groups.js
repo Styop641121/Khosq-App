@@ -12,7 +12,7 @@
 //    what was sent before, a removed member cannot read what is sent after.
 // The Firestore rules decide in the end (an admin may change anything in the group, a member may only leave); the checks here are the ones
 // the phone's screen makes, so the page does not offer or send what the rules would refuse.
-// Not here: the invitation link. The phone asks the Worker for it, and the Worker answers only the phone (it does not allow a page to ask).
+// Not here: the invitation link. The phone and the page ask the Worker for it, and joining by a link is done by the Worker, not by the page: see invite.js.
 import { cut } from "./send.js";
 
 export const TITLE_MAX = 40; // the phone's field for the name of a group

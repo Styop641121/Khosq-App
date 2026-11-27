@@ -162,18 +162,60 @@
   </div>
 </section>
 
-<dialog id="about" class="about">
+<dialog id="about" class="about" aria-labelledby="name">
   <div class="me">
     <div class="avatar" id="avatar" aria-hidden="true"></div>
-    <div>
+    <div class="me-who">
       <h1 id="name"></h1>
-      <p class="muted" id="handle"></p>
+      <button class="idchip" id="idChip" type="button" data-i18n-aria="spCopyId" data-i18n-title="spCopyId"><span id="handle"></span><span class="cp" aria-hidden="true">⧉</span></button>
+      <small class="muted" id="idCopied" role="status" hidden></small>
     </div>
   </div>
-  <h2 data-i18n="homeTitle"></h2>
-  <ul class="checks" id="checks"></ul>
-  <p class="muted" id="keyid"></p>
-  <p class="muted" data-i18n="homeNext"></p>
+  <div class="sp-photo">
+    <button class="btn ghost" id="spPhoto" type="button" data-i18n="giPhoto"></button>
+    <button class="btn danger" id="spPhotoX" type="button" data-i18n="giPhotoX" hidden></button>
+  </div>
+  <input type="file" id="spFile" accept="image/*" hidden>
+  <p class="ncerr" id="spErr" role="alert" hidden></p>
+
+  <section class="sp-sec" aria-labelledby="spProfileH">
+    <h2 id="spProfileH" data-i18n="spProfile"></h2>
+    <label class="ncl" for="spName" data-i18n="spName"></label>
+    <input id="spName" type="text" maxlength="30" autocomplete="off" enterkeyhint="done">
+    <label class="ncl" for="spAbout" data-i18n="spAbout"></label>
+    <textarea id="spAbout" rows="3" maxlength="140" autocomplete="off" data-i18n-ph="spAboutPh"></textarea>
+    <div class="row">
+      <button class="btn" id="spSave" type="button" data-i18n="save" disabled></button>
+    </div>
+  </section>
+
+  <section class="sp-sec" aria-labelledby="spWallH">
+    <h2 id="spWallH" data-i18n="spWall"></h2>
+    <div class="walls" id="spWalls" role="radiogroup" aria-labelledby="spWallH"></div>
+    <p class="small" data-i18n="spLocal"></p>
+  </section>
+
+  <section class="sp-sec" aria-labelledby="spThemeH">
+    <h2 id="spThemeH" data-i18n="spTheme"></h2>
+    <div class="seg" id="spThemes" role="radiogroup" aria-labelledby="spThemeH">
+      <button type="button" role="radio" aria-checked="false" data-theme="system" data-i18n="spThemeSystem"></button>
+      <button type="button" role="radio" aria-checked="false" data-theme="light" data-i18n="spThemeLight"></button>
+      <button type="button" role="radio" aria-checked="false" data-theme="dark" data-i18n="spThemeDark"></button>
+    </div>
+  </section>
+
+  <section class="sp-sec" aria-labelledby="spPrivH">
+    <h2 id="spPrivH" data-i18n="spPrivacy"></h2>
+    <button class="gbtn" id="spOnline" type="button" role="switch" aria-checked="true"><span data-i18n="spOnline"></span><small data-i18n="spOnlineNote"></small></button>
+    <p class="small" data-i18n="spOnlineWeb"></p>
+  </section>
+
+  <section class="sp-sec" aria-labelledby="homeTitle">
+    <h2 id="homeTitle" data-i18n="homeTitle"></h2>
+    <ul class="checks" id="checks"></ul>
+    <p class="muted" id="keyid"></p>
+    <p class="muted" data-i18n="homeNext"></p>
+  </section>
   <div class="row spread">
     <button class="btn danger" id="logout" type="button" data-i18n="logout"></button>
     <button class="btn ghost" id="aboutClose" type="button" data-i18n="close"></button>

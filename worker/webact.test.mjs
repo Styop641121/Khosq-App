@@ -267,6 +267,27 @@ test("a reaction on somebody else's message asks for a push, once the server has
   }
 });
 
+test("my name may be a function: a push sent after I changed my name carries the new name", async () => {
+  const rig = pushRig();
+  try {
+    let cur = "Ani";
+    const s = makeSender({ f: rig.f, uid: "Aa1", name: () => cur, e2e: null, worker: "https://w.example/" });
+    rig.let();
+    cur = "Ani Nor";
+    const r = s.react({ id: "Aa1_Bb2" }, mine("Bb2"), "😂");
+    await r.committed;
+    await r.pushed;
+    assert.equal(rig.asked[0].body.title, "Ani Nor");
+    cur = null;
+    const r2 = s.react({ id: "Aa1_Bb2" }, mine("Bb2", { id: "m2" }), "❤️");
+    await r2.committed;
+    await r2.pushed;
+    assert.equal(rig.asked[1].body.title, "", "no name: an empty title, not the word null");
+  } finally {
+    rig.done();
+  }
+});
+
 test("a reaction in a group: the title is the group's, and the message is named so the Worker can find its author", async () => {
   const rig = pushRig();
   try {

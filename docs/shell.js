@@ -11,6 +11,9 @@ import { makePeople, cleanHandle } from "./people.js";
 import { makeGroups } from "./groups.js";
 import { makeGroupUi } from "./groupui.js";
 import { makeInvite } from "./invite.js";
+import { makeProfile, shownName } from "./profile.js";
+import { makeSettingsUi } from "./settingsui.js";
+import * as look from "./look.js";
 import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
@@ -123,10 +126,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
     },
     pins,
   });
-  const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
+  const sender = makeSender({ f, uid, name: () => shownName(user), e2e, worker: worker || "" });
   const people = makePeople({ f, uid, user });
   const groups = makeGroups({ f, uid, user, cachePhoto: (id, v, bytes) => putPhoto(id, v, bytes) });
   const invite = makeInvite({ f, worker: worker || "" });
+  // my own profile (6k): [user] is changed in place by profile.js, so everything that holds it sees a new name or picture
+  const profile = makeProfile({ f, uid, user, cachePhoto: (id, v, bytes) => putPhoto(id, v, bytes), onChange: () => onProfile() });
   const stars = makeStars({ f, uid, e2e });
   const JUMP_PAGES = 5; // a jump to a message that is not loaded asks for at most this many older pages
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
@@ -1984,7 +1989,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
     S.q = $("q").value;
     renderList();
   });
-  $("meBtn").addEventListener("click", () => onAbout());
+  $("meBtn").addEventListener("click", () => {
+    settingsUi.render();
+    onAbout();
+  });
   $("newBtn").addEventListener("click", openNewChat);
   $("ncGo").addEventListener("click", goNewChat);
   $("ncGroup").addEventListener("click", () => {
@@ -2199,7 +2207,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   const calls = makeCalls({
     f,
     uid,
-    name: user.name || user.handle || "",
+    name: () => shownName(user),
     worker: worker || "",
     rtc: rtcOk ? { Peer: RTCPeerConnection, getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c), Stream: MediaStream } : null,
     resolveName: callerName,
@@ -2284,6 +2292,23 @@ export function startShell({ f, id, user, onAbout, worker }) {
   $("chAv").addEventListener("click", openOwnGroup);
   $("chName").parentElement.addEventListener("click", openOwnGroup);
 
+  const settingsUi = makeSettingsUi({
+    profile,
+    user,
+    uid,
+    t,
+    tf,
+    toast,
+    look,
+    avatar: (who, name, v) => avatar(who, name, v),
+  });
+  /** My profile changed (here, or on the phone): the places that show it are drawn again, and the chats are told. */
+  function onProfile() {
+    me();
+    settingsUi.render();
+    profile.syncChats(S.chats);
+  }
+
   me();
   chips();
   $("paneEmpty").hidden = false;
@@ -2313,10 +2338,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
       },
     ),
   );
+  S.stops.push(profile.watch());
   S.stops.push(
     data.watchChats(
       (list) => {
         S.chats = list;
+        profile.syncChats(list);
         S.loadedChats = true;
         S.failed = false;
         if (S.open) {
@@ -2381,12 +2408,14 @@ export function startShell({ f, id, user, onAbout, worker }) {
       renderStarred();
       callUi.relang();
       groupUi.relang();
+      settingsUi.relang();
     },
     stop() {
       leaveChat(); // also ends a recording and lets the microphone go
       calls.stop(); // a call in progress ends (hang-up written), the listener of incoming calls goes
       callUi.stop();
       groupUi.stop();
+      settingsUi.stop();
       tones.stop();
       $("callBtn").removeEventListener("click", onVoice);
       $("vidBtn").removeEventListener("click", onVideo);

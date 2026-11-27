@@ -74,7 +74,7 @@ const str = (v) => (typeof v === "string" ? v : "");
  * @param {object} o
  * @param {{db: object, fsM: object, auth?: object}} o.f  the signed-in Firebase
  * @param {string} o.uid  my account id
- * @param {string} o.name  my name (shown to the other side, and the title of the push)
+ * @param {string|(() => string)} o.name  my name (shown to the other side, and the title of the push); a function when it can change while the page is open
  * @param {string} [o.worker]  the Worker's address ("" = no push, no TURN keys)
  * @param {{Peer: Function, getUserMedia: Function, Stream: Function}} o.rtc  RTCPeerConnection, navigator.mediaDevices.getUserMedia, MediaStream
  * @param {{setTimeout: Function, clearTimeout: Function}} [o.timers]
@@ -85,6 +85,7 @@ const str = (v) => (typeof v === "string" ? v : "");
 export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) }, now = () => Date.now(), resolveName = (u, c) => c, onChange = () => {} }) {
   const { db, fsM } = f;
   const T = timers;
+  const myName = () => String((typeof name === "function" ? name() : name) || "");
   const blank = () => ({ phase: PHASE.IDLE, callId: "", peerUid: "", peerName: "", video: false, outgoing: false, muted: false, cameraOn: false, noCamera: false, local: null, remote: null, note: "", startedAt: 0 });
   let st = blank();
 
@@ -166,7 +167,7 @@ export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeou
       await fetch(worker, {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-        body: JSON.stringify({ chatId: dmId(uid, peerUid), type: "call", title: cut(name || "", 60), body: video ? "\u{1F4F9}" : "\u{1F4DE}" }),
+        body: JSON.stringify({ chatId: dmId(uid, peerUid), type: "call", title: cut(myName(), 60), body: video ? "\u{1F4F9}" : "\u{1F4DE}" }),
       });
     } catch (e) {
       // the phone still rings when it is looking at the calls by itself
@@ -497,7 +498,7 @@ export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeou
       if (g !== gen) return { ok: false, why: "gone" };
       await fsM.setDoc(callRef(id), {
         caller: uid,
-        callerName: name || "",
+        callerName: myName(),
         callee: peerUid,
         calleeName: peerName || "",
         kind: wantVideo ? "video" : "audio",

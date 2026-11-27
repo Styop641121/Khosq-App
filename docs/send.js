@@ -101,7 +101,7 @@ export function lastReal(list) {
  * @param {object} o
  * @param {object} o.f  the signed-in Firebase ({auth, db, fsM})
  * @param {string} o.uid  my account id
- * @param {string} o.name  my name (the title of the push for a one-to-one chat)
+ * @param {string|(() => string)} o.name  my name (the title of the push for a one-to-one chat); a function when it can change while the page is open
  * @param {object} o.e2e  docs/e2e.js
  * @param {string} o.worker  the Worker's address ("" = no push)
  */
@@ -120,7 +120,7 @@ export function makeSender({ f, uid, name, e2e, worker }) {
       const user = f.auth && f.auth.currentUser;
       if (!user || typeof user.getIdToken !== "function") return;
       const token = await user.getIdToken();
-      const title = chat.group ? String(chat.title || "") : name;
+      const title = chat.group ? String(chat.title || "") : String((typeof name === "function" ? name() : name) || "");
       await fetch(worker, {
         method: "POST",
         headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },

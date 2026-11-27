@@ -17,7 +17,7 @@
   --shadow: 0 10px 40px rgba(40, 40, 90, 0.12);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #090a0f;
     --glow: #10112a;
     --surface: #12141d;
@@ -34,6 +34,24 @@
     --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
   }
 }
+:root[data-theme="dark"] {
+  --bg: #090a0f;
+  --glow: #10112a;
+  --surface: #12141d;
+  --high: #1a1d29;
+  --line: rgba(255, 255, 255, 0.08);
+  --line2: rgba(255, 255, 255, 0.15);
+  --text: #f1f2f8;
+  --text2: #9ea3b6;
+  --text3: #7b8097;
+  --accent: #8187f8;
+  --accent-soft: rgba(99, 102, 241, 0.16);
+  --danger: #fb6a80;
+  --success: #34d399;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body {
@@ -175,11 +193,13 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .bubble { position: relative; padding: 7px 11px 5px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); min-width: 64px; max-width: 100%; }
 .msg.in .bubble { border-top-left-radius: 5px; }
 .msg.out .bubble { border-top-right-radius: 5px; background: #e3e5ff; border-color: transparent; }
-@media (prefers-color-scheme: dark) { .msg.out .bubble { background: #2a2c63; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg.out .bubble { background: #2a2c63; } }
+:root[data-theme="dark"] .msg.out .bubble { background: #2a2c63; }
 .bubble.bare { background: transparent; border-color: transparent; padding: 2px 4px; }
 .txt { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 .who { font-size: 13px; font-weight: 700; margin-bottom: 1px; color: hsl(var(--h, 240) 62% 42%); }
-@media (prefers-color-scheme: dark) { .who { color: hsl(var(--h, 240) 70% 72%); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .who { color: hsl(var(--h, 240) 70% 72%); } }
+:root[data-theme="dark"] .who { color: hsl(var(--h, 240) 70% 72%); }
 .fwd { font-size: 12.5px; font-style: italic; color: var(--text3); margin-bottom: 2px; }
 .quote { display: flex; flex-direction: column; margin: 2px 0 5px; padding: 4px 9px; border-left: 3px solid var(--accent); border-radius: 6px; background: var(--accent-soft); font-size: 13.5px; }
 .qn { color: var(--accent); }
@@ -206,7 +226,7 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .sos { font-weight: 700; color: var(--danger); }
 .reacts { display: flex; gap: 4px; margin: -6px 8px 0; position: relative; z-index: 1; }
 .reacts .chip { font-size: 13px; padding: 0 7px; line-height: 20px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line2); }
-.about { width: min(440px, 92vw); max-width: none; }
+.about { width: min(460px, 94vw); max-width: none; max-height: 92vh; overflow-y: auto; }
 .about .me { margin-bottom: 10px; }
 .shot { max-width: 96vw; max-height: 96vh; padding: 0; border: 0; background: transparent; box-shadow: none; }
 .shot img { display: block; max-width: 96vw; max-height: 92vh; border-radius: 12px; }
@@ -486,3 +506,49 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .gi-link .ncl { margin-bottom: 6px; }
 .gi-link .small { margin: 8px 2px 0; line-height: 1.4; }
 .gi-link .row { margin-top: 12px; }
+
+/* ------------------------------------------------------------------ stage 11 (6k): my profile and settings, the theme, the chat background */
+.about [hidden] { display: none !important; }
+.about .avatar { width: 76px; height: 76px; background: none; }
+.about .avatar .av { width: 76px; height: 76px; font-size: 32px; }
+.me-who { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.idchip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 12px; border: 1px solid var(--line2); border-radius: 999px; background: var(--accent-soft); color: var(--accent); font: inherit; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 15px; font-weight: 600; cursor: pointer; }
+.idchip #handle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idchip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.me-who small { margin: 0; font-size: 12.5px; }
+.sp-photo { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 4px; }
+.sp-photo .btn { padding: 7px 14px; font-size: 14px; }
+.about .ncerr { margin: 8px 0 0; }
+.sp-sec { margin: 16px 0 0; padding-top: 4px; border-top: 1px solid var(--line); }
+.sp-sec h2 { margin: 12px 0 8px; font-size: 16px; }
+.sp-sec .ncl { margin-top: 10px; }
+.sp-sec .small { margin: 8px 2px 0; line-height: 1.4; }
+.sp-sec .row { margin-top: 12px; }
+#spName, #spAbout { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; color: var(--text); background: var(--high); border: 1px solid transparent; border-radius: 12px; padding: 10px 14px; }
+#spAbout { resize: vertical; min-height: 4.5em; max-height: 9em; }
+#spName:focus, #spAbout:focus { outline: none; border-color: var(--accent); }
+.walls { display: flex; gap: 10px; padding: 4px 2px 8px; overflow-x: auto; }
+.wall { position: relative; flex: none; width: 56px; height: 80px; padding: 0; border: 1px solid var(--line2); border-radius: 12px; cursor: pointer; background: var(--bg); overflow: hidden; }
+.wall[aria-checked="true"] { border: 2.5px solid var(--accent); }
+.wall[aria-checked="true"]::after { content: "✓"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 22px; font-weight: 700; color: var(--accent); }
+.wall:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.wall[data-wp] { background: linear-gradient(180deg, var(--wa), var(--wb)); }
+.wall[data-wp="dots"] { background: radial-gradient(circle, var(--wi) 1.2px, transparent 1.8px) 0 0 / 14px 14px, linear-gradient(180deg, var(--wa), var(--wb)); }
+.wall[data-wp="lines"] { background: repeating-linear-gradient(45deg, var(--wi) 0, var(--wi) 1px, transparent 1px, transparent 9px), linear-gradient(180deg, var(--wa), var(--wb)); }
+.seg { display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: var(--high); border: 1px solid var(--line); }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--text2); padding: 8px 10px; border-radius: 9px; font: inherit; font-size: 14px; cursor: pointer; }
+.seg button[aria-checked="true"] { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.seg button:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+#spOnline { position: relative; padding-right: 64px; }
+#spOnline::after { content: ""; position: absolute; right: 12px; top: 50%; width: 38px; height: 22px; margin-top: -11px; border-radius: 999px; background: var(--text3); }
+#spOnline::before { content: ""; position: absolute; z-index: 1; right: 32px; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 50%; background: #fff; transition: right .15s; }
+#spOnline[aria-checked="true"]::after { background: var(--accent); }
+#spOnline[aria-checked="true"]::before { right: 14px; }
+#spOnline[aria-checked="true"] small { color: var(--text3); }
+#spOnline[disabled] { opacity: .6; cursor: default; }
+@media (prefers-reduced-motion: reduce) { #spOnline::before { transition: none; } }
+
+/* the chat background (look.js sets the colours on the page; the patterns are here) */
+:root[data-wall] .msgs { background: linear-gradient(180deg, var(--wall-a), var(--wall-b)); }
+:root[data-wallp="dots"] .msgs { background: radial-gradient(circle, var(--wall-ink) 1.6px, transparent 2.2px) 0 0 / 26px 26px, linear-gradient(180deg, var(--wall-a), var(--wall-b)); }
+:root[data-wallp="lines"] .msgs { background: repeating-linear-gradient(45deg, var(--wall-ink) 0, var(--wall-ink) 1px, transparent 1px, transparent 15.5px), linear-gradient(180deg, var(--wall-a), var(--wall-b)); }

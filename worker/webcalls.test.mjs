@@ -967,3 +967,22 @@ test("a call that ends for a reason of the browser (an error) writes no line; th
     p.done();
   }
 });
+
+test("my name may be a function: a call made after I changed my name carries the new name, in the call and in the push", async () => {
+  const p = pair();
+  try {
+    let cur = "Ստյոպա";
+    const x = p.mk(ME, () => cur);
+    p.b.c.listen();
+    await flush();
+    cur = "Ստյոպա Նոր";
+    const r = await x.c.call({ peerUid: BOB, peerName: "Բոբ", video: false });
+    assert.equal(r.ok, true);
+    await flush();
+    assert.equal(p.store.collection("calls")[0].data.callerName, "Ստյոպա Նոր");
+    assert.equal(p.requests.filter((q) => q.body.type === "call")[0].body.title, "Ստյոպա Նոր");
+    assert.equal(p.b.c.state().peerName, "Ստյոպա", "the callee's own chat name wins, as before (resolveName)");
+  } finally {
+    p.done();
+  }
+});

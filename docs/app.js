@@ -7,6 +7,7 @@ import { qrSvg } from "./qr.js";
 import { loadIdentity, saveIdentity, clearIdentity } from "./store.js";
 import { startLang, setLang, lang, t, LANGS } from "./i18n.js";
 import { startShell } from "./shell.js";
+import { startLook } from "./look.js";
 
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -256,7 +257,7 @@ async function home(id) {
   renderHome(homeState);
   show("app");
   if (shell) shell.stop();
-  shell = startShell({ f, id, user: { name: d.name || "", handle: d.handle || "", pv: Number(d.pv) || 0 }, onAbout: () => $("about").showModal(), worker: WORKER });
+  shell = startShell({ f, id, user: { name: d.name || "", handle: d.handle || "", about: typeof d.about === "string" ? d.about : "", pv: Number(d.pv) || 0, hideSeen: d.hideSeen === true }, onAbout: () => $("about").showModal(), worker: WORKER });
   $("aboutClose").onclick = () => $("about").close();
   $("logout").onclick = () => {
     $("about").close();
@@ -307,6 +308,7 @@ async function boot() {
   return login();
 }
 
+startLook(); // the theme this browser kept, before the first screen
 startLang();
 buildLangs();
 applyLang();

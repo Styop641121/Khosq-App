@@ -11,6 +11,9 @@ import { makePeople, cleanHandle } from "./people.js";
 import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
+import { makeCalls } from "./calls.js";
+import { makeCallUi } from "./callui.js";
+import { makeTones } from "./tones.js";
 
 const $ = (id) => document.getElementById(id);
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -908,6 +911,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     $("app").classList.remove("open");
     leaveChat();
     S.open = null;
+    updateCallButtons();
     S.loadingMsgs = false;
     $("chat").hidden = true;
     $("paneEmpty").hidden = false;
@@ -950,6 +954,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
 
   /** Opens or closes the box for the open chat: the conditions of the Firestore rules, and an unchecked key change in a one-to-one chat. */
   function updateComposer() {
+    updateCallButtons();
     const v = S.open;
     if (!v) return;
     let why = whyNot(v.raw, uid);
@@ -2122,9 +2127,17 @@ export function startShell({ f, id, user, onAbout, worker }) {
 
   // the server is asked for changes only while somebody looks: after two minutes in the background the connection rests
   let rest = 0;
+  const restSoon = () => {
+    rest = setTimeout(() => {
+      // a call that rings or goes on keeps the connection awake (the other side's hang-up must be heard, mine must go out)
+      const ph = calls.state().phase;
+      if (ph !== "idle" && ph !== "ended") return restSoon();
+      f.fsM.disableNetwork(f.db).catch(() => {});
+    }, 120000);
+  };
   const onVis = () => {
     if (document.hidden) {
-      rest = setTimeout(() => f.fsM.disableNetwork(f.db).catch(() => {}), 120000);
+      restSoon();
     } else {
       clearTimeout(rest);
       f.fsM.enableNetwork(f.db).catch(() => {});
@@ -2132,6 +2145,79 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
   };
   document.addEventListener("visibilitychange", onVis);
+
+
+  // ---------------------------------------------------------------------------------------------- calls (stage 8)
+  // The page rings only while it is open (a browser has no way to wake a closed page). The sound needs one touch of the page first (a browser's rule).
+  const rtcOk = Boolean(typeof RTCPeerConnection === "function" && navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === "function");
+  const tones = makeTones(window);
+  const callUi = makeCallUi({
+    actions: {
+      accept: () => calls.accept(),
+      hangup: () => calls.hangup(),
+      toggleMute: () => calls.toggleMute(),
+      toggleCamera: () => calls.toggleCamera(),
+    },
+    t,
+    avatarFor: (who, name) => {
+      const c = S.chats.find((x) => x.group !== true && Array.isArray(x.members) && x.members.includes(who));
+      return avatar(who, name, c && c.pv ? num(c.pv[who]) : 0);
+    },
+    tones,
+    onClosed: () => {
+      if (S.open) $("msgIn").focus();
+    },
+  });
+  /** The name to show for a caller: what my own chat with them says (the name they wrote in the call is only the fallback). */
+  function callerName(who, claimed) {
+    const c = S.chats.find((x) => x.group !== true && Array.isArray(x.members) && x.members.includes(who));
+    const own = c && c.names && typeof c.names[who] === "string" ? c.names[who] : "";
+    return own || claimed;
+  }
+  let callPhase = "idle";
+  const calls = makeCalls({
+    f,
+    uid,
+    name: user.name || user.handle || "",
+    worker: worker || "",
+    rtc: rtcOk ? { Peer: RTCPeerConnection, getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c), Stream: MediaStream } : null,
+    resolveName: callerName,
+    onChange: (s) => {
+      if (s.phase === "incoming" && callPhase !== "incoming") {
+        // a call comes first: a window that has the page locked (the profile, the list of people to forward to ...) is closed so the call can be seen and answered
+        for (const d of document.querySelectorAll("dialog[open]")) d.close();
+      }
+      callPhase = s.phase;
+      callUi.render(s);
+    },
+  });
+  /** The two buttons in the header of a chat: only for a one-to-one chat that is accepted and not blocked (the phone's conditions, and the rules'). */
+  function updateCallButtons() {
+    const v = S.open;
+    const ok = rtcOk && Boolean(v) && !v.group && !v.saved && Boolean(v.peer) && (v.raw.status || "active") === "active" && !v.blocked;
+    $("callBtn").hidden = !ok;
+    $("vidBtn").hidden = !ok;
+  }
+  async function placeCall(video) {
+    const v = S.open;
+    if (!v || !v.peer) return;
+    tones.unlock();
+    const r = await calls.call({ peerUid: v.peer, peerName: v.title, video });
+    if (!r.ok && r.why === "busy") toast(t("callBusyNow"));
+  }
+  const onVoice = () => placeCall(false);
+  const onVideo = () => placeCall(true);
+  $("callBtn").addEventListener("click", onVoice);
+  $("vidBtn").addEventListener("click", onVideo);
+  // a touch of the page (a click, a key) lets the browser make sound: the next beep of the ring is heard (Safari wants this inside the touch itself)
+  const onGesture = () => tones.unlock();
+  document.addEventListener("click", onGesture, true);
+  document.addEventListener("keydown", onGesture, true);
+  const onHide = () => {
+    if (calls.state().phase !== "idle") calls.hangup();
+  };
+  window.addEventListener("pagehide", onHide);
+  if (rtcOk) calls.listen();
 
   me();
   chips();
@@ -2215,9 +2301,20 @@ export function startShell({ f, id, user, onAbout, worker }) {
         renderMessages();
       }
       renderStarred();
+      callUi.relang();
     },
     stop() {
       leaveChat(); // also ends a recording and lets the microphone go
+      calls.stop(); // a call in progress ends (hang-up written), the listener of incoming calls goes
+      callUi.stop();
+      tones.stop();
+      $("callBtn").removeEventListener("click", onVoice);
+      $("vidBtn").removeEventListener("click", onVideo);
+      $("callBtn").hidden = true;
+      $("vidBtn").hidden = true;
+      document.removeEventListener("click", onGesture, true);
+      document.removeEventListener("keydown", onGesture, true);
+      window.removeEventListener("pagehide", onHide);
       for (const s of S.stops) s();
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onPointer, true);

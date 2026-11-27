@@ -24,6 +24,7 @@ export function makeData(f, uid) {
       kind: x.kind || "text",
       data: bytesOf(x.data),
       dur: Number(x.dur) || 0,
+      wave: typeof x.wave === "string" ? x.wave : "",
       reply: typeof x.reply === "string" ? x.reply : "",
       replyFrom: x.replyFrom || "",
       deleted: x.deleted === true,
@@ -79,6 +80,16 @@ export function makeData(f, uid) {
       const snap = await fsM.getDocs(q);
       const docs = snap.docs;
       return { list: docs.map(messageOf).reverse(), oldest: docs.length ? docs[docs.length - 1] : beforeDoc, more: docs.length >= n };
+    },
+
+    /** One message by its id, once (the pinned message of a chat when it is not among the loaded ones): the message, or null when it is not there. */
+    async message(chatId, id) {
+      try {
+        const d = await fsM.getDoc(fsM.doc(db, "chats", chatId, "messages", id));
+        return d.exists() ? messageOf(d) : null;
+      } catch (e) {
+        return null;
+      }
     },
 
     /** users/{id}: name, handle, public key ... or null. */

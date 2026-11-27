@@ -46,6 +46,9 @@
   <aside class="side">
     <div class="side-top">
       <button class="mebtn" id="meBtn" type="button" data-i18n-title="about"></button>
+      <button class="hbtn" id="starBtn" type="button" aria-haspopup="dialog" data-i18n-aria="starsTitle" data-i18n-title="starsTitle">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="m12 3.2 2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      </button>
       <button class="plus" id="newBtn" type="button" data-i18n-aria="newChat" data-i18n-title="newChat">
         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" fill="currentColor"/></svg>
       </button>
@@ -72,6 +75,13 @@
         </button>
       </header>
       <p class="warn" id="warn" role="alert" hidden><span id="warnText"></span><button class="btn ghost" id="warnOk" type="button" data-i18n="ackKey"></button></p>
+      <div class="pinbar" id="pinBar" hidden>
+        <button class="pin-go" id="pinGo" type="button" data-i18n-aria="pinGo">
+          <b data-i18n="pinnedMsg"></b>
+          <span id="pinText"></span>
+        </button>
+        <button class="icon-btn" id="pinX" type="button" data-i18n-aria="pinOff" data-i18n-title="pinOff">✕</button>
+      </div>
       <div class="msgs" id="msgs">
         <button class="btn ghost more" id="older" type="button" data-i18n="older" hidden></button>
         <p class="hint" id="msgLoading" data-i18n="loadingMsgs" hidden></p>
@@ -152,6 +162,25 @@
     <button class="btn ghost" id="ncNo" type="button" data-i18n="cancel"></button>
     <button class="btn" id="ncGo" type="button" data-i18n="ncGo"></button>
   </div>
+</dialog>
+
+<dialog id="fwd" class="pick" aria-labelledby="fwdTitle">
+  <h2 id="fwdTitle" data-i18n="fwdTitle"></h2>
+  <p class="small" id="fwdNone" data-i18n="fwdNone" hidden></p>
+  <ul class="picks" id="fwdList"></ul>
+  <div class="row">
+    <button class="btn ghost" id="fwdNo" type="button" data-i18n="cancel"></button>
+    <button class="btn" id="fwdGo" type="button" disabled></button>
+  </div>
+</dialog>
+
+<dialog id="starred" class="pick starred" aria-labelledby="stTitle">
+  <div class="st-head">
+    <h2 id="stTitle" data-i18n="starsTitle"></h2>
+    <button class="icon-btn" id="stClose" type="button" data-i18n-aria="close">✕</button>
+  </div>
+  <p class="hint" id="stNote" hidden></p>
+  <ul class="picks stars" id="stList"></ul>
 </dialog>
 
 <dialog id="shot" class="shot"><img id="shotImg" alt=""></dialog>

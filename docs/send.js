@@ -6,6 +6,9 @@
 // (reactions.<me>), a changed text of my own message (re-sealed with the same message key, within 15 minutes), and "delete for everyone".
 // A reaction put on somebody else's message also asks the Worker for a push to its author (type "react"), like the phone.
 //
+// Stage 7 (6g) adds forwarding (Repository.forward: a copy of a message, marked "fwd", sealed again for the other chat) and pinning a message
+// (the chat's "pin" field holds the message id, nothing else).
+//
 // Stage 5 (6e) adds a photo and a voice note (Repository.sendMedia): the bytes are sealed with the message key (field "d") and kept in the message.
 //
 // One difference, on purpose: when a message cannot be sealed (the other person, or somebody in the group, has no key yet: an old version of
@@ -15,7 +18,8 @@ import { STICKERS } from "./stickers.js";
 export const MAX_TEXT = 4000; // the same limit as the phone's text field
 export const MAX_MEDIA = 900000; // a photo or a voice note must be smaller than this (the phone's limit: it has to fit inside one message)
 const WAVE_RE = /^[1-9]{40}$/; // the loudness bars of a voice note: 40 digits 1..9 (what the phone's player draws)
-const PREVIEW = { img: "\u{1F4F7}", voice: "\u{1F3A4}" }; // the chat-list line of a photo and of a voice note (as the phone: lastOf)
+const PREVIEW = { img: "\u{1F4F7}", voice: "\u{1F3A4}", loc: "\u{1F4CD}", sticker: "\u{1F642}" }; // the chat-list line of a photo, a voice note, a place and a sticker (as the phone: lastOf)
+const FORWARD_KINDS = new Set(["text", "img", "voice", "loc", "sticker"]); // what the page can forward (a poll and an SOS card are not copied)
 export const MARK = ""; // starts the marker the phone stores for a quoted photo, voice message, location or sticker (REPLY_IMG ...)
 
 /** The first [n] UTF-16 units (like Kotlin's take), without cutting an emoji or other surrogate pair in half. */
@@ -76,6 +80,16 @@ export function canEdit(m, uid, now) {
 
 /** May I delete this for everyone? Only my own. */
 export const canDelete = (m, uid) => isActionable(m) && m.from === uid;
+
+/**
+ * May this message be forwarded (or starred)? A real message I can read: a text, a photo, a voice note, a place or a sticker. The phone also
+ * copies a poll; the page does not show polls yet, so it does not copy one. Never an SOS card (it means something only where it was sent).
+ */
+export function canForward(m, view) {
+  if (!isActionable(m) || !FORWARD_KINDS.has(m.kind) || !view || view.ok !== true) return false;
+  if (m.kind === "img" || m.kind === "voice") return view.bytes instanceof Uint8Array && view.bytes.length > 0;
+  return typeof view.text === "string" && view.text.length > 0;
+}
 
 /** The newest message of the kinds that show in the chat list (the phone's "isLast": the chat's preview is then this message). */
 export function lastReal(list) {
@@ -231,6 +245,69 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     return writeNew(chat, chatRef, msgRef, fields, preview, others);
   }
 
+  /**
+   * Sends a copy of a message into [chat] (the phone's Repository.forward): the same kind, text, bytes, length and loudness bars, marked
+   * {fwd: true}, sealed again for the people of THIS chat. A quote, the reactions and the "changed" mark are not copied. The chat-list line is
+   * the text itself (first 80 characters, sealed) or, for a photo, voice note, place or sticker, the sign of its kind. The chat must be one the
+   * phone would offer: a group, or a chat that is accepted; and one I may write to. Resolves like sendText.
+   * @param {object} m  the message ({kind, dur, wave, ...})
+   * @param {{ok: boolean, text: string, bytes: Uint8Array|null}} view  what the message holds, opened
+   */
+  async function forward(chat, m, view) {
+    if (!canForward(m, view)) return { ok: false, why: "no" };
+    const why = whyNot(chat, uid);
+    if (why) return { ok: false, why };
+    if (chat.group !== true && (chat.status || "active") !== "active") return { ok: false, why: "pending" };
+    const others = othersOf(chat);
+    if (!others) return { ok: false, why: "noChat" };
+
+    const chatRef = fsM.doc(db, "chats", chat.id);
+    const msgRef = fsM.doc(fsM.collection(db, "chats", chat.id, "messages"));
+    let seal = null;
+    try {
+      seal = await e2e.begin(chat.id, msgRef.id, others);
+    } catch (e) {
+      seal = null;
+    }
+    if (!seal) return { ok: false, why: "noKey" };
+
+    const card = m.kind !== "text"; // the kinds that have a sign in the chat list (the phone's isCardKind)
+    const text = typeof view.text === "string" ? view.text : "";
+    const fields = {
+      from: uid,
+      text: text ? await e2e.sealText(seal.key, chat.id, uid, "t", text) : "",
+      kind: m.kind,
+      dur: m.kind === "voice" ? Math.max(0, Math.min(3600, Math.floor(Number(m.dur) || 0))) : 0,
+      fwd: true,
+      ts: fsM.serverTimestamp(),
+      e: true,
+    };
+    if (seal.wraps) fields.w = seal.wraps;
+    if (view.bytes) fields.data = fsM.Bytes.fromUint8Array(await e2e.sealBytes(seal.key, chat.id, uid, "d", view.bytes));
+    if (m.kind === "voice" && WAVE_RE.test(String(m.wave))) fields.wave = String(m.wave);
+    const line = card ? PREVIEW[m.kind] : cut(text, 80);
+    const sealedLine = !card && line !== "";
+    const preview = {
+      lastText: sealedLine ? await e2e.sealText(seal.key, chat.id, uid, "l", line) : line,
+      lastEnc: sealedLine,
+      lastW: sealedLine && seal.wraps ? seal.wraps : fsM.deleteField(),
+      lastKind: card ? m.kind : "text",
+      lastTs: Date.now(),
+      lastFrom: uid,
+    };
+    return writeNew(chat, chatRef, msgRef, fields, preview, others);
+  }
+
+  /**
+   * Pins a message at the top of the chat for everybody (msgId = null takes the pin off): the chat's "pin" field holds the id and nothing else
+   * (the phone's setPinned). In an announcement group only the admins may; the Firestore rules would allow anybody, the phone's screen does not.
+   */
+  function setPinned(chat, msgId) {
+    if (msgId !== null && (typeof msgId !== "string" || !msgId)) return { ok: false, why: "no" };
+    if (whyNot(chat, uid) === "admins") return { ok: false, why: "admins" };
+    return { ok: true, committed: fsM.updateDoc(fsM.doc(db, "chats", chat.id), { pin: msgId === null ? fsM.deleteField() : msgId }) };
+  }
+
   /** "Read": the unread counter of mine goes to 0 and the others' read ticks turn (the phone's markRead). */
   function markRead(chat) {
     return fsM
@@ -311,5 +388,5 @@ export function makeSender({ f, uid, name, e2e, worker }) {
     return { ok: true, committed: batch.commit() };
   }
 
-  return { sendText, sendMedia, markRead, markDelivered, react, edit, remove, sending };
+  return { sendText, sendMedia, forward, setPinned, markRead, markDelivered, react, edit, remove, sending };
 }

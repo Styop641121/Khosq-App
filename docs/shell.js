@@ -4,7 +4,8 @@
 import { t, tf, lang } from "./i18n.js";
 import { makeData, PAGE } from "./data.js";
 import { makeE2E } from "./e2e.js";
-import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, isActionable, lastReal } from "./send.js";
+import { makeSender, whyNot, replyOf, REACTIONS, canEdit, canDelete, canForward, isActionable, lastReal, cut } from "./send.js";
+import { makeStars, starFor, starKey } from "./stars.js";
 import { photoBytes, voiceMime, startVoice } from "./media.js";
 import { makePeople, cleanHandle } from "./people.js";
 import { similarNames } from "./lookalike.js";
@@ -83,6 +84,16 @@ function quoteText(raw) {
   }
 }
 
+/** One line for a message of any kind (the pin bar, the starred list): the text, the phrase of a sticker, or the sign and word of a photo, voice note, place. */
+function keepLine(kind, text) {
+  if (kind === "sticker") {
+    const s = STICKERS[text];
+    return s ? s[0] + " " + s[1] : KIND_PREVIEW.sticker();
+  }
+  if (kind !== "text" && KIND_PREVIEW[kind]) return KIND_PREVIEW[kind]();
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
 const COLORS = 8;
 const hue = (id) => {
   let h = 0;
@@ -108,6 +119,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
   });
   const sender = makeSender({ f, uid, name: user.name || user.handle || "", e2e, worker: worker || "" });
   const people = makePeople({ f, uid, user });
+  const stars = makeStars({ f, uid, e2e });
+  const JUMP_PAGES = 5; // a jump to a message that is not loaded asks for at most this many older pages
   const MAX_REFRESH = 30; // at most this many members of one group are looked at for a changed key when the group is opened
 
   const S = {
@@ -156,6 +169,15 @@ export function startShell({ f, id, user, onAbout, worker }) {
     wantOpen: "", // a chat that was just made: opened as soon as the list has it
     wantTimer: 0,
     ncToken: 0, // the "new chat" search that is current
+    // forwarding, starred messages and the pinned message (stage 7)
+    stars: [], // my starred messages, newest star first
+    starSet: new Set(), // their keys ("<chat id>~<message id>")
+    starsLoaded: false,
+    starsFailed: false,
+    fwd: null, // {m, view, picked: Set, busy}: the message that is being forwarded and the chats chosen
+    pinCache: null, // {key, state: "loading"|"ok"|"none", m, view}: the pinned message when it is not among the loaded ones
+    pinToken: 0,
+    jumping: 0, // a jump to a message that is on its way (a newer one cancels an older one)
   };
 
   // ---------------------------------------------------------------------------------------------- pictures
@@ -568,7 +590,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     return "s";
   }
 
-  function buildRow(chat, m, view, group, tick) {
+  function buildRow(chat, m, view, group, tick, starred) {
     const sys = m.kind === "call" || m.kind === "sys";
     if (sys) {
       const row = el("div", "sysrow");
@@ -593,6 +615,12 @@ export function startShell({ f, id, user, onAbout, worker }) {
     bub.append(content(m, view));
     const meta = el("div", "meta");
     if (m.edited && !m.deleted) meta.append(el("span", "ed", t("edited")));
+    if (starred && !m.deleted) {
+      const st = el("span", "star", "★");
+      st.setAttribute("role", "img");
+      st.setAttribute("aria-label", t("starItem"));
+      meta.append(st);
+    }
     meta.append(el("time", "", clock(m.ts)));
     if (mine && tick) {
       const tk = el("span", "tick " + tick, tick === "s" ? "✓" : tick === "p" ? "🕓" : "✓✓");
@@ -689,8 +717,9 @@ export function startShell({ f, id, user, onAbout, worker }) {
       }
       const tick = m.from === uid ? ticks(chat, m) : null;
       const live = isActionable(m) && !sender.sending.has(m.id);
-      const sig = [sigBase, JSON.stringify(m.reactions), m.edited, tick, live, lang(), group ? nameIn(chat, m.from) : ""].join("\u0002");
-      items.push({ key: "m" + m.id, sig, make: () => buildRow(chat, m, rec.view, group, tick) });
+      const starred = S.starSet.has(starKey(chatId, m.id));
+      const sig = [sigBase, JSON.stringify(m.reactions), m.edited, tick, live, lang(), group ? nameIn(chat, m.from) : "", starred].join("\u0002");
+      items.push({ key: "m" + m.id, sig, make: () => buildRow(chat, m, rec.view, group, tick, starred) });
     }
     if (token !== S.msgToken) return;
 
@@ -724,6 +753,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     $("older").hidden = !S.more;
     $("msgLoading").hidden = !S.loadingMsgs;
     if (!S.hold && (firstDraw || nearBottom || Date.now() < S.stickUntil)) box.scrollTop = box.scrollHeight;
+    renderPin();
   }
 
   /** Looks for people of the open chat whose key changed and was not acknowledged: shows the warning and, in a one-to-one chat, closes the box. */
@@ -783,6 +813,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
     S.older = [];
     S.oldest = null;
     S.more = false;
+    S.pinCache = null;
+    S.pinToken++;
+    S.jumping++;
+    $("pinBar").hidden = true;
     $("msgList").replaceChildren();
   }
 
@@ -842,14 +876,16 @@ export function startShell({ f, id, user, onAbout, worker }) {
     maybeRead();
   }
 
+  /** Asks for the next page of older messages. Resolves true when a page came and was drawn. */
   async function loadOlder() {
-    if (!S.open || !S.oldest) return;
+    if (!S.open || !S.oldest) return false;
     const token = S.msgToken;
     const btn = $("older");
     btn.disabled = true;
+    let got = false;
     try {
       const r = await data.olderMessages(S.open.id, S.oldest, PAGE);
-      if (token !== S.msgToken) return;
+      if (token !== S.msgToken) return false;
       const box = $("msgs");
       const before = box.scrollHeight - box.scrollTop;
       S.older = [...r.list, ...S.older];
@@ -858,12 +894,14 @@ export function startShell({ f, id, user, onAbout, worker }) {
       S.hold = true;
       await renderMessages();
       box.scrollTop = box.scrollHeight - before;
+      got = true;
     } catch (e) {
       // the button stays: the person can press it again
     } finally {
       S.hold = false;
       btn.disabled = false;
     }
+    return got;
   }
 
   function closeChat() {
@@ -1053,6 +1091,26 @@ export function startShell({ f, id, user, onAbout, worker }) {
         startEdit(id);
       });
     }
+    // stage 7: forward (to other chats, so it works even where I cannot write), star, pin (in an announcement group only the admins pin)
+    if (canForward(m, view)) {
+      item(t("fwdItem"), () => {
+        closeMenu();
+        openForward(id);
+      });
+    }
+    const starred = S.starSet.has(starKey(S.open.id, id));
+    if (starred || starOf(m, view)) {
+      item(t(starred ? "unstarItem" : "starItem"), () => {
+        closeMenu();
+        toggleStar(id);
+      });
+    }
+    if (whyNot(S.open.raw, uid) !== "admins") {
+      item(t(S.open.raw.pin === id ? "unpinMsg" : "pinMsg"), () => {
+        closeMenu();
+        togglePin(id);
+      });
+    }
     if (canDelete(m, uid)) item(t("deleteAll"), () => askDelete(id), true);
     placeMenu(btn);
     menu.querySelector("button").focus({ preventScroll: true });
@@ -1096,6 +1154,299 @@ export function startShell({ f, id, user, onAbout, worker }) {
     if (S.editing && S.editing.id === id) cancelEdit();
     const r = sender.remove(v.raw, m, isNewest(id));
     if (r.ok) r.committed.catch(() => toast(t("actionFailed")));
+  }
+
+
+  // ---------------------------------------------------------------------------------------------- forward, star, pin (stage 7)
+  /** What goes on my starred list for a message of the open chat, or null when it cannot be starred. */
+  function starOf(m, view) {
+    const v = S.open;
+    if (!v || !m) return null;
+    return starFor({
+      chatId: v.id,
+      chatName: v.saved ? "" : v.title,
+      fromName: m.from === uid ? user.name || user.handle || "" : nameOf(v.raw, m.from),
+      mine: m.from === uid,
+      m,
+      view,
+      now: Date.now(),
+    });
+  }
+
+  function toggleStar(id) {
+    const v = S.open;
+    const m = findMsg(id);
+    if (!v || !m) return;
+    const key = starKey(v.id, id);
+    if (S.starSet.has(key)) {
+      mustTell(stars.remove(key));
+      return;
+    }
+    const rec = S.opened.get(id);
+    const star = starOf(m, rec ? rec.view : null);
+    if (!star) {
+      toast(t("starFail"));
+      return;
+    }
+    stars.add(star).then(
+      (r) => {
+        if (!r.ok) toast(t(r.why === "noKey" ? "starFail" : "actionFailed"));
+        else r.committed.catch(() => toast(t("actionFailed")));
+      },
+      () => toast(t("actionFailed")),
+    );
+  }
+
+  function togglePin(id) {
+    const v = S.open;
+    if (!v) return;
+    setPin(v, v.raw.pin === id ? null : id);
+  }
+
+  function setPin(v, id) {
+    const r = sender.setPinned(v.raw, id);
+    if (!r.ok) toast(t(r.why === "admins" ? "pinAdmins" : "actionFailed"));
+    else r.committed.catch(() => toast(t("actionFailed")));
+  }
+
+  /** The strip above the messages: what is pinned. The message is the loaded one, or (when it is older than what is loaded) fetched once. */
+  function showPin(m, view) {
+    const bar = $("pinBar");
+    if (!m || m.deleted || !S.open) {
+      bar.hidden = true;
+      return;
+    }
+    let line = view && (view.ok || view.text || view.bytes) ? keepLine(m.kind, view.text) : "";
+    if (!line) line = "🔒 " + t(m.enc ? "cantOpen" : "sealed");
+    $("pinText").textContent = cut(line, 140);
+    $("pinX").hidden = whyNot(S.open.raw, uid) === "admins";
+    bar.hidden = false;
+  }
+
+  function renderPin() {
+    const v = S.open;
+    const pid = v && typeof v.raw.pin === "string" ? v.raw.pin : "";
+    if (!pid) return showPin(null);
+    const loaded = findMsg(pid);
+    if (loaded) {
+      const rec = S.opened.get(pid);
+      return showPin(loaded, rec ? rec.view : null);
+    }
+    const key = v.id + "|" + pid;
+    if (S.pinCache && S.pinCache.key === key) {
+      return S.pinCache.state === "ok" ? showPin(S.pinCache.m, S.pinCache.view) : showPin(null);
+    }
+    const cache = { key, state: "loading", m: null, view: null };
+    S.pinCache = cache;
+    const token = S.msgToken;
+    showPin(null);
+    (async () => {
+      const m = await data.message(v.id, pid);
+      let view = null;
+      if (m) {
+        try {
+          const chatK = e2e.isGroup(v.id) ? null : await e2e.chatKey(v.id).catch(() => null);
+          view = await openOne(v.id, chatK, m);
+        } catch (e) {
+          view = { ok: false, text: "", reply: "", bytes: null, votes: {} };
+        }
+      }
+      if (token !== S.msgToken || S.pinCache !== cache) return;
+      cache.state = m ? "ok" : "none";
+      cache.m = m;
+      cache.view = view;
+      renderPin();
+    })();
+  }
+
+  const until = (cond, ms = 8000) =>
+    new Promise((resolve) => {
+      const t0 = Date.now();
+      const look = () => {
+        if (cond()) resolve(true);
+        else if (Date.now() - t0 > ms) resolve(false);
+        else setTimeout(look, 40);
+      };
+      look();
+    });
+
+  function flash(node) {
+    node.classList.remove("hit");
+    void node.offsetWidth;
+    node.classList.add("hit");
+    setTimeout(() => node.classList.remove("hit"), 1800);
+  }
+
+  /** Scrolls to a message of the open chat and lights it up; older pages are asked for (a few) when it is not loaded yet. */
+  async function jumpTo(id) {
+    const token = S.msgToken;
+    const mine = ++S.jumping;
+    for (let tries = 0; ; tries++) {
+      if (!S.open || token !== S.msgToken || mine !== S.jumping) return false;
+      const r = S.rows.get("m" + id);
+      if (r && r.el.isConnected) {
+        r.el.scrollIntoView({ block: "center" });
+        flash(r.el);
+        return true;
+      }
+      if (allMessages().some((x) => x.id === id)) break; // it is loaded but not shown (a group message from before I joined)
+      if (!S.more || !S.oldest || tries >= JUMP_PAGES) break;
+      if (!(await loadOlder())) break;
+    }
+    if (S.open && token === S.msgToken && mine === S.jumping) toast(t(S.more ? "jumpFar" : "msgMissing"));
+    return false;
+  }
+
+  // forward
+  /** The chats a message can be forwarded to: a group, or an accepted chat, that I may write to (the phone's shareTargets, and not an announcement group I cannot write in). */
+  function forwardTargets() {
+    return S.chats
+      .map(chatVm)
+      .filter((v) => (v.group || (v.raw.status || "active") === "active") && !whyNot(v.raw, uid))
+      .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.lastTs - a.lastTs);
+  }
+
+  function syncFwd() {
+    const fw = S.fwd;
+    const n = fw ? fw.picked.size : 0;
+    $("fwdGo").disabled = !fw || fw.busy || n === 0;
+    $("fwdGo").textContent = n ? tf("fwdSend", n) : t("fwdPick");
+  }
+
+  function openForward(id) {
+    const m = findMsg(id);
+    const rec = S.opened.get(id);
+    if (!m || !rec || !canForward(m, rec.view)) return;
+    S.fwd = { m, view: rec.view, picked: new Set(), busy: false };
+    const list = forwardTargets();
+    $("fwdNone").hidden = list.length > 0;
+    $("fwdList").replaceChildren(
+      ...list.map((v) => {
+        const li = el("li");
+        const b = el("button", "pk");
+        b.type = "button";
+        b.dataset.id = v.id;
+        b.setAttribute("role", "checkbox");
+        b.setAttribute("aria-checked", "false");
+        b.append(v.saved ? el("span", "av saved", "🔖") : avatar(v.avatarId, v.title, v.avatarV), el("span", "nm", v.title), el("span", "ck", "✓"));
+        b.addEventListener("click", () => {
+          const fw = S.fwd;
+          if (!fw || fw.busy) return;
+          if (fw.picked.has(v.id)) fw.picked.delete(v.id);
+          else fw.picked.add(v.id);
+          b.setAttribute("aria-checked", String(fw.picked.has(v.id)));
+          syncFwd();
+        });
+        li.append(b);
+        return li;
+      }),
+    );
+    syncFwd();
+    if (!$("fwd").open) $("fwd").showModal();
+  }
+
+  /** The keys of the people of a target chat are looked at first (as when the chat is opened); in a one-to-one chat an unchecked change stops the forward. */
+  async function keysOk(v) {
+    if (v.saved) return true;
+    const peers = (v.group ? v.members : v.peer ? [v.peer] : []).filter((p) => p !== uid).slice(0, MAX_REFRESH);
+    for (const p of peers) {
+      if (S.refreshed.has(p)) continue;
+      S.refreshed.add(p);
+      await e2e.refreshPeer(p).catch(() => false);
+    }
+    return v.group ? true : !(await e2e.keyChanged(v.peer));
+  }
+
+  async function doForward() {
+    const fw = S.fwd;
+    if (!fw || fw.busy || !fw.picked.size) return;
+    fw.busy = true;
+    syncFwd();
+    const failed = [];
+    let sent = 0;
+    const targets = forwardTargets();
+    for (const id of fw.picked) {
+      // a chat that is no longer open for writing (blocked, left) since the window was opened
+      if (!targets.some((x) => x.id === id)) {
+        const gone = S.chats.find((c) => c.id === id);
+        failed.push(gone ? chatVm(gone).title : "?");
+      }
+    }
+    for (const v of targets.filter((x) => fw.picked.has(x.id))) {
+      let r;
+      try {
+        r = (await keysOk(v)) ? await sender.forward(v.raw, fw.m, fw.view) : { ok: false, why: "key" };
+      } catch (e) {
+        r = { ok: false, why: "error" };
+      }
+      if (!r.ok) {
+        failed.push(v.title);
+        continue;
+      }
+      sent++;
+      const again = () => {
+        if (S.open) renderMessages(); // it is no longer "sending": its buttons come
+      };
+      r.taken.then(again, again);
+      r.committed.catch(() => toast(tf("fwdFail", v.title)));
+    }
+    if ($("fwd").open) $("fwd").close();
+    toast(failed.length ? tf("fwdFail", failed.join(", ")) : tf("fwdDone", sent));
+  }
+
+  // the starred messages
+  function renderStarred() {
+    if (!$("starred").open) return;
+    const note = $("stNote");
+    const text = S.starsFailed ? t("starsErr") : !S.starsLoaded ? t("starsLoading") : S.stars.length === 0 ? t("starsEmpty") : "";
+    note.hidden = !text;
+    note.textContent = text;
+    $("stList").replaceChildren(
+      ...S.stars.map((s) => {
+        const li = el("li");
+        const go = el("button", "pk");
+        go.type = "button";
+        go.dataset.key = s.key;
+        const where = s.chatId.startsWith("saved") ? t("saved") : s.chatName;
+        const who = s.mine ? t("you") : s.fromName;
+        go.append(el("span", "where", who + (where ? "  ›  " + where : "")));
+        const line = keepLine(s.kind, s.text) || (s.kind === "text" ? "🔒 " + t("cantOpen") : "");
+        go.append(el("span", "body", line));
+        go.append(el("span", "when2", dayLabel(s.ts) + " " + clock(s.ts)));
+        go.addEventListener("click", () => openStar(s));
+        const un = el("button", "unstar", "★");
+        un.type = "button";
+        un.setAttribute("aria-label", t("unstarItem"));
+        un.title = t("unstarItem");
+        un.addEventListener("click", () => mustTell(stars.remove(s.key)));
+        li.append(go, un);
+        return li;
+      }),
+    );
+  }
+
+  function openStarred() {
+    closeMenu();
+    if (!$("starred").open) $("starred").showModal();
+    renderStarred();
+  }
+
+  /** Opens the chat of a starred message and goes to the message. */
+  async function openStar(s) {
+    const c = S.chats.find((x) => x.id === s.chatId);
+    if (!c) {
+      // the window is a modal: a toast would be hidden behind it, so the line goes inside the window (until the list is drawn again)
+      const note = $("stNote");
+      note.textContent = t("starsGone");
+      note.hidden = false;
+      return;
+    }
+    const mid = s.key.slice(s.key.indexOf("~") + 1);
+    if ($("starred").open) $("starred").close();
+    showChat(s.chatId);
+    await until(() => Boolean(S.open) && S.open.id === s.chatId && !S.loadingMsgs);
+    await renderChain;
+    jumpTo(mid);
   }
 
   /** The bar above the box while I change one of my messages, and the arrow that turns into a tick ("Save"). */
@@ -1657,6 +2008,20 @@ export function startShell({ f, id, user, onAbout, worker }) {
     const v = S.open;
     if (v && v.request && !v.iBlocked) doBlock(v.id, true);
   });
+  $("starBtn").addEventListener("click", openStarred);
+  $("stClose").addEventListener("click", () => $("starred").close());
+  $("fwdNo").addEventListener("click", () => $("fwd").close());
+  $("fwdGo").addEventListener("click", doForward);
+  $("fwd").addEventListener("close", () => {
+    S.fwd = null;
+  });
+  $("pinGo").addEventListener("click", () => {
+    const v = S.open;
+    if (v && typeof v.raw.pin === "string") jumpTo(v.raw.pin);
+  });
+  $("pinX").addEventListener("click", () => {
+    if (S.open) setPin(S.open, null);
+  });
   $("back").addEventListener("click", closeChat);
   $("older").addEventListener("click", loadOlder);
   $("sendBtn").addEventListener("click", sendNow);
@@ -1781,6 +2146,23 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }),
   );
   S.stops.push(
+    stars.watch(
+      (list) => {
+        S.stars = list;
+        S.starSet = new Set(list.map((x) => x.key));
+        S.starsLoaded = true;
+        S.starsFailed = false;
+        renderStarred();
+        if (S.open) renderMessages();
+      },
+      () => {
+        S.starsLoaded = true;
+        S.starsFailed = true;
+        renderStarred();
+      },
+    ),
+  );
+  S.stops.push(
     data.watchChats(
       (list) => {
         S.chats = list;
@@ -1832,6 +2214,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
         $("msgList").replaceChildren();
         renderMessages();
       }
+      renderStarred();
     },
     stop() {
       leaveChat(); // also ends a recording and lets the microphone go

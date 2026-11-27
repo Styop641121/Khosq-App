@@ -330,3 +330,44 @@ body.in-app { height: 100vh; height: 100dvh; overflow: hidden; }
 .newchat .small { margin: 8px 2px 14px; }
 .ncerr { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--danger); }
 .newchat .row { display: flex; justify-content: flex-end; gap: 10px; }
+
+/* ------------------------------------------------------------------ stage 7 (6g): forward, starred messages, the pinned message */
+.pinbar { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 14px; background: var(--surface); border-bottom: 1px solid var(--line); border-left: 3px solid var(--accent); }
+.pinbar[hidden] { display: none; }
+.pinbar .pin-go { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 3px 4px; border: 0; border-radius: 8px; font: inherit; text-align: left; color: var(--text); background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.pinbar .pin-go:hover { background: var(--high); }
+.pinbar .pin-go:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.pinbar b { font-size: 12.5px; color: var(--accent); }
+.pinbar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--text2); }
+.pinbar .icon-btn { display: grid; flex: none; width: 32px; height: 32px; font-size: 15px; }
+.msg.hit .bubble { animation: hitflash 1.6s ease-out 1; }
+@keyframes hitflash { 0%, 35% { box-shadow: 0 0 0 3px var(--accent); background: var(--accent-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .msg.hit .bubble { animation: none; box-shadow: 0 0 0 3px var(--accent); } }
+.meta .star { color: #e0a21b; font-size: 12px; line-height: 1; }
+.pick { width: min(420px, 94vw); }
+.pick h2 { margin: 0 0 12px; font-size: 20px; }
+.pick .small { margin: 0 0 12px; }
+.pick .small[hidden], .pick .hint[hidden] { display: none; }
+.pick .row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+.picks { list-style: none; margin: 0; padding: 0; max-height: min(52vh, 380px); overflow-y: auto; }
+.picks .pk { display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box; padding: 8px 6px; border: 0; border-radius: 12px; font: inherit; text-align: left; color: var(--text); background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.picks .pk:hover { background: var(--high); }
+.picks .pk:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
+.picks .pk .nm { flex: 1; min-width: 0; }
+.picks .pk .ck { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; color: transparent; border: 2px solid var(--text3); }
+.picks .pk[aria-checked="true"] .ck { color: #fff; background: var(--accent); border-color: var(--accent); }
+.picks .pk[aria-checked="true"] { background: var(--accent-soft); }
+.starred { width: min(520px, 96vw); }
+.starred .st-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.starred .st-head h2 { margin: 0; }
+.starred .st-head .icon-btn { display: grid; flex: none; }
+.stars { max-height: min(66vh, 560px); }
+.stars li { display: flex; align-items: stretch; gap: 2px; border-bottom: 1px solid var(--line); }
+.stars li:last-child { border-bottom: 0; }
+.stars .pk { flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 3px; border-radius: 10px; }
+.stars .where { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--accent); }
+.stars .body { max-width: 100%; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-size: 15.5px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.stars .when2 { font-size: 12px; color: var(--text3); }
+.stars .unstar { flex: none; align-self: center; width: 40px; height: 40px; border: 0; border-radius: 50%; display: grid; place-items: center; font-size: 20px; line-height: 1; color: #e0a21b; background: transparent; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.stars .unstar:hover { background: var(--high); }
+.stars .unstar:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }

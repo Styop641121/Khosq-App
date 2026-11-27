@@ -1,0 +1,25 @@
+{
+ "note": "Stars sealed by the PHONE's own code (E2E.sealSelf, cut out of crypto/E2E.kt) with the identity of web.fixture.json. Made by scratchpad webfx/star.sh known.",
+ "rows": [
+  {
+   "label": "star|Bb00000000000000000000000002_Mm00000000000000000000000001~m01",
+   "sealed": "CEN0UfCBozfq+h3r89EtOga7SWsKvYNDWjSJjlJOZVBf+QwNBNaP8X9tIJyrsTVarPJznPAgD/uPLci2YVheOKSpzdO20Ljz28Ez7vE=",
+   "text": "Բարև Ստյոպա 👋 (starred on the phone)"
+  },
+  {
+   "label": "star|grpYerevan01~g04",
+   "sealed": "3TslNa7pb7DEuaEfqF3MID9xtXXiwEzzsqY7uybwnew/TpNNGhFBYJJgKD9f1kOrgJ6FPg==",
+   "text": "A group message, starred"
+  },
+  {
+   "label": "star|savedMm00000000000000000000000001~s1",
+   "sealed": "MfekqE9CXYq1GlgPSDao3fFiO5Wu17WgWNNWCo2WlLzs9h6p5ytXRYbpITLihXWcJ3TvPP5Gt07/ySr17UeXMfWcluuRfOl/mKgHMesoe631hc3Xj0H/U8ihdOYI+bNkqkxVCSOMedsQeym/0M1bwGPz7UxNSTEEBAeldaNmemuuePwrf23XlvpgENslDXD/pgRbE9bzpRXsFI/N56ad7fW1+f8U97reEQLGKBdver9AiXLgYjFm09afGqsL8fCHU4sWDk7v4R3F1WXRHeuKBSusBMB0EaZX9+KviDdtSmsJ8E5BWWiaKn4dydh6yIf6RW+NnszSPR68rg4ld9vqKPcti1MDMFwdp9lJtE1HUjOFX7E6G+/D6azKZKxV/RvvQnGB6jNo5L/cbZ44AwN88Wh9K4ZF8LWSmU62mNf6JaracoImXYx0mNV12xRt69O3YTUQGbtSCNDrBJRhA2UuC2lLx1ZO42dzIo7rgbc/1Xwn3jtxZPj3egrjX0iR58r313UUkRi8tKUQWt3s1Xo6IFzkcM0HLp7IRegXhzDtLqAUnIFvDxStcpMsXf5XbaUZWy/Xgg6F/MXjid4kxpR9F57V4lrdyRabDAOKkCztnxaVEj0PcQjtogthqTTnZ7ghLvOep1EmvatLTJSSEzF3gO/7J0+ncLdys1x1mlc7ge7iFdOZIXcnthd1h8HD3CLzRC7WajJCJk3c4XbuALcsVvojEY3GR24yU3gvz1tIvbmaoYGHYu3f6fLgf0ik6DKdgR0+FBJOHzS7yhiOXT3VYijCcYoKDJ0za0QjTgE3uOu8cKb5Oi7fxOC2VnvLJhl8kOt0cg==",
+   "text": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+  },
+  {
+   "label": "star|c9~m9",
+   "sealed": "v9kGq64kdaVnj96h070BZ0K8199uyqtOexuYOXsHSRS89eipb9SJJ9V/s5fRF28C8w==",
+   "text": "line one\nline two ✨"
+  }
+ ]
+}

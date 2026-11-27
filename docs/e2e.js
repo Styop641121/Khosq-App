@@ -203,6 +203,26 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
   /** Seals bytes (a photo, a voice note) for [field] ("d") exactly as the phone does: iv (12) + ciphertext + tag (16), as raw bytes. */
   const sealBytes = (k, chatId, from, field, bytes) => sealRaw(k, chatId + "|" + from + "|" + field, bytes);
 
+  /**
+   * Text only I can read, for my starred list (the phone's E2E.sealSelf): sealed with the key made from my own key pair (salt "self"), bound to
+   * "self|<label>". [label] is "star|<chat id>~<message id>". The standard base64 of iv (12) + ciphertext + tag (16).
+   */
+  async function sealSelf(label, text) {
+    return toB64(await sealRaw(await getSelfKey(), "self|" + label, te.encode(text)));
+  }
+
+  /** The text that [sealSelf] (here or on the phone) sealed, or null when it is not mine, not for this label or damaged. */
+  async function openSelf(label, sealed) {
+    let raw;
+    try {
+      raw = fromB64(sealed);
+    } catch (e) {
+      return null;
+    }
+    const plain = await openRaw(await getSelfKey(), "self|" + label, raw);
+    return plain ? td.decode(plain) : null;
+  }
+
   /** The key of a message I sent myself, to change its text later: a group's is made again from my secret, otherwise the chat key. */
   async function sentKey(chatId, msgId) {
     return isGroup(chatId) ? aesKey(await messageKeyBits(chatId, msgId), BOTH) : chatKey(chatId);
@@ -274,5 +294,5 @@ export function makeE2E({ uid, key, pub, publicOf, pins }) {
     await pins.set(FLAG + peer, "");
   }
 
-  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sealBytes, sentKey, messageKeyBits };
+  return { peerOf, isGroup, chatKey, groupKey, openText, openBytes, openLast, refreshPeer, keyChanged, acknowledge, begin, sealText, sealBytes, sentKey, messageKeyBits, sealSelf, openSelf };
 }

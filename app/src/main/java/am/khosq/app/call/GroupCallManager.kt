@@ -201,6 +201,8 @@ object GroupCallManager {
     private var aloneT: Runnable? = null
     private var resetT: Runnable? = null
     private var docRetryT: Runnable? = null
+    private var sigRetryT: Runnable? = null
+    private var sigRetries = 0
     private var firstT: Runnable? = null
     private var ringDropT: Runnable? = null
 
@@ -453,6 +455,7 @@ object GroupCallManager {
         early.clear()
         am.khosq.app.push.IceClient.refresh()
         dbgReset()
+        sigRetries = 0
         dbg((if (create) "call" else "join") + " video=" + video + " j=" + (myJ % 100000L))
         _ui.value = GCallUi(
             phase = GPhase.JOINING,
@@ -537,7 +540,7 @@ object GroupCallManager {
         }
         set { it.copy(localVideo = videoTrack, noCamera = noCamera, cameraOn = camOn) }
         dbg("media ok cam=" + camOn)
-        watchSig(id, g)
+        // (the talk is listened to only once the call document exists: the rules look at that document, and a listener that is refused never comes back)
         val name = myNameFor(chatId)
         val part = hashMapOf<String, Any>("sid" to sid, "j" to myJ, "at" to nowMs(), "name" to name, "m" to false, "cam" to camOn)
         val fail = {
@@ -603,6 +606,7 @@ object GroupCallManager {
         stopRinging()
         set { it.copy(phase = GPhase.ACTIVE) }
         dbg("in the call (" + (if (create) "host" else "guest") + ")")
+        watchSig(id, g)
         if (create) {
             watchDoc(id, g, null) // the document is looked at from now on
             am.khosq.app.push.PushClient.notify(chatId, "call", myNameFor(chatId), if (video) "📹" else "📞")
@@ -1295,8 +1299,25 @@ object GroupCallManager {
         sigReg?.remove()
         sigReg = db.collection("gcalls").document(id).collection("sig").whereEqualTo("to", myUid)
             .addSnapshotListener { snap, err ->
-                if (err != null) dbg("sig listen FAIL " + err.message)
-                if (err != null || snap == null) return@addSnapshotListener
+                if (err != null) {
+                    dbg("sig listen FAIL " + err.message)
+                    main.post {
+                        val ph = _ui.value.phase
+                        if (g == gen && (ph == GPhase.JOINING || ph == GPhase.ACTIVE) && sigRetries < 10) {
+                            // a listener that failed does not come back by itself: look again soon
+                            sigRetries++
+                            sigRetryT?.let { main.removeCallbacks(it) }
+                            val r = Runnable {
+                                sigRetryT = null
+                                if (g == gen) watchSig(id, g)
+                            }
+                            sigRetryT = r
+                            main.postDelayed(r, 3000L)
+                        }
+                    }
+                    return@addSnapshotListener
+                }
+                if (snap == null) return@addSnapshotListener
                 val list = ArrayList<Map<String, Any>>()
                 for (ch in snap.documentChanges) {
                     if (ch.type != DocumentChange.Type.ADDED) continue
@@ -1391,7 +1412,8 @@ object GroupCallManager {
         val wasIn = joined
         val mineSid = sid
         joined = false
-        for (t in listOf(beatT, ringT, aloneT, docRetryT, firstT)) if (t != null) main.removeCallbacks(t)
+        for (t in listOf(beatT, ringT, aloneT, docRetryT, firstT, sigRetryT)) if (t != null) main.removeCallbacks(t)
+        sigRetryT = null
         beatT = null
         ringT = null
         aloneT = null

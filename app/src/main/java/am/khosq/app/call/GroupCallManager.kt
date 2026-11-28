@@ -104,6 +104,33 @@ object GroupCallManager {
     private val _banner = MutableStateFlow<GBanner?>(null)
     val banner: StateFlow<GBanner?> = _banner.asStateFlow()
 
+    /** A test aid: the last lines of what the call did (and what failed) are shown on the call screen, so a call that does not connect can be read. */
+    private val _dbg = MutableStateFlow<List<String>>(emptyList())
+    val dbg: StateFlow<List<String>> = _dbg.asStateFlow()
+    private val dbgBuf = ArrayList<String>()
+    private var dbgT0 = 0L
+    private const val DEBUG_HOLD = true
+
+    private fun dbg(line: String) {
+        main.post {
+            if (dbgT0 == 0L) dbgT0 = System.currentTimeMillis()
+            dbgBuf.add(((System.currentTimeMillis() - dbgT0) / 1000L).toString() + "s " + line.take(90))
+            while (dbgBuf.size > 16) dbgBuf.removeAt(0)
+            _dbg.value = ArrayList(dbgBuf)
+        }
+    }
+
+    private fun dbgReset() {
+        dbgBuf.clear()
+        dbgT0 = System.currentTimeMillis()
+        _dbg.value = emptyList()
+    }
+
+    private fun who(uid: String): String {
+        val n = live.firstOrNull { it.uid == uid }?.name ?: ""
+        return (if (n.isEmpty()) uid.take(4) else n).take(8)
+    }
+
     private class GChat(
         val id: String,
         val group: Boolean,
@@ -128,6 +155,7 @@ object GroupCallManager {
         var closed = false
         val remoteCand = ArrayList<IceCandidate>()
         val out = ArrayList<Map<String, Any>>()
+        val seenTypes = HashSet<String>()
         var outT: Runnable? = null
         var connT: Runnable? = null
         var graceT: Runnable? = null
@@ -155,6 +183,7 @@ object GroupCallManager {
     private var live: List<GroupCallRules.Person> = emptyList()
     private var lv = GroupCallRules.Liveness { System.currentTimeMillis() }
     private var lastQ = -1
+    private var lastKey = ""
     private val links = HashMap<String, Link>() // peer uid -> link
     private val inbox = LinkedHashMap<String, ArrayList<Map<String, Any>>>() // "uid|lid" -> addresses that came before their offer
     private val pendingOffers = HashMap<String, Pair<Map<String, Any>, Long>>() // peer uid -> an offer from somebody the call document does not show yet
@@ -423,6 +452,8 @@ object GroupCallManager {
         pendingOffers.clear()
         early.clear()
         am.khosq.app.push.IceClient.refresh()
+        dbgReset()
+        dbg((if (create) "call" else "join") + " video=" + video + " j=" + (myJ % 100000L))
         _ui.value = GCallUi(
             phase = GPhase.JOINING,
             callId = id,
@@ -505,6 +536,7 @@ object GroupCallManager {
             return
         }
         set { it.copy(localVideo = videoTrack, noCamera = noCamera, cameraOn = camOn) }
+        dbg("media ok cam=" + camOn)
         watchSig(id, g)
         val name = myNameFor(chatId)
         val part = hashMapOf<String, Any>("sid" to sid, "j" to myJ, "at" to nowMs(), "name" to name, "m" to false, "cam" to camOn)
@@ -533,19 +565,29 @@ object GroupCallManager {
                             abandon(true, id, chatId)
                             return@post
                         }
+                        dbg("call doc written")
                         db.collection("chats").document(chatId).update(
                             "gcall",
                             hashMapOf<String, Any>("id" to id, "host" to myUid, "hostName" to name, "kind" to (if (video) "video" else "audio"), "ts" to ts),
                         )
                             .addOnSuccessListener { main.post { joinedNow(g, true, id, chatId, video) } }
-                            .addOnFailureListener { fail() }
+                            .addOnFailureListener { e ->
+                                dbg("chat sign FAIL " + e.message)
+                                fail()
+                            }
                     }
                 }
-                .addOnFailureListener { fail() }
+                .addOnFailureListener { e ->
+                    dbg("call doc FAIL " + e.message)
+                    fail()
+                }
         } else {
             db.collection("gcalls").document(id).update("parts.$myUid", part)
                 .addOnSuccessListener { main.post { joinedNow(g, false, id, chatId, video) } }
-                .addOnFailureListener { fail() }
+                .addOnFailureListener { e ->
+                    dbg("join write FAIL " + e.message)
+                    fail()
+                }
         }
     }
 
@@ -560,6 +602,7 @@ object GroupCallManager {
         stopRing()
         stopRinging()
         set { it.copy(phase = GPhase.ACTIVE) }
+        dbg("in the call (" + (if (create) "host" else "guest") + ")")
         if (create) {
             watchDoc(id, g, null) // the document is looked at from now on
             am.khosq.app.push.PushClient.notify(chatId, "call", myNameFor(chatId), if (video) "📹" else "📞")
@@ -737,16 +780,23 @@ object GroupCallManager {
         val link = Link(peerUid, peerSid, lid, offerer, tries)
         try {
             val f = CallManager.ensureFactory()
-            val cfg = PeerConnection.RTCConfiguration(CallManager.iceServers())
+            val servers = CallManager.iceServers()
+            dbg("pc " + who(peerUid) + " ice servers=" + servers.size + (if (offerer) " offer" else " answer"))
+            val cfg = PeerConnection.RTCConfiguration(servers)
             cfg.sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
             cfg.continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_CONTINUALLY
-            val conn = f.createPeerConnection(cfg, observerFor(link)) ?: return null
+            val conn = f.createPeerConnection(cfg, observerFor(link))
+            if (conn == null) {
+                dbg("pc FAIL: no connection object")
+                return null
+            }
             link.conn = conn
             val a = audioTrack
             if (a != null) conn.addTrack(a, listOf("khosq_gs0"))
             val v = videoTrack
             if (v != null) conn.addTrack(v, listOf("khosq_gs0"))
         } catch (e: Exception) {
+            dbg("pc FAIL " + e.message)
             return null
         }
         links[peerUid] = link
@@ -776,6 +826,8 @@ object GroupCallManager {
             if (c == null) return
             main.post {
                 if (links[link.peerUid] !== link || link.closed) return@post
+                val typ = if (c.sdp.contains(" typ relay")) "relay" else if (c.sdp.contains(" typ srflx")) "srflx" else if (c.sdp.contains(" typ host")) "host" else "other"
+                if (link.seenTypes.add(typ)) dbg("my address " + who(link.peerUid) + ": " + typ)
                 link.out.add(hashMapOf<String, Any>("m" to (c.sdpMid ?: ""), "i" to c.sdpMLineIndex, "s" to c.sdp))
                 if (link.out.size >= 12) {
                     flushOut(link)
@@ -789,6 +841,7 @@ object GroupCallManager {
 
         override fun onTrack(t: RtpTransceiver?) {
             val track = t?.receiver?.track() ?: return
+            dbg("track " + track.kind() + " from " + who(link.peerUid))
             if (track is VideoTrack) {
                 main.post {
                     if (links[link.peerUid] !== link || link.closed) return@post
@@ -800,6 +853,7 @@ object GroupCallManager {
         }
 
         override fun onIceConnectionChange(s: PeerConnection.IceConnectionState?) {
+            dbg("ice " + who(link.peerUid) + " " + s)
             main.post {
                 if (links[link.peerUid] !== link || link.closed) return@post
                 when (s) {
@@ -873,6 +927,7 @@ object GroupCallManager {
         closeConn(link)
         link.state = "lost"
         link.video = null
+        dbg("pair lost " + who(link.peerUid) + " try " + link.tries)
         publish()
         if (link.offerer && link.tries < GroupCallRules.RETRIES) {
             main.postDelayed({
@@ -886,6 +941,7 @@ object GroupCallManager {
     }
 
     private fun startOffer(p: GroupCallRules.Person, tries: Int) {
+        dbg("offering to " + who(p.uid) + " try " + tries)
         val link = makeLink(p.uid, p.sid, rid(), true, tries) ?: return
         val conn = link.conn ?: return
         val fail = { main.post { failLink(link) }; Unit }
@@ -902,12 +958,14 @@ object GroupCallManager {
                         }
                     }
                     override fun onSetFailure(e: String?) {
+                        dbg("offer set-local FAIL " + e)
                         fail()
                     }
                 }, d)
             }
             override fun onSetSuccess() {}
             override fun onCreateFailure(e: String?) {
+                dbg("offer create FAIL " + e)
                 fail()
             }
             override fun onSetFailure(e: String?) {
@@ -923,6 +981,8 @@ object GroupCallManager {
         if (sdp != null) body["sdp"] = sdp
         if (c != null) body["c"] = c
         db.collection("gcalls").document(id).collection("sig").add(body) // one message less is not the end: the pair is tried again
+            .addOnSuccessListener { if (k != "cand") dbg("sent " + k + " to " + who(to)) }
+            .addOnFailureListener { e -> dbg("send " + k + " FAIL " + e.message) }
     }
 
     private fun addRemote(link: Link, c: Map<String, Any>) {
@@ -970,6 +1030,7 @@ object GroupCallManager {
         if (from.isEmpty() || from == myUid || str(x["to"]) != myUid || str(x["tsid"]) != sid) return // not for this session of mine
         val lid = str(x["lid"])
         if (lid.isEmpty()) return
+        if (x["k"] != "cand") dbg("got " + str(x["k"]) + " from " + who(from))
         when (x["k"]) {
             "offer" -> {
                 val sdp = str(x["sdp"])
@@ -1044,6 +1105,7 @@ object GroupCallManager {
             override fun onCreateSuccess(d: SessionDescription?) {}
             override fun onCreateFailure(e: String?) {}
             override fun onSetFailure(e: String?) {
+                dbg("offer set-remote FAIL " + e)
                 fail()
             }
             override fun onSetSuccess() {
@@ -1117,6 +1179,11 @@ object GroupCallManager {
         val parts = d["parts"] as? Map<*, *>
         val all = lv.live(parts)
         live = all.take(GroupCallRules.MAX_PARTS) // when more came at once, the later ones are not in the call (they leave by themselves, below)
+        val key = "" + (parts?.size ?: 0) + "/" + live.size + ":" + live.joinToString(",") { it.name.take(5) }
+        if (key != lastKey) {
+            lastKey = key
+            dbg("doc people " + (parts?.size ?: 0) + ", live " + live.size + " (" + live.joinToString(",") { it.name.take(5) } + ")")
+        }
         val mineEntry = parts?.get(myUid) as? Map<*, *>
         if (mineEntry != null && mineEntry["sid"] == sid) seenMine = true
         if (mineEntry == null && !seenMine) return // the document shown is the one from before my entry was written: the next one has it
@@ -1196,6 +1263,7 @@ object GroupCallManager {
         var cb = first
         docReg = db.collection("gcalls").document(id).addSnapshotListener { d, err ->
             if (err != null) {
+                dbg("doc listen FAIL " + err.message)
                 main.post {
                     if (g != gen) return@post
                     cb?.invoke(null)
@@ -1227,6 +1295,7 @@ object GroupCallManager {
         sigReg?.remove()
         sigReg = db.collection("gcalls").document(id).collection("sig").whereEqualTo("to", myUid)
             .addSnapshotListener { snap, err ->
+                if (err != null) dbg("sig listen FAIL " + err.message)
                 if (err != null || snap == null) return@addSnapshotListener
                 val list = ArrayList<Map<String, Any>>()
                 for (ch in snap.documentChanges) {
@@ -1308,13 +1377,15 @@ object GroupCallManager {
         }
         resetT = r
         val long = note == "denied" || note == "noMedia" || note == "full"
-        main.postDelayed(r, if (note.isNullOrEmpty()) 400L else if (long) GroupCallRules.NOTE_LONG_MS else GroupCallRules.NOTE_MS)
+        val hold = DEBUG_HOLD && (note == "error" || note == "ended" || note == "noanswer")
+        main.postDelayed(r, if (note.isNullOrEmpty()) 400L else if (hold) 12_000L else if (long) GroupCallRules.NOTE_LONG_MS else GroupCallRules.NOTE_MS)
     }
 
     /** Leaves the call in progress: everything is let go (the camera and microphone light goes off), and the reason stays on the screen a moment. */
     private fun finish(note: String?, quiet: Boolean) {
         val cur = _ui.value
         if (cur.phase == GPhase.IDLE || cur.phase == GPhase.ENDED) return
+        dbg("end: " + (note ?: "-"))
         val d = doc
         val wasLive = live
         val wasIn = joined

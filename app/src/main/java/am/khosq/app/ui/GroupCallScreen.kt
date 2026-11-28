@@ -212,6 +212,7 @@ private fun statusOf(s: GCallUi, now: Long): String = when (s.phase) {
 @Composable
 fun GroupCallOverlay() {
     val s by GroupCallManager.ui.collectAsStateWithLifecycle()
+    val log by GroupCallManager.dbg.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(s.phase) {
@@ -346,6 +347,22 @@ fun GroupCallOverlay() {
                 bg = Glass,
                 tint = Color.White,
                 description = tr("Փոքրացնել"),
+            )
+        }
+        if (log.isNotEmpty() && s.phase != GPhase.RINGING) {
+            // a test aid: the last things the call did, so a call that does not connect can be read from a screenshot
+            Text(
+                text = log.joinToString("\n"),
+                color = Color(0xFFB8FFB8),
+                fontSize = 9.sp,
+                lineHeight = 11.sp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 8.dp, end = 8.dp, top = 64.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xAA000000))
+                    .padding(4.dp),
             )
         }
     }

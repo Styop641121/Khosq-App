@@ -880,6 +880,28 @@ object Strings {
         map["Կոդը սխալ է կամ ժամկետանց է. թարմացրու էջը և նորից սկանավորիր"] = arrayOf("The code is wrong or has expired. Refresh the page and scan again", "Код неверный или устарел. Обновите страницу и отсканируйте снова")
     }
 
+    // Phase 6m: group voice and video calls
+    private fun part23() {
+        map["Խմբային ձայնային զանգ"] = arrayOf("Group voice call", "Групповой голосовой звонок")
+        map["Խմբային տեսազանգ"] = arrayOf("Group video call", "Групповой видеозвонок")
+        map["Խմբային ձայնային զանգ է ընթանում"] = arrayOf("A group voice call is going on", "Идёт групповой голосовой звонок")
+        map["Խմբային տեսազանգ է ընթանում"] = arrayOf("A group video call is going on", "Идёт групповой видеозвонок")
+        map["Զանգում է՝ {0}"] = arrayOf("{0} is calling", "Звонит: {0}")
+        map["Արդեն զանգի մեջ են՝ {0}"] = arrayOf("Already in the call: {0}", "Уже в звонке: {0}")
+        map["Լքել զանգը"] = arrayOf("Leave call", "Выйти из звонка")
+        map["{0} մարդ"] = arrayOf("{0} people", "Участников: {0}")
+        map["Սպասում ենք մասնակիցներին…"] = arrayOf("Waiting for others…", "Ждём остальных…")
+        map["Միկրոֆոնն անջատված է"] = arrayOf("Microphone is off", "Микрофон выключен")
+        map["լիքն է"] = arrayOf("full", "мест нет")
+        map["Դու արդեն զանգի մեջ ես"] = arrayOf("You are already in a call", "Вы уже в разговоре")
+        map["Զանգն արդեն ավարտվել է"] = arrayOf("The call has already ended", "Звонок уже завершён")
+        map["Զանգը լիքն է"] = arrayOf("The call is full", "В звонке нет мест")
+        map["Թույլատրիր միկրոֆոնը (տեսազանգի դեպքում՝ նաև տեսախցիկը)"] = arrayOf("Allow the microphone (and the camera for a video call)", "Разрешите микрофон (и камеру для видеозвонка)")
+        map["Միկրոֆոնը կամ տեսախցիկը չհաջողվեց միացնել"] = arrayOf("The microphone or the camera could not be turned on", "Не удалось включить микрофон или камеру")
+        map["Պատասխանվեց մեկ այլ սարքից"] = arrayOf("Answered on another device", "Ответили на другом устройстве")
+        map["Զանգը չհաջողվեց"] = arrayOf("The call failed", "Звонок не удался")
+    }
+
     private fun part21() {
         map["Դեռ չի կարգավորված"] = arrayOf("Not set up yet", "Ещё не настроено")
         map["Դադարեցված է. ծանուցումներ չեն գալիս"] = arrayOf("Paused: no notifications will come", "На паузе: уведомления не приходят")
@@ -974,5 +996,6 @@ object Strings {
         part20()
         part21()
         part22()
+        part23()
     }
 }

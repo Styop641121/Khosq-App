@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import am.khosq.app.call.CallManager
+import am.khosq.app.call.GPhase
+import am.khosq.app.call.GroupCallManager
 import am.khosq.app.call.Phase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +73,15 @@ class KeepAliveService : Service() {
                 else NotificationManagerCompat.from(this@KeepAliveService).cancel(ID_CALL)
             }
         }
+        // a group call rings in the same way (the chat list below tells GroupCallManager about a call that goes on in a group)
+        GroupCallManager.init(applicationContext)
+        FirebaseAuth.getInstance().currentUser?.uid?.let { GroupCallManager.setMe(it, "") }
+        scope.launch {
+            GroupCallManager.ui.collect { g ->
+                if (g.phase == GPhase.RINGING && !AppState.inForeground) showGroupCall(g.title, g.hostName, g.video)
+                else NotificationManagerCompat.from(this@KeepAliveService).cancel(ID_GCALL)
+            }
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -132,6 +143,49 @@ class KeepAliveService : Service() {
         }
     }
 
+    private fun showGroupCall(title: String, host: String, video: Boolean) {
+        wakeScreen()
+        val screen = Intent(this, CallActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val tap = PendingIntent.getActivity(
+            this,
+            81,
+            Intent(screen),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val answer = PendingIntent.getActivity(
+            this,
+            82,
+            Intent(screen).putExtra(CallActivity.EXTRA_ANSWER, true),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val decline = PendingIntent.getService(
+            this,
+            83,
+            Intent(this, KeepAliveService::class.java).setAction(ACTION_DECLINE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val who = if (host.isEmpty()) title else trf("Զանգում է՝ {0}", host)
+        val n = NotificationCompat.Builder(this, CH_CALL)
+            .setSmallIcon(R.drawable.ic_stat)
+            .setContentTitle(if (title.isEmpty()) "KHOSQ" else title)
+            .setContentText(who + " · " + (if (video) tr("Խմբային տեսազանգ") else tr("Խմբային ձայնային զանգ")))
+            .setContentIntent(tap)
+            .setFullScreenIntent(tap, true)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(0, tr("Միանալ"), answer)
+            .addAction(0, tr("Մերժել"), decline)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(ID_GCALL, n)
+        } catch (e: SecurityException) {
+            // notifications are not allowed
+        }
+    }
+
     private fun listen() {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
@@ -156,6 +210,7 @@ class KeepAliveService : Service() {
                 if (snap == null) return@addSnapshotListener
                 retryMs = 4000L
                 for (d in snap.documents) handle(d, uid)
+                GroupCallManager.onChats(uid, snap.documents)
                 first = false
             }
     }
@@ -244,7 +299,10 @@ class KeepAliveService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_DECLINE) CallManager.decline()
+        if (intent?.action == ACTION_DECLINE) {
+            CallManager.decline()
+            GroupCallManager.decline()
+        }
         return START_STICKY
     }
 
@@ -262,6 +320,7 @@ class KeepAliveService : Service() {
         const val CH_CALL = "calls_v1"
         const val ID_SERVICE = 1
         const val ID_CALL = 2
+        const val ID_GCALL = 4
         const val ACTION_DECLINE = "am.khosq.app.DECLINE"
 
         fun createChannels(c: Context) {

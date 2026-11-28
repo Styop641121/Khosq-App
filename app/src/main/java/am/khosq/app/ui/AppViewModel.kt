@@ -211,6 +211,7 @@ class AppViewModel : ViewModel() {
         _boot.value = Boot.Ready(p)
         refreshAccount()
         am.khosq.app.call.CallManager.listen(p.uid)
+        am.khosq.app.call.GroupCallManager.setMe(p.uid, p.name)
         beatJob?.cancel()
         beatJob = viewModelScope.launch {
             while (true) {
@@ -797,7 +798,9 @@ class AppViewModel : ViewModel() {
 
     private fun updateMe(f: (Profile) -> Profile) {
         val me = (_boot.value as? Boot.Ready)?.me ?: return
-        _boot.value = Boot.Ready(f(me))
+        val next = f(me)
+        _boot.value = Boot.Ready(next)
+        am.khosq.app.call.GroupCallManager.setMe(next.uid, next.name) // the name my tile of a group call shows
         syncPeople(_chats.value)
     }
 

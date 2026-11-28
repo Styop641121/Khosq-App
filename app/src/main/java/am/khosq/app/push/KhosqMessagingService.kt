@@ -5,6 +5,7 @@ import am.khosq.app.KeepAliveService
 import am.khosq.app.MainActivity
 import am.khosq.app.R
 import am.khosq.app.call.CallManager
+import am.khosq.app.call.GroupCallManager
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.core.app.NotificationCompat
@@ -29,6 +30,7 @@ class KhosqMessagingService : FirebaseMessagingService() {
         KeepAliveService.start(this)
         if (type == "call") {
             CallManager.init(applicationContext)
+            GroupCallManager.init(applicationContext) // a call in a group rings from the chat list that KeepAliveService listens to
             FirebaseAuth.getInstance().currentUser?.uid?.let { CallManager.listen(it) }
             return
         }

@@ -386,7 +386,7 @@ test("the first answer of the watch is announced once", () => {
 // ---------------------------------------------------------------------------------------------- the page
 test("the sender and the calls get my name as a function, so a new name is used at once (the pushes and the calls carry it)", () => {
   const shell = readFileSync(new URL("../docs/shell.js", import.meta.url), "utf8");
-  assert.equal((shell.match(/name: \(\) => shownName\(user\),/g) || []).length, 2, "makeSender and makeCalls");
+  assert.equal((shell.match(/name: \(\) => shownName\(user\),/g) || []).length, 3, "makeSender, makeCalls and makeGroupCalls");
   assert.doesNotMatch(shell, /name: user\.name \|\| user\.handle/, "no copy of the name taken once at the start");
 });
 

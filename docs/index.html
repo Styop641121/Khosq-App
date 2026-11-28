@@ -81,6 +81,11 @@
         </button>
       </header>
       <p class="warn" id="warn" role="alert" hidden><span id="warnText"></span><button class="btn ghost" id="warnOk" type="button" data-i18n="ackKey"></button></p>
+      <div class="gbanner" id="gBanner" hidden>
+        <span class="gb-ic" aria-hidden="true">📞</span>
+        <span class="gb-t"><b id="gbTitle"></b><small id="gbSub"></small></span>
+        <button class="btn" id="gbJoin" type="button"></button>
+      </div>
       <div class="pinbar" id="pinBar" hidden>
         <button class="pin-go" id="pinGo" type="button" data-i18n-aria="pinGo">
           <b data-i18n="pinnedMsg"></b>
@@ -157,6 +162,35 @@
       <svg class="hang" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg><span class="lb"></span>
     </button>
     <button class="cp-btn green" id="cpAccept" type="button" hidden>
+      <svg class="ans" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg><span class="lb"></span>
+    </button>
+  </div>
+</section>
+
+<section id="gcall" class="gcpanel" role="group" hidden>
+  <div class="gc-head">
+    <span class="gc-av" id="gcAv"></span>
+    <div class="gc-who"><b id="gcName"></b><small id="gcStatus" role="status" aria-live="polite"></small></div>
+    <button class="gc-min" id="gcMini" type="button" aria-pressed="false" hidden>
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path class="mn" d="M7.4 9.6 12 14.2l4.6-4.6L18 11l-6 6-6-6z" fill="currentColor"/><path class="mx" d="M7.4 14.4 12 9.8l4.6 4.6L18 13l-6-6-6 6z" fill="currentColor"/></svg><span class="lb"></span>
+    </button>
+  </div>
+  <div class="gc-ring" id="gcRing" hidden>
+    <p class="gc-host" id="gcHost"></p>
+    <p class="gc-in" id="gcIn" hidden></p>
+  </div>
+  <div class="gc-grid" id="gcGrid" data-n="1" hidden></div>
+  <div class="cp-btns">
+    <button class="cp-btn" id="gcMute" type="button" aria-pressed="false" hidden>
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11z" fill="currentColor"/><path class="slash" d="M4 4l16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span class="lb"></span>
+    </button>
+    <button class="cp-btn" id="gcCam" type="button" aria-pressed="false" hidden>
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11z" fill="currentColor"/><path class="slash" d="M4 4l16 16" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span class="lb"></span>
+    </button>
+    <button class="cp-btn red" id="gcEnd" type="button">
+      <svg class="hang" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg><span class="lb"></span>
+    </button>
+    <button class="cp-btn green" id="gcAccept" type="button" hidden>
       <svg class="ans" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" fill="currentColor"/></svg><span class="lb"></span>
     </button>
   </div>

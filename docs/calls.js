@@ -80,9 +80,10 @@ const str = (v) => (typeof v === "string" ? v : "");
  * @param {{setTimeout: Function, clearTimeout: Function}} [o.timers]
  * @param {() => number} [o.now]
  * @param {(uid: string, claimed: string) => string} [o.resolveName]  the name to show for a caller: the contact's own name where there is one
+ * @param {() => boolean} [o.isBusy]  true while a group call goes on: a one-to-one call that comes in is then refused as "busy"
  * @param {(state: object) => void} [o.onChange]  gets a copy of the state at every change
  */
-export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) }, now = () => Date.now(), resolveName = (u, c) => c, onChange = () => {} }) {
+export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) }, now = () => Date.now(), resolveName = (u, c) => c, isBusy = () => false, onChange = () => {} }) {
   const { db, fsM } = f;
   const T = timers;
   const myName = () => String((typeof name === "function" ? name() : name) || "");
@@ -348,7 +349,7 @@ export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeou
       const ts = Number(x.ts) || 0;
       if (now() - ts > STALE_MS) continue;
       if (st.phase === PHASE.ENDED) resetNow();
-      if (st.phase !== PHASE.IDLE) {
+      if (st.phase !== PHASE.IDLE || isBusy()) {
         if (d.id !== st.callId) setStateOf(d.id, "declined"); // busy: the caller is told at once
         continue;
       }
@@ -667,5 +668,5 @@ export function makeCalls({ f, uid, name, worker = "", rtc, timers = { setTimeou
     incomingUnsub = callUnsub = candUnsub = null;
   }
 
-  return { listen, call, accept, decline, hangup, toggleMute, toggleCamera, stop, refreshIce, state: () => ({ ...st }) };
+  return { listen, call, accept, decline, hangup, toggleMute, toggleCamera, stop, refreshIce, iceServers, state: () => ({ ...st }) };
 }

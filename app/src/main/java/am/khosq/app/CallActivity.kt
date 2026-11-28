@@ -2,10 +2,14 @@ package am.khosq.app
 
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
+import am.khosq.app.call.GPhase
+import am.khosq.app.call.GroupCallManager
 import am.khosq.app.call.Phase
 import am.khosq.app.ui.CallOverlay
 import am.khosq.app.ui.CallPip
 import am.khosq.app.ui.CallUiState
+import am.khosq.app.ui.GroupCallOverlay
+import am.khosq.app.ui.groupIsOn
 import am.khosq.app.ui.KhosqTheme
 import am.khosq.app.ui.backgroundBrush
 import am.khosq.app.ui.callIsOn
@@ -48,6 +52,7 @@ class CallActivity : ComponentActivity() {
         // "no screenshots" covers the call screen too
         AppLock.applyScreen(window)
         CallManager.init(applicationContext)
+        GroupCallManager.init(applicationContext)
         answerIfAsked(intent)
         setContent {
             KhosqTheme {
@@ -86,6 +91,9 @@ class CallActivity : ComponentActivity() {
         val s = CallManager.ui.value
         // without the microphone permission the call screen asks for it when the person taps "Answer"
         if (s.phase == Phase.INCOMING && CallPermissions.has(this, s.video)) CallManager.accept()
+        // the same for a group call that rings
+        val g = GroupCallManager.ui.value
+        if (g.phase == GPhase.RINGING && CallPermissions.has(this, g.video)) GroupCallManager.join()
     }
 
     /** Leaves the call screen for the app; the call goes on and the app shows the green bar. */
@@ -135,11 +143,12 @@ class CallActivity : ComponentActivity() {
 private fun CallHost(pip: Boolean, onToApp: () -> Unit, onDone: () -> Unit) {
     val ctx = LocalContext.current
     val call by CallManager.ui.collectAsStateWithLifecycle()
-    val on = callIsOn(call.phase)
+    val gcall by GroupCallManager.ui.collectAsStateWithLifecycle()
+    val on = callIsOn(call.phase) || groupIsOn(gcall.phase)
 
     // the screen closes when the call is over
-    LaunchedEffect(call.phase) {
-        if (call.phase == Phase.IDLE) onDone()
+    LaunchedEffect(call.phase, gcall.phase) {
+        if (call.phase == Phase.IDLE && gcall.phase == GPhase.IDLE) onDone()
     }
 
     // the "back" button of a running call: the call moves to the green bar in the app
@@ -148,7 +157,7 @@ private fun CallHost(pip: Boolean, onToApp: () -> Unit, onDone: () -> Unit) {
     }
 
     // the screen stays lit for as long as a call is going on
-    val active = call.phase != Phase.IDLE
+    val active = call.phase != Phase.IDLE || gcall.phase != GPhase.IDLE
     DisposableEffect(active) {
         val w = (ctx as? android.app.Activity)?.window
         if (active) w?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -156,6 +165,7 @@ private fun CallHost(pip: Boolean, onToApp: () -> Unit, onDone: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize().background(backgroundBrush())) {
-        if (pip && on) CallPip() else CallOverlay()
+        if (pip && callIsOn(call.phase)) CallPip() else CallOverlay()
+        GroupCallOverlay()
     }
 }

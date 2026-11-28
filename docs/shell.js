@@ -20,6 +20,8 @@ import { similarNames } from "./lookalike.js";
 import { STICKERS } from "./stickers.js";
 import { pins, getPhoto, putPhoto } from "./store.js";
 import { makeCalls } from "./calls.js";
+import { makeGroupCalls } from "./gcalls.js";
+import { makeGroupCallUi } from "./gcallui.js";
 import { makeCallUi } from "./callui.js";
 import { makeTones } from "./tones.js";
 
@@ -902,6 +904,9 @@ export function startShell({ f, id, user, onAbout, worker }) {
     S.jumping++;
     $("pinBar").hidden = true;
     $("msgList").replaceChildren();
+    if (S.gbStop) S.gbStop();
+    S.gbStop = null;
+    $("gBanner").hidden = true;
   }
 
   function openChat(chatId) {
@@ -914,6 +919,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
     }
     leaveChat();
     S.open = v;
+    watchBannerFor(v);
     if (v.marked) people.setPref("marked", chatId, false).committed.catch(() => {});
     S.loadingMsgs = true;
     $("app").classList.add("open");
@@ -2237,6 +2243,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
       // a call that rings or goes on keeps the connection awake (the other side's hang-up must be heard, mine must go out)
       const ph = calls.state().phase;
       if (ph !== "idle" && ph !== "ended") return restSoon();
+      const gph = gcalls.state().phase;
+      if (gph !== "idle" && gph !== "ended") return restSoon();
       f.fsM.disableNetwork(f.db).catch(() => {});
     }, 120000);
   };
@@ -2287,25 +2295,145 @@ export function startShell({ f, id, user, onAbout, worker }) {
     worker: worker || "",
     rtc: rtcOk ? { Peer: RTCPeerConnection, getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c), Stream: MediaStream } : null,
     resolveName: callerName,
+    isBusy: () => gInCall(), // a group call that goes on: a one-to-one call that comes in is told "busy"
     onChange: (s) => {
       if (s.phase === "incoming" && callPhase !== "incoming") {
         // a call comes first: a window that has the page locked (the profile, the list of people to forward to ...) is closed so the call can be seen and answered
         for (const d of document.querySelectorAll("dialog[open]")) d.close();
+        // a group call that only rings gives way to it (the chat still offers to join that one)
+        if (gcalls.state().phase === "ringing") gcalls.decline();
       }
       callPhase = s.phase;
       callUi.render(s);
     },
   });
-  /** The two buttons in the header of a chat: only for a one-to-one chat that is accepted and not blocked (the phone's conditions, and the rules'). */
+  // ---- group calls (stage 10): the same two buttons in the header of a group, the window with a tile for each person, the "join" bar of the chat
+  const gcState = () => gcalls.state().phase;
+  /** True while a group call goes on or is being joined (a ring that is only shown does not count). */
+  function gInCall() {
+    const p = gcState();
+    return p === "joining" || p === "active";
+  }
+  /** The name to show for a person of a group call: what the group's own record says (the name written in the call is the fallback). */
+  function gName(who, claimed, chatId) {
+    if (who === uid) return shownName(user);
+    const c = S.chats.find((x) => x.id === chatId);
+    const own = c && c.names && typeof c.names[who] === "string" ? c.names[who] : "";
+    return own || claimed;
+  }
+  let gcChat = "";
+  let gcPhase = "idle";
+  const gcUi = makeGroupCallUi({
+    actions: {
+      join: () => joinGroupCall(""),
+      leave: () => gcalls.leave(),
+      toggleMute: () => gcalls.toggleMute(),
+      toggleCamera: () => gcalls.toggleCamera(),
+    },
+    t,
+    tf,
+    avatarFor: (who, name) => {
+      const c = S.chats.find((x) => x.id === gcChat);
+      return avatar(who, name, c ? memberPv(c, who) : 0);
+    },
+    groupAvatar: (chatId, title) => {
+      const c = S.chats.find((x) => x.id === chatId);
+      return avatar(chatId, title, c ? num(c.gpv) : 0);
+    },
+    tones,
+    onClosed: () => {
+      if (S.open) $("msgIn").focus();
+    },
+  });
+  const gcalls = makeGroupCalls({
+    f,
+    uid,
+    name: () => shownName(user),
+    worker: worker || "",
+    rtc: rtcOk ? { Peer: RTCPeerConnection, getUserMedia: (c) => navigator.mediaDevices.getUserMedia(c), Stream: MediaStream } : null,
+    ice: { servers: () => calls.iceServers(), refresh: () => calls.refreshIce() },
+    resolveName: gName,
+    isBusy: () => {
+      const p = calls.state().phase;
+      return p !== "idle" && p !== "ended";
+    },
+    onChange: (s) => {
+      if (s.chatId) gcChat = s.chatId;
+      if (s.phase === "ringing" && gcPhase !== "ringing") {
+        // a call comes first: a window that has the page locked is closed so the call can be seen and answered
+        for (const d of document.querySelectorAll("dialog[open]")) d.close();
+      }
+      gcPhase = s.phase;
+      gcUi.render({ ...s, myUid: uid, myName: shownName(user) });
+      updateCallButtons();
+    },
+  });
+  /** What a call that did not start is told to the person (when the window shows nothing, e.g. a call that is over, a browser without calls). */
+  function whyToast(why) {
+    if (why === "busy") return toast(t("callBusyNow"));
+    const k = "callN_" + why;
+    const x = t(k);
+    toast(x && x !== k ? x : t("callN_error"));
+  }
+  async function joinGroupCall(chatId) {
+    tones.unlock();
+    const r = await gcalls.join(chatId || undefined);
+    if (!r.ok && gcState() === "idle") whyToast(r.why);
+  }
+  async function placeGroupCall(video) {
+    const v = S.open;
+    if (!v || !v.group || v.saved) return;
+    tones.unlock();
+    const r = await gcalls.start({ chatId: v.id, title: v.title, video });
+    if (!r.ok && gcState() === "idle") whyToast(r.why);
+  }
+  /** The bar at the top of a group chat whose group has a call going on. */
+  function drawBanner(info) {
+    S.gbInfo = info || null;
+    const b = $("gBanner");
+    if (!info || info.mine) {
+      b.hidden = true;
+      return;
+    }
+    b.hidden = false;
+    $("gbTitle").textContent = t(info.video ? "gbVideo" : "gbVoice");
+    const names = info.people.map((p) => p.name).join(", ");
+    $("gbSub").textContent = info.full ? (names ? names + " · " : "") + t("gbFull") : names;
+    $("gbJoin").textContent = t("gcJoin");
+    $("gbJoin").disabled = info.full;
+  }
+  const onBannerJoin = () => {
+    const v = S.open;
+    if (v) joinGroupCall(v.id);
+  };
+  $("gbJoin").addEventListener("click", onBannerJoin);
+  /** The banner of the open chat is watched while that chat (a group) is open. */
+  function watchBannerFor(v) {
+    if (S.gbStop) S.gbStop();
+    S.gbStop = null;
+    drawBanner(null);
+    if (rtcOk && v && v.group && !v.saved) S.gbStop = gcalls.watchBanner(v.id, drawBanner);
+  }
+
+  /** The two buttons in the header of a chat: a one-to-one chat that is accepted and not blocked (the phone's conditions, and the rules'), or a group. */
   function updateCallButtons() {
     const v = S.open;
-    const ok = rtcOk && Boolean(v) && !v.group && !v.saved && Boolean(v.peer) && (v.raw.status || "active") === "active" && !v.blocked;
-    $("callBtn").hidden = !ok;
-    $("vidBtn").hidden = !ok;
+    const dm = rtcOk && Boolean(v) && !v.group && !v.saved && Boolean(v.peer) && (v.raw.status || "active") === "active" && !v.blocked;
+    const grp = rtcOk && Boolean(v) && v.group && !v.saved;
+    $("callBtn").hidden = !(dm || grp);
+    $("vidBtn").hidden = !(dm || grp);
+    for (const [id, key] of [["callBtn", grp ? "gCallBtn" : "callBtn"], ["vidBtn", grp ? "gVidBtn" : "vidBtn"]]) {
+      const b = $(id);
+      b.setAttribute("aria-label", t(key));
+      b.title = t(key);
+    }
   }
   async function placeCall(video) {
     const v = S.open;
-    if (!v || !v.peer) return;
+    if (!v) return;
+    if (v.group) return placeGroupCall(video);
+    if (!v.peer) return;
+    if (gInCall()) return toast(t("callBusyNow"));
     tones.unlock();
     const r = await calls.call({ peerUid: v.peer, peerName: v.title, video });
     if (!r.ok && r.why === "busy") toast(t("callBusyNow"));
@@ -2320,6 +2448,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
   document.addEventListener("keydown", onGesture, true);
   const onHide = () => {
     if (calls.state().phase !== "idle") calls.hangup();
+    if (gcState() !== "idle") gcalls.leave(); // a group call: my entry is taken out, the others go on
   };
   window.addEventListener("pagehide", onHide);
   if (rtcOk) calls.listen();
@@ -2436,6 +2565,7 @@ export function startShell({ f, id, user, onAbout, worker }) {
       (list) => {
         S.chats = list;
         profile.syncChats(list);
+        if (rtcOk) gcalls.chatsChanged(list);
         S.loadedChats = true;
         S.failed = false;
         if (S.open) {
@@ -2500,6 +2630,8 @@ export function startShell({ f, id, user, onAbout, worker }) {
       }
       renderStarred();
       callUi.relang();
+      gcUi.relang();
+      if (S.open) drawBanner(S.gbInfo || null);
       groupUi.relang();
       settingsUi.relang();
       contactUi.relang();
@@ -2508,6 +2640,10 @@ export function startShell({ f, id, user, onAbout, worker }) {
       leaveChat(); // also ends a recording and lets the microphone go
       calls.stop(); // a call in progress ends (hang-up written), the listener of incoming calls goes
       callUi.stop();
+      gcalls.stop(); // a group call in progress is left (my entry is taken out), the listeners go
+      gcUi.stop();
+      $("gbJoin").removeEventListener("click", onBannerJoin);
+      $("gBanner").hidden = true;
       groupUi.stop();
       settingsUi.stop();
       contactUi.stop();

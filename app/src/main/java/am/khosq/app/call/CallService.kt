@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /** Keeps the process and the microphone/camera alive during a call. */
@@ -36,11 +37,15 @@ class CallService : Service() {
             NotificationChannel(CH_ACTIVE, tr("Ընթացիկ զանգ"), NotificationManager.IMPORTANCE_LOW),
         )
         val ui = CallManager.ui.value
-        val n = build(ui.peerName, ui.video)
+        val g = GroupCallManager.ui.value
+        val inGroup = g.phase == GPhase.JOINING || g.phase == GPhase.ACTIVE
+        val shownName = if (inGroup) g.title else ui.peerName
+        val shownVideo = if (inGroup) g.video else ui.video
+        val n = build(shownName, shownVideo)
         var type = 0
         if (Build.VERSION.SDK_INT >= 29) {
             if (granted(android.Manifest.permission.RECORD_AUDIO)) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (ui.video && granted(android.Manifest.permission.CAMERA)) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            if (shownVideo && granted(android.Manifest.permission.CAMERA)) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         }
         try {
             if (Build.VERSION.SDK_INT >= 29 && type != 0) startForeground(ID, n, type) else startForeground(ID, n)
@@ -49,8 +54,13 @@ class CallService : Service() {
             return
         }
         job = scope.launch {
-            CallManager.ui.collect { s ->
-                if (s.phase == Phase.IDLE || s.phase == Phase.ENDED) stopSelf()
+            // the service stays for as long as a call of two or a group call is going on
+            combine(CallManager.ui, GroupCallManager.ui) { one, grp ->
+                val oneOn = one.phase != Phase.IDLE && one.phase != Phase.ENDED
+                val grpOn = grp.phase == GPhase.JOINING || grp.phase == GPhase.ACTIVE
+                oneOn || grpOn
+            }.collect { on ->
+                if (!on) stopSelf()
             }
         }
     }
@@ -84,7 +94,10 @@ class CallService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_HANGUP) CallManager.hangup()
+        if (intent?.action == ACTION_HANGUP) {
+            CallManager.hangup()
+            GroupCallManager.leave()
+        }
         return START_NOT_STICKY
     }
 

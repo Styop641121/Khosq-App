@@ -61,12 +61,12 @@ import org.webrtc.RendererCommon
 import org.webrtc.SurfaceViewRenderer
 import org.webrtc.VideoTrack
 
-private val Glass = Color(0x33FFFFFF)
-private val Danger = Color(0xFFFF5C6C)
-private val Good = Color(0xFF1FAE6B)
+internal val Glass = Color(0x33FFFFFF)
+internal val Danger = Color(0xFFFF5C6C)
+internal val Good = Color(0xFF1FAE6B)
 
 @Composable
-private fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, modifier: Modifier) {
+internal fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, modifier: Modifier) {
     var renderer by remember { mutableStateOf<SurfaceViewRenderer?>(null) }
     AndroidView(
         factory = { c ->
@@ -100,7 +100,7 @@ private fun VideoView(track: VideoTrack?, mirror: Boolean, overlay: Boolean, mod
 }
 
 @Composable
-private fun CallBtn(
+internal fun CallBtn(
     icon: ImageVector,
     label: String,
     bg: Color,
@@ -124,7 +124,7 @@ private fun CallBtn(
 
 /** Two soft rings that grow around the avatar while the phone is ringing. */
 @Composable
-private fun Pulse(active: Boolean, content: @Composable () -> Unit) {
+internal fun Pulse(active: Boolean, content: @Composable () -> Unit) {
     val t = rememberInfiniteTransition(label = "pulse")
     val p by t.animateFloat(
         initialValue = 0f,

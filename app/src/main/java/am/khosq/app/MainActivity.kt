@@ -1,6 +1,7 @@
 package am.khosq.app
 
 import am.khosq.app.call.CallManager
+import am.khosq.app.call.GroupCallManager
 import am.khosq.app.data.Profile
 import am.khosq.app.data.ReliabilityLogic
 import am.khosq.app.ui.CallBar
@@ -8,6 +9,9 @@ import am.khosq.app.ui.CallOverlay
 import am.khosq.app.ui.CallPip
 import am.khosq.app.ui.CallUiState
 import am.khosq.app.ui.callIsOn
+import am.khosq.app.ui.GroupCallBar
+import am.khosq.app.ui.GroupCallOverlay
+import am.khosq.app.ui.groupIsOn
 import am.khosq.app.ui.AppViewModel
 import am.khosq.app.ui.AssistantScreen
 import am.khosq.app.ui.Boot
@@ -125,6 +129,7 @@ class MainActivity : ComponentActivity() {
         }
         window.setBackgroundDrawable(ColorDrawable(if (lightNow) 0xFFF5F6FB.toInt() else 0xFF0A0C14.toInt()))
         CallManager.init(applicationContext)
+        GroupCallManager.init(applicationContext)
         readIntent(intent)
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
@@ -167,7 +172,7 @@ class MainActivity : ComponentActivity() {
         AppState.started()
         CallManager.appVisible(true)
         // the app may have to close again after a long absence (never in the middle of a call)
-        AppLock.back(System.currentTimeMillis(), callIsOn(CallManager.ui.value.phase))
+        AppLock.back(System.currentTimeMillis(), callIsOn(CallManager.ui.value.phase) || GroupCallManager.inCall())
     }
 
     override fun onStop() {
@@ -212,6 +217,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val boot by vm.boot.collectAsStateWithLifecycle()
     val notice by vm.notice.collectAsStateWithLifecycle()
     val call by CallManager.ui.collectAsStateWithLifecycle()
+    val gcall by GroupCallManager.ui.collectAsStateWithLifecycle()
     var askBattery by remember { mutableStateOf(false) }
     var askFullScreen by remember { mutableStateOf(false) }
     // phones of the makers that close apps in the background: one question the first time, then the "check the notifications" sheet
@@ -223,7 +229,9 @@ private fun Root(vm: AppViewModel = viewModel()) {
     val locked by AppLock.locked.collectAsStateWithLifecycle()
     val screenGuard by AppLock.screenGuard.collectAsStateWithLifecycle()
     val callOn = callIsOn(call.phase)
-    val showBar = callOn && CallUiState.minimized && !pip
+    val groupOn = groupIsOn(gcall.phase)
+    val showBar = (callOn || groupOn) && CallUiState.minimized && !pip
+    val anyCall = call.phase != am.khosq.app.call.Phase.IDLE || gcall.phase != am.khosq.app.call.GPhase.IDLE
 
     // the switch "no screenshots" works at once
     LaunchedEffect(screenGuard) { AppLock.applyScreen((ctx as? Activity)?.window) }
@@ -234,9 +242,9 @@ private fun Root(vm: AppViewModel = viewModel()) {
     }
 
     // the screen stays lit for as long as a call is going on
-    DisposableEffect(call.phase != am.khosq.app.call.Phase.IDLE) {
+    DisposableEffect(anyCall) {
         val w = (ctx as? Activity)?.window
-        if (call.phase != am.khosq.app.call.Phase.IDLE) w?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (anyCall) w?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose { w?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
@@ -269,10 +277,10 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
     }
 
-    LaunchedEffect(call.phase) {
+    LaunchedEffect(call.phase, gcall.phase) {
         val act = ctx as? Activity
         if (act != null) {
-            val on = call.phase != am.khosq.app.call.Phase.IDLE
+            val on = call.phase != am.khosq.app.call.Phase.IDLE || gcall.phase != am.khosq.app.call.GPhase.IDLE
             if (!on) kotlinx.coroutines.delay(2500)
             if (Build.VERSION.SDK_INT >= 27) {
                 act.setShowWhenLocked(on)
@@ -283,7 +291,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
 
     Box(Modifier.fillMaxSize().appBackground()) {
         Column(Modifier.fillMaxSize()) {
-            if (showBar) CallBar()
+            if (showBar) { if (groupOn) GroupCallBar() else CallBar() }
             // below the green bar the status bar is already taken care of
             Box(
                 Modifier
@@ -334,6 +342,7 @@ private fun Root(vm: AppViewModel = viewModel()) {
         }
 
         if (pip && callOn) CallPip() else CallOverlay()
+        GroupCallOverlay()
         if (boot is Boot.Ready && !locked) UpdateDialog()
     }
 

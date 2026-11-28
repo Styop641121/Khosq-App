@@ -143,7 +143,7 @@ object CallManager {
         return e!!.eglBaseContext
     }
 
-    private fun ensureFactory(): PeerConnectionFactory {
+    internal fun ensureFactory(): PeerConnectionFactory {
         var f = factory
         if (f == null) {
             val ctx = eglContext()
@@ -192,10 +192,12 @@ object CallManager {
             val ts = d.getLong("ts") ?: 0L
             if (now - ts > 120_000L) continue
             val cur = _ui.value
-            if (cur.phase != Phase.IDLE) {
+            if (cur.phase != Phase.IDLE || GroupCallManager.inCall()) {
+                // busy (in a call of two, or in a group call): the one who calls is told it was refused
                 if (d.id != cur.callId) db.collection("calls").document(d.id).update("state", "declined")
                 continue
             }
+            GroupCallManager.decline() // a group call that only rings makes way for a call of two
             val offer = d.get("offer") as? Map<*, *>
             val sdp = offer?.get("sdp") as? String ?: continue
             pendingOffer = SessionDescription(SessionDescription.Type.OFFER, sdp)
@@ -273,6 +275,8 @@ object CallManager {
 
     fun startOutgoing(myUid: String, myName: String, peerUid: String, peerName: String, video: Boolean) {
         if (!::app.isInitialized || _ui.value.phase != Phase.IDLE || peerUid.isEmpty()) return
+        if (GroupCallManager.inCall()) return
+        GroupCallManager.decline() // a group call that only rings makes way for the call that is being made
         isCaller = true
         myUidCur = myUid
         am.khosq.app.push.IceClient.refresh()
@@ -393,6 +397,7 @@ object CallManager {
 
     /** The app went out of sight (screen locked, another app): the camera stops, and starts again when it is back. */
     fun appVisible(visible: Boolean) {
+        GroupCallManager.appVisible(visible)
         val c = capturer ?: return
         val s = _ui.value
         if (!s.video || s.phase == Phase.IDLE || s.phase == Phase.ENDED) return
@@ -437,7 +442,7 @@ object CallManager {
     )
 
     /** Cloudflare's TURN when we have fresh settings from the Worker, the free public servers otherwise. */
-    private fun iceServers(): List<PeerConnection.IceServer> {
+    internal fun iceServers(): List<PeerConnection.IceServer> {
         val own = am.khosq.app.push.IceClient.fresh()
         return if (own.isEmpty()) fallbackIce() else own + fallbackIce().take(2)
     }

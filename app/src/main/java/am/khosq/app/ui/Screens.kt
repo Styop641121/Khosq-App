@@ -9,6 +9,8 @@ import am.khosq.app.replyText
 
 import am.khosq.app.call.CallManager
 import am.khosq.app.call.CallPermissions
+import am.khosq.app.call.GroupCallManager
+import am.khosq.app.call.Phase
 import am.khosq.app.crypto.E2E
 import am.khosq.app.data.Chat
 import am.khosq.app.data.ChatScroll
@@ -352,6 +354,27 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
         if (peerUid.isEmpty()) return
         wantVideo = video
         if (CallPermissions.has(ctx, video)) placeCall() else callPerms.launch(CallPermissions.needed(video))
+    }
+
+    // a call of the group: the buttons of the header start one, the bar under the header (while one goes on) joins it
+    val callGate = rememberCallGate()
+    val gBanner by GroupCallManager.banner.collectAsStateWithLifecycle()
+    DisposableEffect(chatId, isGroup) {
+        if (isGroup) GroupCallManager.watchBanner(chatId)
+        onDispose { GroupCallManager.watchBanner(null) }
+    }
+    fun callBusy(): Boolean {
+        val busy = CallManager.ui.value.phase != Phase.IDLE || GroupCallManager.inCall()
+        if (busy) Toast.makeText(ctx, tr("Դու արդեն զանգի մեջ ես"), Toast.LENGTH_SHORT).show()
+        return busy
+    }
+    fun startGroupCall(video: Boolean) {
+        if (!isGroup || callBusy()) return
+        callGate(video) { GroupCallManager.start(chatId, chat?.label() ?: "", video) }
+    }
+    fun joinGroupCall(video: Boolean) {
+        if (!isGroup || callBusy()) return
+        callGate(video) { GroupCallManager.join(chatId) }
     }
 
     DisposableEffect(chatId) {
@@ -795,6 +818,9 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                     if (canCall) {
                         KIconButton(icon = KIcons.PhoneLine, onClick = { startCall(false) }, tint = k.accent, description = tr("Զանգ"))
                         KIconButton(icon = KIcons.VideoLine, onClick = { startCall(true) }, tint = k.accent, description = tr("Տեսազանգ"))
+                    } else if (isGroup) {
+                        KIconButton(icon = KIcons.PhoneLine, onClick = { startGroupCall(false) }, tint = k.accent, description = tr("Խմբային ձայնային զանգ"))
+                        KIconButton(icon = KIcons.VideoLine, onClick = { startGroupCall(true) }, tint = k.accent, description = tr("Խմբային տեսազանգ"))
                     }
                     Box {
                         KIconButton(icon = KIcons.More, onClick = { moreOpen = true }, description = tr("Ավելին"))
@@ -853,6 +879,11 @@ fun ChatScreen(vm: AppViewModel, me: Profile, chatId: String, onBack: () -> Unit
                         }
                     }
                 }
+            }
+            val gb = gBanner
+            if (!searching && isGroup && gb != null && !gb.mine && gb.chatId == chatId) {
+                KDivider()
+                GroupCallBanner(gb) { joinGroupCall(gb.video) }
             }
             if (!searching && pinnedMsg != null) {
                 KDivider()

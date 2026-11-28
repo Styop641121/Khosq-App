@@ -306,16 +306,47 @@ object GroupCallManager {
 
     private fun checkRing() {
         val ph = _ui.value.phase
-        if (ph != GPhase.IDLE && ph != GPhase.ENDED) return
         if (myUid.isEmpty()) return
         for (c in chats.values) {
             if (!c.group || c.saved) continue
             val p = c.pointer ?: continue
-            if (p.host.isEmpty() || p.host == myUid || handled.contains(p.id)) continue
-            if (nowMs() - p.ts > GroupCallRules.RING_SHOW_MS) continue
-            if (oneToOneBusy()) return
+            if (p.host.isEmpty() || p.host == myUid || p.id == _ui.value.callId) continue
+            val age = nowMs() - p.ts
+            if (ph != GPhase.IDLE && ph != GPhase.ENDED) {
+                ringNote(p.id, "no ring: I am in phase " + ph)
+                return
+            }
+            if (handled.contains(p.id)) {
+                ringNote(p.id, "no ring: already handled")
+                continue
+            }
+            if (age > GroupCallRules.RING_SHOW_MS) {
+                ringNote(p.id, "no ring: call is " + (age / 1000L) + "s old (clock?)")
+                continue
+            }
+            if (oneToOneBusy()) {
+                ringNote(p.id, "no ring: a one-to-one call is on")
+                return
+            }
+            ringNote(p.id, "ringing (call is " + (age / 1000L) + "s old)")
             ring(c, p)
             return
+        }
+    }
+
+    private var noteId = ""
+    private var noteText = ""
+
+    /** A test aid: says on the screen what the phone decided about a call that was seen in a group (once for each decision). */
+    private fun ringNote(id: String, text: String) {
+        if (!DEBUG_HOLD) return
+        if (id == noteId && text == noteText) return
+        noteId = id
+        noteText = text
+        try {
+            android.widget.Toast.makeText(app, "KHOSQ: " + text, android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            // only a test aid
         }
     }
 
@@ -455,6 +486,7 @@ object GroupCallManager {
         early.clear()
         am.khosq.app.push.IceClient.refresh()
         dbgReset()
+        lastKey = ""
         sigRetries = 0
         dbg((if (create) "call" else "join") + " video=" + video + " j=" + (myJ % 100000L))
         _ui.value = GCallUi(
@@ -1382,6 +1414,14 @@ object GroupCallManager {
         clearPointer(chatId, id)
     }
 
+    /** The test screen after a call is closed by hand (it stays for a while so its lines can be read). */
+    fun dismissEnded() {
+        if (_ui.value.phase == GPhase.ENDED) {
+            resetNow()
+            checkRing()
+        }
+    }
+
     private fun resetNow() {
         resetT?.let { main.removeCallbacks(it) }
         resetT = null
@@ -1398,8 +1438,7 @@ object GroupCallManager {
         }
         resetT = r
         val long = note == "denied" || note == "noMedia" || note == "full"
-        val hold = DEBUG_HOLD && (note == "error" || note == "ended" || note == "noanswer")
-        main.postDelayed(r, if (note.isNullOrEmpty()) 400L else if (hold) 12_000L else if (long) GroupCallRules.NOTE_LONG_MS else GroupCallRules.NOTE_MS)
+        main.postDelayed(r, if (DEBUG_HOLD) 90_000L else if (note.isNullOrEmpty()) 400L else if (long) GroupCallRules.NOTE_LONG_MS else GroupCallRules.NOTE_MS)
     }
 
     /** Leaves the call in progress: everything is let go (the camera and microphone light goes off), and the reason stays on the screen a moment. */
@@ -1435,7 +1474,7 @@ object GroupCallManager {
         stopRingback()
         stopAudioMode()
         if (cur.callId.isNotEmpty()) handled.add(cur.callId)
-        _ui.value = cur.copy(phase = GPhase.ENDED, note = note ?: "", localVideo = null, people = emptyList(), count = 0, muted = false)
+        _ui.value = cur.copy(phase = GPhase.ENDED, note = note ?: (if (DEBUG_HOLD) "log" else ""), localVideo = null, people = emptyList(), count = 0, muted = false)
         if (wasIn && !quiet && cur.callId.isNotEmpty()) {
             // my entry goes; the last one out closes the call, writes the line and takes the sign out of the chat
             val ref = db.collection("gcalls").document(cur.callId)

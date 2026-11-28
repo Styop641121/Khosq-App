@@ -8,7 +8,7 @@ package am.khosq.app.call
  * What is written, and where:
  *   gcalls/<id>        { chat, host, hostName, title, kind: "audio" | "video", state: "active" | "ended", ts, con?, dur?,
  *                        parts: { <uid>: { sid, j, at, name, m, cam } } }     parts = who is in the call now
- *   gcalls/<id>/sig/*  { from, to, fsid, tsid, lid, k: "offer" | "answer" | "cand", sdp?, c?: [{m, i, s}], at }
+ *   gcalls/<id>/sig/<n>  { from, to, fsid, tsid, lid, k: "offer" | "answer" | "cand", sdp?, c?: [{m, i, s}], at }
  *   chats/<group>.gcall { id, host, hostName, kind, ts }     while a call goes on (what makes the other devices ring)
  */
 object GroupCallRules {
